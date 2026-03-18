@@ -5,8 +5,8 @@ import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
-const ActiveBookingItem = ({ customer, service, amount, status, avatar }: any) => (
-  <View style={styles.bookingRow}>
+const ActiveBookingItem = ({ id, customer, service, amount, status, avatar, onPress }: any) => (
+  <TouchableOpacity style={styles.bookingRow} onPress={onPress}>
     <View style={styles.customerCell}>
       <Image source={{ uri: avatar }} style={styles.tinyAvatar} />
       <Text style={styles.customerName}>{customer}</Text>
@@ -18,7 +18,7 @@ const ActiveBookingItem = ({ customer, service, amount, status, avatar }: any) =
         {status}
       </Text>
     </View>
-  </View>
+  </TouchableOpacity>
 );
 
 const QuickAction = ({ icon, label, color, onPress }: any) => (
@@ -30,7 +30,7 @@ const QuickAction = ({ icon, label, color, onPress }: any) => (
   </TouchableOpacity>
 );
 
-const UpcomingBooking = ({ date, time, customer, service, location, status }: any) => (
+const UpcomingBooking = ({ id, date, time, customer, service, location, status, onPress }: any) => (
   <View style={styles.upcomingCard}>
     <View style={styles.upcomingHeader}>
       <Text style={styles.upcomingDateTime}>{date} at {time}</Text>
@@ -44,7 +44,7 @@ const UpcomingBooking = ({ date, time, customer, service, location, status }: an
       <Ionicons name="location-outline" size={14} color="#777" />
       <Text style={styles.upcomingLocation}>{location}</Text>
     </View>
-    <TouchableOpacity style={styles.viewDetailsButton}>
+    <TouchableOpacity style={styles.viewDetailsButton} onPress={onPress}>
       <Text style={styles.viewDetailsText}>View Details</Text>
     </TouchableOpacity>
   </View>
@@ -147,32 +147,40 @@ export default function ProviderDashboard() {
           </View>
           
           <ActiveBookingItem 
+            id="BK-2026-03-001"
             customer="Juan" 
             service="Plumbing Rep.." 
             amount="1,500.00" 
             status="Confirmed" 
             avatar="https://i.pravatar.cc/100?u=juan"
+            onPress={() => router.push({ pathname: '/provider-booking-details', params: { id: 'BK-2026-03-001' } } as any)}
           />
           <ActiveBookingItem 
+            id="BK-2026-03-002"
             customer="Maria" 
             service="Electrical Wir.." 
             amount="2,300.00" 
             status="Pending" 
             avatar="https://i.pravatar.cc/100?u=maria"
+            onPress={() => router.push({ pathname: '/provider-booking-details', params: { id: 'BK-2026-03-002' } } as any)}
           />
           <ActiveBookingItem 
+            id="BK-2026-03-003"
             customer="Pedro" 
             service="Aircon Clean.." 
             amount="800.00" 
             status="Confirmed" 
             avatar="https://i.pravatar.cc/100?u=pedro"
+            onPress={() => router.push({ pathname: '/provider-booking-details', params: { id: 'BK-2026-03-003' } } as any)}
           />
           <ActiveBookingItem 
+            id="BK-2026-03-004"
             customer="Ana" 
             service="Home Cleani.." 
             amount="1,200.00" 
             status="In Progress" 
             avatar="https://i.pravatar.cc/100?u=ana"
+            onPress={() => router.push({ pathname: '/provider-booking-details', params: { id: 'BK-2026-03-004' } } as any)}
           />
         </View>
 
@@ -208,28 +216,34 @@ export default function ProviderDashboard() {
         <Text style={styles.sectionTitlePadding}>Upcoming Bookings</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
           <UpcomingBooking 
+            id="BK-2026-03-001"
             date="March 15, 2026" 
             time="2:00 PM" 
             customer="Juan Dela Cruz" 
             service="Plumbing Repair" 
             location="123 Rizal Street, Makati City" 
             status="Confirmed"
+            onPress={() => router.push({ pathname: '/provider-booking-details', params: { id: 'BK-2026-03-001' } } as any)}
           />
           <UpcomingBooking 
+            id="BK-2026-03-002"
             date="March 16, 2026" 
             time="10:00 AM" 
             customer="Maria Santos" 
             service="Electrical Wiring" 
             location="456 Bonifacio Ave, Taguig" 
             status="Pending"
+            onPress={() => router.push({ pathname: '/provider-booking-details', params: { id: 'BK-2026-03-002' } } as any)}
           />
           <UpcomingBooking 
+            id="BK-2026-03-003"
             date="March 18, 2026" 
             time="3:30 PM" 
             customer="Pedro Reyes" 
             service="Aircon Cleaning" 
             location="789 Luna Street, Quezon City" 
             status="Confirmed"
+            onPress={() => router.push({ pathname: '/provider-booking-details', params: { id: 'BK-2026-03-003' } } as any)}
           />
         </ScrollView>
 

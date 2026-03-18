@@ -76,7 +76,10 @@ export default function ProviderLoginScreen() {
               </View>
             </View>
 
-            <TouchableOpacity style={styles.forgotPassword}>
+            <TouchableOpacity 
+              style={styles.forgotPassword}
+              onPress={() => router.push('/provider-forgot-password' as any)}
+            >
               <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
             </TouchableOpacity>
 

@@ -61,9 +61,17 @@ export default function ProviderSettingsScreen() {
         {/* Account Section */}
         <CategoryHeader title="ACCOUNT" />
         <View style={styles.section}>
-          <SettingItem icon="person-outline" label="Edit Profile" />
+          <SettingItem 
+            icon="person-outline" 
+            label="Edit Profile" 
+            onPress={() => router.push('/provider-edit-profile' as any)}
+          />
           <SettingItem icon="cash-outline" label="Services & Pricing" />
-          <SettingItem icon="location-outline" label="Manage Addresses" />
+          <SettingItem 
+            icon="location-outline" 
+            label="Manage Addresses" 
+            onPress={() => router.push('/manage-addresses' as any)}
+          />
           <SettingItem 
             icon="time-outline" 
             label="Availability" 
@@ -96,7 +104,13 @@ export default function ProviderSettingsScreen() {
             value={emailEnabled} 
             onValueChange={setEmailEnabled} 
           />
-          <SettingItem icon="notifications-outline" label="Advanced Notification Preferences" color="#00B761" isAction />
+          <SettingItem 
+            icon="notifications-outline" 
+            label="Advanced Notification Preferences" 
+            color="#00B761" 
+            isAction 
+            onPress={() => router.push('/provider-notification-preferences' as any)}
+          />
         </View>
 
         {/* Privacy & Security */}
@@ -127,8 +141,16 @@ export default function ProviderSettingsScreen() {
         <CategoryHeader title="LEGAL & SUPPORT" />
         <View style={styles.section}>
           <SettingItem icon="document-text-outline" label="Provider Agreement" />
-          <SettingItem icon="document-text-outline" label="Terms & Conditions" />
-          <SettingItem icon="document-text-outline" label="Privacy Policy" />
+          <SettingItem 
+            icon="document-text-outline" 
+            label="Terms and Conditions" 
+            onPress={() => router.push('/terms' as any)} 
+          />
+          <SettingItem 
+            icon="lock-closed-outline" 
+            label="Privacy Policy" 
+            onPress={() => router.push('/privacy' as any)} 
+          />
           <SettingItem 
             icon="help-circle-outline" 
             label="Help Center" 
@@ -143,7 +165,7 @@ export default function ProviderSettingsScreen() {
         <View style={styles.actionSection}>
           <TouchableOpacity 
             style={styles.logoutButton} 
-            onPress={() => router.replace('/provider-login' as any)}
+            onPress={() => router.replace('/login' as any)}
             activeOpacity={0.8}
           >
             <Ionicons name="log-out-outline" size={20} color="#FF4D4D" style={styles.logoutIcon} />

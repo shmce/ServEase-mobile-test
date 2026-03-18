@@ -234,11 +234,17 @@ export default function ProviderBookingDetailsScreen() {
               <Text style={styles.actionButtonTextLight}>Request Reschedule</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionButtonDanger}>
+            <TouchableOpacity 
+              style={styles.actionButtonDanger}
+              onPress={() => router.push({ pathname: '/provider-cancel-booking', params: { id: booking.id } } as any)}
+            >
               <Text style={styles.actionButtonTextDanger}>Cancel Booking</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionButtonLight}>
+            <TouchableOpacity 
+              style={styles.actionButtonLight}
+              onPress={() => router.push({ pathname: '/provider-report-issue', params: { id: booking.id } } as any)}
+            >
               <Ionicons name="alert-circle-outline" size={18} color="#555" />
               <Text style={styles.actionButtonTextLight}>Report Issue</Text>
             </TouchableOpacity>

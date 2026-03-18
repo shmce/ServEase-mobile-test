@@ -1,16 +1,26 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Dimensions } from 'react-native';
+import { Svg, Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
-// SVG Path for the mock line chart
-const CHART_PATH = `M 0 120 L 40 100 L 80 150 L 120 40 L 160 140 L 200 90 L 240 60 L 280 45`;
-const DATA_POINTS = [
-  { x: 0, y: 120 }, { x: 40, y: 100 }, { x: 80, y: 150 }, { x: 120, y: 40 },
-  { x: 160, y: 140 }, { x: 200, y: 90 }, { x: 240, y: 60 }, { x: 280, y: 45 }
+// Data points based on the design image
+// x: index (0-6), y: value (0-3200)
+const CHART_DATA = [
+  { day: 'Mar 6', value: 1850 },
+  { day: 'Mar 7', value: 1450 },
+  { day: 'Mar 8', value: 3050 },
+  { day: 'Mar 9', value: 1550 },
+  { day: 'Mar 10', value: 2350 },
+  { day: 'Mar 11', value: 2850 },
+  { day: 'Mar 12', value: 3100 },
 ];
+
+const MAX_VALUE = 3200;
+const CHART_HEIGHT = 160;
+const CHART_WIDTH = width - 80; // Accounting for labels and padding
 
 export default function ProviderEarningsScreen() {
   const router = useRouter();
@@ -62,52 +72,84 @@ export default function ProviderEarningsScreen() {
             <Text style={styles.sectionTitle}>Earnings Trend</Text>
             
             <View style={styles.chartCard}>
-                {/* Mock Chart Area */}
-                <View style={styles.mockChartContainer}>
-                     <View style={styles.yAxisLabels}>
-                         <Text style={styles.axisText}>3200</Text>
-                         <Text style={styles.axisText}>2400</Text>
-                         <Text style={styles.axisText}>1600</Text>
-                         <Text style={styles.axisText}>800</Text>
-                         <Text style={styles.axisText}>0</Text>
-                     </View>
+                <View style={styles.chartContainer}>
+                    {/* Y-Axis Labels */}
+                    <View style={styles.yAxisLabels}>
+                        {[3200, 2400, 1600, 800, 0].map((val) => (
+                            <Text key={val} style={styles.axisText}>{val}</Text>
+                        ))}
+                    </View>
 
-                     <View style={styles.chartArea}>
-                         {/* Grid Lines */}
-                         <View style={[styles.gridLine, { bottom: '0%' }]} />
-                         <View style={[styles.gridLine, { bottom: '25%' }]} />
-                         <View style={[styles.gridLine, { bottom: '50%' }]} />
-                         <View style={[styles.gridLine, { bottom: '75%' }]} />
-                         <View style={[styles.gridLine, { bottom: '100%' }]} />
+                    {/* SVG Chart Area */}
+                    <View style={styles.svgContainer}>
+                        <Svg height={CHART_HEIGHT} width={CHART_WIDTH}>
+                            {/* Grid Lines */}
+                            {[0, 0.25, 0.5, 0.75, 1].map((p, i) => (
+                                <Line
+                                    key={i}
+                                    x1="0"
+                                    y1={CHART_HEIGHT * p}
+                                    x2={CHART_WIDTH}
+                                    y2={CHART_HEIGHT * p}
+                                    stroke="#F0F0F0"
+                                    strokeWidth="1"
+                                    strokeDasharray="4, 4"
+                                />
+                            ))}
 
-                         {/* Mock Line (drawn using absolute positioned views connecting dots for a pure RN approach without SVG dependency) */}
-                         <View style={styles.mockLineContainer}>
-                             <View style={[styles.lineSegment, { left: 0, bottom: 65, width: 46, transform: [{ rotate: '-26deg' }] }]} />    
-                             <View style={[styles.lineSegment, { left: 40, bottom: 95, width: 62, transform: [{ rotate: '52deg' }] }]} />    
-                             <View style={[styles.lineSegment, { left: 80, bottom: 95, width: 95, transform: [{ rotate: '-68deg' }] }]} />    
-                             <View style={[styles.lineSegment, { left: 120, bottom: 90, width: 75, transform: [{ rotate: '52deg' }] }]} />    
-                             <View style={[styles.lineSegment, { left: 160, bottom: 125, width: 75, transform: [{ rotate: '36deg' }] }]} />    
-                             <View style={[styles.lineSegment, { left: 200, bottom: 155, width: 50, transform: [{ rotate: '20deg' }] }]} />    
-                             
-                             <View style={[styles.chartDot, { left: -4, bottom: 50 }]} />
-                             <View style={[styles.chartDot, { left: 36, bottom: 30 }]} />
-                             <View style={[styles.chartDot, { left: 76, bottom: 110 }]} />
-                             <View style={[styles.chartDot, { left: 116, bottom: 40 }]} />
-                             <View style={[styles.chartDot, { left: 156, bottom: 85 }]} />
-                             <View style={[styles.chartDot, { left: 196, bottom: 115 }]} />
-                             <View style={[styles.chartDot, { left: 236, bottom: 130 }]} />
-                         </View>
-                         
-                         {/* X-Axis */}
-                         <View style={styles.xAxis}>
-                            <Text style={styles.axisText}>Mar 6</Text>
-                            <Text style={styles.axisText}>Mar 7</Text>
-                            <Text style={styles.axisText}>Mar 8</Text>
-                            <Text style={styles.axisText}>Mar 9</Text>
-                            <Text style={styles.axisText}>Mar 10</Text>
-                            <Text style={styles.axisText}>Mar 12</Text>
-                         </View>
-                     </View>
+                            {/* Earnings Path (Smoother curve) */}
+                            <Path
+                                d={CHART_DATA.reduce((acc, point, i) => {
+                                    const x = (i / (CHART_DATA.length - 1)) * CHART_WIDTH;
+                                    const y = CHART_HEIGHT - (point.value / MAX_VALUE) * CHART_HEIGHT;
+                                    
+                                    if (i === 0) return `M ${x} ${y}`;
+                                    
+                                    const prevX = ((i - 1) / (CHART_DATA.length - 1)) * CHART_WIDTH;
+                                    const prevY = CHART_HEIGHT - (CHART_DATA[i-1].value / MAX_VALUE) * CHART_HEIGHT;
+                                    
+                                    // Control points for a simple smooth curve
+                                    const cp1x = prevX + (x - prevX) / 2;
+                                    const cp1y = prevY;
+                                    const cp2x = prevX + (x - prevX) / 2;
+                                    const cp2y = y;
+                                    
+                                    return `${acc} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x} ${y}`;
+                                }, '')}
+                                fill="none"
+                                stroke="#00B761"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+
+                            {/* Data Points (Dots) */}
+                            {CHART_DATA.map((point, i) => {
+                                const x = (i / (CHART_DATA.length - 1)) * CHART_WIDTH;
+                                const y = CHART_HEIGHT - (point.value / MAX_VALUE) * CHART_HEIGHT;
+                                return (
+                                    <Circle
+                                        key={i}
+                                        cx={x}
+                                        cy={y}
+                                        r="5"
+                                        fill="#00B761"
+                                        stroke="#FFF"
+                                        strokeWidth="2"
+                                    />
+                                );
+                            })}
+                        </Svg>
+
+                        {/* X-Axis Labels */}
+                        <View style={styles.xAxisLabels}>
+                            {CHART_DATA.map((point, i) => (
+                                (i % 2 === 0 || i === CHART_DATA.length - 1) && (
+                                    <Text key={i} style={styles.axisText}>{point.day}</Text>
+                                )
+                            ))}
+                        </View>
+                    </View>
                 </View>
             </View>
         </View>
@@ -436,67 +478,29 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderRadius: 16,
     padding: 16,
-    paddingRight: 24,
     borderWidth: 1,
     borderColor: '#F0F0F0',
   },
-  mockChartContainer: {
+  chartContainer: {
     flexDirection: 'row',
-    height: 180,
   },
   yAxisLabels: {
     justifyContent: 'space-between',
-    paddingRight: 8,
-    paddingBottom: 24,
+    paddingRight: 12,
+    height: CHART_HEIGHT,
   },
-  chartArea: {
+  svgContainer: {
     flex: 1,
-    position: 'relative',
-    borderLeftWidth: 1,
-    borderLeftColor: '#F0F0F0',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    height: CHART_HEIGHT + 30, // Extra space for X-axis labels
   },
-  gridLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: '#F0F0F0',
-    borderStyle: 'dashed',
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-  },
-  xAxis: {
-    position: 'absolute',
-    bottom: -24,
-    left: 0,
-    right: 0,
+  xAxisLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginTop: 10,
   },
   axisText: {
     fontSize: 10,
     color: '#8E8E93',
-  },
-  mockLineContainer: {
-    flex: 1,
-    position: 'relative',
-  },
-  lineSegment: {
-    position: 'absolute',
-    height: 2,
-    backgroundColor: '#00B761',
-    transformOrigin: 'left center', // RN mapping needed, handled differently normally
-  },
-  chartDot: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#00B761',
-    borderWidth: 2,
-    borderColor: '#FFF',
   },
   payoutStatusRow: {
     flexDirection: 'row',
