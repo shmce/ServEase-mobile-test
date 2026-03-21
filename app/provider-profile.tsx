@@ -20,12 +20,20 @@ const TABS = ['About', 'Services', 'Portfolio', 'Reviews'];
 
 export default function ProviderProfileScreen() {
   const router = useRouter();
-  const { providerId = '1' } = useLocalSearchParams<{ providerId: string }>();
+  const {
+    providerId = '1',
+    serviceName = 'Electrical Services',
+    providerName,
+  } = useLocalSearchParams<{
+    providerId: string;
+    serviceName?: string;
+    providerName?: string;
+  }>();
   const [activeTab, setActiveTab] = useState('About');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   const provider = {
-    name: 'Carlos Mendoza',
+    name: providerName || 'Carlos Mendoza',
     rating: 4.9,
     reviewCount: 267,
     bookings: 1245,
@@ -145,6 +153,29 @@ export default function ProviderProfileScreen() {
     permit: 'Manila-2024-BP-45678',
     avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=60',
     banner: 'https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=800&auto=format&fit=crop&q=60',
+  };
+
+  const handleMessagePress = () => {
+    router.push({
+      pathname: '/customer-chat',
+      params: {
+        id: providerId,
+        providerId,
+        providerName: provider.name,
+        serviceName,
+      },
+    });
+  };
+
+  const handleBookNowPress = () => {
+    router.push({
+      pathname: '/customer-booking-form',
+      params: {
+        providerId,
+        providerName: provider.name,
+        serviceName,
+      },
+    });
   };
 
   return (
@@ -515,11 +546,11 @@ export default function ProviderProfileScreen() {
 
       {/* Floating Action Buttons */}
       <View style={styles.actionFooter}>
-        <TouchableOpacity style={styles.messageButton}>
+        <TouchableOpacity style={styles.messageButton} onPress={handleMessagePress}>
           <Ionicons name="chatbubble-outline" size={20} color="#00C853" />
           <Text style={styles.messageButtonText}>Message</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bookButton}>
+        <TouchableOpacity style={styles.bookButton} onPress={handleBookNowPress}>
           <Ionicons name="calendar-outline" size={20} color="#fff" />
           <Text style={styles.bookButtonText}>Book Now</Text>
         </TouchableOpacity>

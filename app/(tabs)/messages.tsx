@@ -96,8 +96,6 @@ const MessageItem = ({ item }: { item: any }) => {
 };
 
 export default function MessagesScreen() {
-  const router = useRouter();
-
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -105,9 +103,6 @@ export default function MessagesScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Messages</Text>
-        <TouchableOpacity style={styles.addButton} activeOpacity={0.8}>
-          <Ionicons name="add" size={24} color="#FFF" />
-        </TouchableOpacity>
       </View>
 
       {/* Search Bar */}
@@ -140,9 +135,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 25,
     paddingTop: 20,
     paddingBottom: 20,
@@ -151,19 +143,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     color: '#0D1B2A',
-  },
-  addButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#00C853',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#00C853',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
   },
   searchContainer: {
     paddingHorizontal: 25,

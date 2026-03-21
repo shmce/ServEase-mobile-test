@@ -59,19 +59,22 @@ export default function WelcomeScreen() {
 
         <View style={styles.buttonContainer}>
           <TouchableOpacity 
-            style={[styles.signUpButton, !isAgreed && styles.buttonDisabled]}
+            style={[
+              styles.signUpButton,
+              isAgreed ? styles.signUpButtonActive : styles.signUpButtonInactive,
+            ]}
             onPress={() => handleAction('/signup')}
             activeOpacity={0.7}
           >
-            <Text style={styles.signUpText}>Sign up to ServEase</Text>
+            <Text style={[styles.signUpText, isAgreed && styles.signUpTextActive]}>Sign up to ServEase</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.loginButton, !isAgreed && styles.buttonDisabled]}
+            style={[styles.loginButton, !isAgreed && styles.loginButtonDisabled]}
             onPress={() => handleAction('/login')}
             activeOpacity={0.7}
           >
-            <Text style={styles.loginText}>Log In</Text>
+            <Text style={[styles.loginText, !isAgreed && styles.loginTextDisabled]}>Log In</Text>
           </TouchableOpacity>
         </View>
 
@@ -149,17 +152,26 @@ const styles = StyleSheet.create({
     marginBottom: 35,
   },
   signUpButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
     paddingVertical: 16,
     borderRadius: 30,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  signUpButtonInactive: {
+      borderColor: '#8EE0AD',
+  },
+  signUpButtonActive: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#FFFFFF',
   },
   signUpText: {
-    color: '#FFFFFF',
+    color: '#AEE6C1',
     fontSize: 18,
     fontWeight: '600',
+  },
+  signUpTextActive: {
+    color: '#00B761',
+    fontWeight: '700',
   },
   loginButton: {
     backgroundColor: 'transparent',
@@ -169,13 +181,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#FFFFFF',
   },
-  buttonDisabled: {
-    opacity: 0.5,
+  loginButtonDisabled: {
+    borderColor: '#8EE0AD',
   },
   loginText: {
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '600',
+  },
+  loginTextDisabled: {
+    color: '#AEE6C1',
   },
   termsContainer: {
     flexDirection: 'row',
@@ -213,30 +228,31 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   pliers: {
-    top: -30,
-    left: -40,
-    width: 220,
-    height: 220,
-    transform: [{ rotate: '10deg' }],
+    top: -18,
+    left: -78,
+    width: 205,
+    height: 205,
+    transform: [{ rotate: '180deg' }],
   },
   paintbrush: {
-    top: -20,
-    right: -50,
-    width: 240,
-    height: 240,
-    transform: [{ rotate: '-10deg' }],
+    top: -26,
+    right: -62,
+    width: 228,
+    height: 228,
+    transform: [{ rotate: '-8deg' }],
   },
   broom: {
-    bottom: -40,
-    left: -50,
-    width: 260,
-    height: 260,
-    transform: [{ rotate: '-10deg' }],
+    bottom: -60,
+    left: -85,
+    width: 248,
+    height: 248,
+    transform: [{ rotate: '180deg' }],
   },
   plumbing: {
-    bottom: -30,
-    right: -40,
-    width: 280,
+    bottom: -40,
+    right: -80,
+    width: 250,
     height: 200,
+    transform: [{ rotate: '-3deg' }],
   },
 });

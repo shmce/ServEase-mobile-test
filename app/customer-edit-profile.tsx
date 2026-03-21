@@ -9,17 +9,48 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
+let SAVED_CUSTOMER_PROFILE = {
+  fullName: 'Karen Santos',
+  email: 'karen.santos@email.com',
+  phone: '+63 912 345 6789',
+  address: '123 Bonifacio St, Makati City, Metro Manila',
+};
+
 export default function CustomerEditProfileScreen() {
   const router = useRouter();
-  const [fullName, setFullName] = useState('Karen Santos');
-  const [email, setEmail] = useState('karen.santos@email.com');
-  const [phone, setPhone] = useState('+63 912 345 6789');
-  const [address, setAddress] = useState('123 Bonifacio St, Makati City, Metro Manila');
+  const [fullName, setFullName] = useState(SAVED_CUSTOMER_PROFILE.fullName);
+  const [email, setEmail] = useState(SAVED_CUSTOMER_PROFILE.email);
+  const [phone, setPhone] = useState(SAVED_CUSTOMER_PROFILE.phone);
+  const [address, setAddress] = useState(SAVED_CUSTOMER_PROFILE.address);
+  const isSaveEnabled =
+    fullName.trim().length > 0 &&
+    email.trim().length > 0 &&
+    phone.trim().length > 0 &&
+    address.trim().length > 0;
+
+  const handleSave = () => {
+    if (!isSaveEnabled) {
+      Alert.alert('Missing Details', 'Please complete all profile fields before saving.');
+      return;
+    }
+
+    SAVED_CUSTOMER_PROFILE = {
+      fullName: fullName.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      address: address.trim(),
+    };
+
+    Alert.alert('Profile Updated', 'Your changes have been saved.', [
+      { text: 'OK', onPress: () => router.back() },
+    ]);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -111,7 +142,11 @@ export default function CustomerEditProfileScreen() {
               </View>
             </View>
 
-            <TouchableOpacity style={styles.saveButton}>
+            <TouchableOpacity
+              style={[styles.saveButton, !isSaveEnabled && styles.saveButtonDisabled]}
+              onPress={handleSave}
+              disabled={!isSaveEnabled}
+            >
               <Text style={styles.saveButtonText}>Save Changes</Text>
             </TouchableOpacity>
           </View>
@@ -224,6 +259,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 4,
+  },
+  saveButtonDisabled: {
+    backgroundColor: '#8FD9B0',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   saveButtonText: {
     color: '#fff',

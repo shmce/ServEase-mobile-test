@@ -1,19 +1,46 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, TextInput, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, TextInput, Modal, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { BOOKINGS_DATA } from './provider-bookings';
 
-const { width } = Dimensions.get('window');
+const ISSUE_TYPES = [
+  'Late Arrival',
+  'Poor Service Quality',
+  'Billing Concern',
+  'Unprofessional Behavior',
+  'Safety Issue',
+  'Other',
+];
 
 export default function ProviderReportIssueScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const [issueType, setIssueType] = useState('');
   const [description, setDescription] = useState('');
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const [isIssueTypeModalVisible, setIssueTypeModalVisible] = useState(false);
+  const isSubmitEnabled = issueType.trim().length > 0 && description.trim().length > 0;
   
   // Find the booking or default to a safe mock
   const booking = BOOKINGS_DATA.find(b => b.id === id) || BOOKINGS_DATA[0];
+
+  const handleUploadEvidence = () => {
+    const nextAttachment = `evidence-${attachments.length + 1}.jpg`;
+    setAttachments(prev => [...prev, nextAttachment]);
+    Alert.alert('Image Added', `${nextAttachment} attached to this report.`);
+  };
+
+  const handleSubmit = () => {
+    if (!isSubmitEnabled) {
+      Alert.alert('Missing Details', 'Please select an issue type and describe the issue before submitting.');
+      return;
+    }
+
+    Alert.alert('Report Submitted', 'Your issue report has been sent to support.', [
+      { text: 'OK', onPress: () => router.back() },
+    ]);
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -44,8 +71,8 @@ export default function ProviderReportIssueScreen() {
           {/* Issue Type */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Issue Type <Text style={styles.required}>*</Text></Text>
-            <TouchableOpacity style={styles.pickerButton}>
-              <Text style={styles.pickerText}>{issueType || 'Select issue type'}</Text>
+            <TouchableOpacity style={styles.pickerButton} onPress={() => setIssueTypeModalVisible(true)}>
+              <Text style={[styles.pickerText, issueType && styles.pickerValueText]}>{issueType || 'Select issue type'}</Text>
               <Ionicons name="chevron-down" size={20} color="#777" />
             </TouchableOpacity>
           </View>
@@ -69,11 +96,21 @@ export default function ProviderReportIssueScreen() {
           {/* Upload Evidence */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Upload Evidence <Text style={styles.optional}>(Optional)</Text></Text>
-            <TouchableOpacity style={styles.uploadArea}>
+            <TouchableOpacity style={styles.uploadArea} onPress={handleUploadEvidence}>
               <Ionicons name="cloud-upload-outline" size={32} color="#AAA" />
               <Text style={styles.uploadTitle}>Upload photos or screenshots</Text>
               <Text style={styles.uploadSubtitle}>PNG, JPG up to 10MB</Text>
             </TouchableOpacity>
+            {attachments.length > 0 ? (
+              <View style={styles.attachmentList}>
+                {attachments.map((attachment) => (
+                  <View key={attachment} style={styles.attachmentChip}>
+                    <Ionicons name="image-outline" size={14} color="#00B761" />
+                    <Text style={styles.attachmentText}>{attachment}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.spacer} />
@@ -83,8 +120,9 @@ export default function ProviderReportIssueScreen() {
       {/* Footer Buttons */}
       <View style={styles.footer}>
         <TouchableOpacity 
-          style={[styles.submitButton, (!issueType && !description) && styles.submitButtonDisabled]}
-          onPress={() => router.back()}
+          style={[styles.submitButton, !isSubmitEnabled && styles.submitButtonDisabled]}
+          onPress={handleSubmit}
+          disabled={!isSubmitEnabled}
         >
           <Text style={styles.submitButtonText}>Submit Report</Text>
         </TouchableOpacity>
@@ -92,6 +130,37 @@ export default function ProviderReportIssueScreen() {
           <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={isIssueTypeModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setIssueTypeModalVisible(false)}
+      >
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIssueTypeModalVisible(false)}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Issue Type</Text>
+              <TouchableOpacity onPress={() => setIssueTypeModalVisible(false)} style={styles.modalCloseButton}>
+                <Ionicons name="close" size={22} color="#0D1B2A" />
+              </TouchableOpacity>
+            </View>
+            {ISSUE_TYPES.map((item) => (
+              <TouchableOpacity
+                key={item}
+                style={[styles.modalOption, issueType === item && styles.modalOptionSelected]}
+                onPress={() => {
+                  setIssueType(item);
+                  setIssueTypeModalVisible(false);
+                }}
+              >
+                <Text style={[styles.modalOptionText, issueType === item && styles.modalOptionTextSelected]}>{item}</Text>
+                {issueType === item ? <Ionicons name="checkmark-circle" size={22} color="#00B761" /> : null}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -182,6 +251,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#AAA',
   },
+  pickerValueText: {
+    color: '#0D1B2A',
+  },
   textInput: {
     backgroundColor: '#F2F3F5',
     borderRadius: 12,
@@ -218,6 +290,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#AAA',
   },
+  attachmentList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  attachmentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8FBF2',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  attachmentText: {
+    fontSize: 12,
+    color: '#0D1B2A',
+    marginLeft: 6,
+  },
   footer: {
     padding: 24,
     borderTopWidth: 1,
@@ -225,15 +316,14 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   submitButton: {
-    backgroundColor: '#00B761' + '80', // Slightly transparent green as per image
+    backgroundColor: '#00B761',
     height: 56,
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    opacity: 0.8,
   },
   submitButtonDisabled: {
-    backgroundColor: '#00B761' + '40',
+    backgroundColor: '#8FD9B0',
   },
   submitButtonText: {
     color: '#FFF',
@@ -255,5 +345,51 @@ const styles = StyleSheet.create({
   },
   spacer: {
     height: 40,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 32,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0D1B2A',
+  },
+  modalCloseButton: {
+    padding: 6,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  modalOptionSelected: {
+    backgroundColor: '#F8FFFB',
+  },
+  modalOptionText: {
+    fontSize: 15,
+    color: '#0D1B2A',
+  },
+  modalOptionTextSelected: {
+    color: '#00B761',
+    fontWeight: '700',
   },
 });

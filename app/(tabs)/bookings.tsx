@@ -99,6 +99,23 @@ const COMPLETED_BOOKINGS = [
 const BookingCard = ({ booking }: { booking: any }) => {
   const router = useRouter();
   const isCompleted = booking.status === 'Completed';
+  const completedBookingPayload = {
+    id: booking.id,
+    service: booking.service,
+    address: booking.address || '45 Mabini Ave, Pasig City',
+    date: booking.date,
+    year: booking.year || '2026',
+    time: booking.time,
+    status: booking.status,
+    provider: {
+      name: booking.providerName,
+      rating: booking.providerRating,
+      specialty: booking.service,
+      avatar: booking.providerAvatar,
+      isVerified: true,
+    },
+    providerName: booking.providerName,
+  };
 
   return (
     <View style={styles.bookingCard}>
@@ -145,11 +162,27 @@ const BookingCard = ({ booking }: { booking: any }) => {
 
       {isCompleted ? (
         <View style={styles.completedActions}>
-          <TouchableOpacity style={styles.reviewButton}>
+          <TouchableOpacity
+            style={styles.reviewButton}
+            onPress={() =>
+              router.push({
+                pathname: '/customer-review',
+                params: { booking: JSON.stringify(completedBookingPayload) },
+              } as any)
+            }
+          >
             <Ionicons name="star-outline" size={18} color="#00C853" style={{ marginRight: 8 }} />
             <Text style={styles.reviewButtonText}>Review</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.bookAgainButton}>
+          <TouchableOpacity
+            style={styles.bookAgainButton}
+            onPress={() =>
+              router.push({
+                pathname: '/customer-book-again',
+                params: { booking: JSON.stringify(completedBookingPayload) },
+              } as any)
+            }
+          >
             <Ionicons name="refresh-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
             <Text style={styles.bookAgainButtonText}>Book Again</Text>
           </TouchableOpacity>
