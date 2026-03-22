@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
@@ -103,7 +103,38 @@ const AddressCard = ({
 
 export default function ManageAddressesScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [addresses, setAddresses] = useState<Address[]>(INITIAL_ADDRESSES);
+
+  useEffect(() => {
+    let changed = false;
+    if (params.newAddress) {
+      try {
+        const parsed = JSON.parse(params.newAddress as string);
+        setAddresses(prev => {
+          if (prev.find(a => a.id === parsed.id)) return prev;
+          return [...prev, parsed];
+        });
+        changed = true;
+      } catch(e) {}
+    }
+    if (params.updatedAddress) {
+      try {
+        const parsed = JSON.parse(params.updatedAddress as string);
+        setAddresses(prev => prev.map(a => a.id === parsed.id ? parsed : a));
+        changed = true;
+      } catch(e) {}
+    }
+    if (params.deletedAddressId) {
+      const idStr = params.deletedAddressId as string;
+      setAddresses(prev => prev.filter(a => a.id !== idStr));
+      changed = true;
+    }
+    
+    if (changed) {
+      router.setParams({ newAddress: '', updatedAddress: '', deletedAddressId: '' });
+    }
+  }, [params.newAddress, params.updatedAddress, params.deletedAddressId]);
 
   const handleSetDefault = (id: string) => {
     setAddresses(prev => prev.map(addr => ({
@@ -113,7 +144,13 @@ export default function ManageAddressesScreen() {
   };
 
   const handleEdit = (id: string) => {
-    // Navigate to edit screen (placeholder)
+    const addr = addresses.find(a => a.id === id);
+    if (addr) {
+      router.push({
+        pathname: '/edit-address',
+        params: { address: JSON.stringify(addr) }
+      });
+    }
   };
 
   return (
@@ -130,7 +167,10 @@ export default function ManageAddressesScreen() {
 
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Add New Address Button */}
-        <TouchableOpacity style={styles.addAddressButton}>
+        <TouchableOpacity 
+          style={styles.addAddressButton}
+          onPress={() => router.push('/add-address')}
+        >
           <Ionicons name="add" size={24} color="#FFF" />
           <Text style={styles.addAddressText}>Add New Address</Text>
         </TouchableOpacity>

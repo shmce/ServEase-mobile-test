@@ -123,7 +123,11 @@ export default function ProviderListScreen() {
               onPress={() =>
                 router.push({
                   pathname: '/provider-profile',
-                  params: { providerId: provider.id },
+                  params: {
+                    providerId: provider.id,
+                    serviceName,
+                    providerName: provider.name,
+                  },
                 })
               }
             >

@@ -10,14 +10,14 @@ import {
   Image, 
   Dimensions 
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
 const BookingDetailsScreen = () => {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  useLocalSearchParams();
 
   // Mock data for the specific booking
   const booking = {
@@ -42,6 +42,7 @@ const BookingDetailsScreen = () => {
       mins: '19',
     }
   };
+  const canReviewBooking = booking.status === 'Completed';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -175,6 +176,19 @@ const BookingDetailsScreen = () => {
 
         {/* Bottom Actions */}
         <View style={styles.bottomActions}>
+          {canReviewBooking ? (
+            <TouchableOpacity 
+              style={[styles.cancelBookingButton, { borderColor: '#00C853', backgroundColor: '#E8FBF2', marginBottom: 15 }]}
+              onPress={() => router.push({
+                pathname: '/customer-review',
+                params: { booking: JSON.stringify(booking) }
+              })}
+            >
+              <Ionicons name="star" size={20} color="#00C853" />
+              <Text style={[styles.cancelBookingText, { color: '#00C853' }]}>Leave a Review</Text>
+            </TouchableOpacity>
+          ) : null}
+
           <TouchableOpacity 
             style={styles.cancelBookingButton}
             onPress={() => router.push('/customer-cancel-booking' as any)}

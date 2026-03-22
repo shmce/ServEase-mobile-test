@@ -17,6 +17,7 @@ export default function CustomerLoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const isLoginReady = email.trim().length > 0 && password.trim().length > 0;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -84,9 +85,13 @@ export default function CustomerLoginScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={styles.loginButton}
-              onPress={() => router.push('/(tabs)')}
+              style={[styles.loginButton, isLoginReady ? styles.loginButtonActive : styles.loginButtonDisabled]}
+              onPress={() => {
+                if (!isLoginReady) return;
+                router.push('/(tabs)');
+              }}
               activeOpacity={0.8}
+              disabled={!isLoginReady}
             >
               <Text style={styles.loginButtonText}>Login</Text>
             </TouchableOpacity>
@@ -112,7 +117,7 @@ export default function CustomerLoginScreen() {
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <Text style={styles.signUpLink} onPress={() => router.push('/signup')}>
                 Sign Up
               </Text>
@@ -209,11 +214,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   loginButton: {
-    backgroundColor: '#A5E6BA', // Light green from mockup
     borderRadius: 30,
     paddingVertical: 16,
     alignItems: 'center',
     marginBottom: 30,
+  },
+  loginButtonActive: {
+    backgroundColor: '#00C853',
+  },
+  loginButtonDisabled: {
+    backgroundColor: '#A5E6BA',
   },
   loginButtonText: {
     color: '#FFF',

@@ -43,12 +43,12 @@ export default function MoreScreen() {
           <Text style={styles.sectionTitle}>ACCOUNT</Text>
           <MenuItem icon="person-outline" label="Edit Profile" onPress={() => router.push('/customer-edit-profile' as any)} />
           <MenuItem icon="location-outline" label="Manage Addresses" onPress={() => router.push('/manage-addresses' as any)} />
-          <MenuItem icon="notifications-outline" label="Notification Preferences" onPress={() => {}} />
+          <MenuItem icon="notifications-outline" label="Notification Preferences" onPress={() => router.push('/notification-preferences' as any)} />
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>SUPPORT</Text>
-          <MenuItem icon="help-circle-outline" label="Help Center" onPress={() => {}} />
+          <MenuItem icon="help-circle-outline" label="Help Center" onPress={() => router.push('/help-center' as any)} />
           <MenuItem icon="chatbubble-outline" label="Report an Issue" onPress={() => router.push('/provider-report-issue' as any)} />
         </View>
 

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
+  Modal,
   StyleSheet, 
   View, 
   Text, 
@@ -11,12 +12,9 @@ import {
   StatusBar, 
   KeyboardAvoidingView, 
   Platform,
-  Dimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-
-const { width } = Dimensions.get('window');
 
 const MOCK_CONVERSATIONS: any = {
   '1': {
@@ -48,11 +46,21 @@ const MOCK_CONVERSATIONS: any = {
 
 const ChatScreen = () => {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  const { id, providerName, serviceName } = useLocalSearchParams<{
+    id?: string;
+    providerName?: string;
+    serviceName?: string;
+  }>();
   const scrollViewRef = useRef<ScrollView>(null);
   const [inputText, setInputText] = useState('');
+  const [menuVisible, setMenuVisible] = useState(false);
   
-  const conversation = MOCK_CONVERSATIONS[id as string] || MOCK_CONVERSATIONS['1'];
+  const baseConversation = MOCK_CONVERSATIONS[id as string] || MOCK_CONVERSATIONS['1'];
+  const conversation = {
+    ...baseConversation,
+    name: providerName || baseConversation.name,
+    category: serviceName || baseConversation.category,
+  };
   const [messages, setMessages] = useState(conversation.messages);
 
   useEffect(() => {
@@ -79,6 +87,30 @@ const ChatScreen = () => {
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
+  };
+
+  const isSendReady = inputText.trim().length > 0;
+
+  const handleViewProfile = () => {
+    setMenuVisible(false);
+    router.push({
+      pathname: '/provider-profile',
+      params: {
+        providerId: id || '1',
+        providerName: conversation.name,
+        serviceName: conversation.category,
+      },
+    });
+  };
+
+  const handleReportProfile = () => {
+    setMenuVisible(false);
+    router.push({
+      pathname: '/customer-report-profile',
+      params: {
+        providerName: conversation.name,
+      },
+    });
   };
 
   return (
@@ -109,7 +141,7 @@ const ChatScreen = () => {
           <TouchableOpacity style={styles.iconButton}>
             <Ionicons name="videocam-outline" size={24} color="#00C853" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconButton}>
+          <TouchableOpacity style={styles.iconButton} onPress={() => setMenuVisible(true)}>
             <Ionicons name="ellipsis-vertical" size={22} color="#1A1B1E" />
           </TouchableOpacity>
         </View>
@@ -170,14 +202,33 @@ const ChatScreen = () => {
             />
           </View>
           <TouchableOpacity 
-            style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]} 
+            style={[styles.sendButton, !isSendReady && styles.sendButtonDisabled]} 
             onPress={handleSend}
-            disabled={!inputText.trim()}
+            disabled={!isSendReady}
           >
-            <Ionicons name="paper-plane" size={20} color={inputText.trim() ? "#FFF" : "#BABABA"} />
+            <Ionicons name="paper-plane" size={20} color={isSendReady ? "#FFF" : "#BABABA"} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={menuVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}>
+        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
+          <View style={styles.menuSheet}>
+            <TouchableOpacity style={styles.menuItem} onPress={handleViewProfile}>
+              <Ionicons name="person-outline" size={18} color="#0D1B2A" />
+              <Text style={styles.menuItemText}>View Profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={handleReportProfile}>
+              <Ionicons name="flag-outline" size={18} color="#FF5252" />
+              <Text style={[styles.menuItemText, styles.reportText]}>Report Profile</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -332,11 +383,45 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#F0F0F5',
+    backgroundColor: '#00C853',
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendButtonDisabled: {
     backgroundColor: '#F8F9FA',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 84,
+    paddingRight: 18,
+  },
+  menuSheet: {
+    width: 180,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  menuItemText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0D1B2A',
+    marginLeft: 10,
+  },
+  reportText: {
+    color: '#FF5252',
   },
 });
