@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, TextInput, Image, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, TextInput, Image, Dimensions, KeyboardAvoidingView, Platform, Keyboard, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { TimePickerModal } from '../components/TimePickerModal';
+import { DatePickerModal } from '../components/DatePickerModal';
 
 const { width } = Dimensions.get('window');
 
@@ -21,6 +23,8 @@ export default function ProviderRescheduleScreen() {
   const [time, setTime] = useState('');
   const [explanation, setExplanation] = useState('');
   const [showReasons, setShowReasons] = useState(false);
+  const [isPickerVisible, setPickerVisible] = useState(false);
+  const [isDatePickerVisible, setDatePickerVisible] = useState(false);
 
   const bookingDetails = {
     service: 'Plumbing Repair',
@@ -106,16 +110,18 @@ export default function ProviderRescheduleScreen() {
                 <Text style={styles.formLabel}>Proposed New Date</Text>
                 <Text style={styles.requiredAsterisk}>*</Text>
               </View>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="dd/mm/yyyy"
-                  placeholderTextColor="#AAA"
-                  value={date}
-                  onChangeText={setDate}
-                />
-                <Ionicons name="calendar-outline" size={18} color="#EEE" style={styles.inputIcon} />
-              </View>
+              <TouchableOpacity 
+                style={styles.pickerTrigger} 
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setDatePickerVisible(true);
+                }}
+              >
+                <Text style={[styles.pickerText, !date && styles.placeholderText]}>
+                  {date || 'dd/mm/yyyy'}
+                </Text>
+                <Ionicons name="calendar-outline" size={18} color="#EEE" />
+              </TouchableOpacity>
             </View>
 
             <View style={styles.formGroup}>
@@ -123,9 +129,17 @@ export default function ProviderRescheduleScreen() {
                 <Text style={styles.formLabel}>Proposed New Time</Text>
                 <Text style={styles.requiredAsterisk}>*</Text>
               </View>
-              <TouchableOpacity style={styles.pickerTrigger}>
-                <Text style={styles.placeholderText}>Select a time</Text>
-                <Ionicons name="chevron-down" size={20} color="#AAA" />
+              <TouchableOpacity 
+                style={styles.pickerTrigger} 
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setPickerVisible(true);
+                }}
+              >
+                <Text style={[styles.pickerText, !time && styles.placeholderText]}>
+                  {time || 'Select a time'}
+                </Text>
+                <Ionicons name="time-outline" size={20} color="#AAA" />
               </TouchableOpacity>
             </View>
 
@@ -171,11 +185,34 @@ export default function ProviderRescheduleScreen() {
           <TouchableOpacity 
             style={[styles.submitButton, (!reason || !date || !explanation) && styles.submitButtonDisabled]}
             disabled={!reason || !date || !explanation}
+            onPress={() => {
+              Keyboard.dismiss();
+              Alert.alert('Success', 'Reschedule request sent to customer.');
+              router.back();
+            }}
           >
             <Text style={styles.submitButtonText}>Send Reschedule Request</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <TimePickerModal
+        key="reschedule-time-picker"
+        visible={isPickerVisible}
+        onClose={() => setPickerVisible(false)}
+        onConfirm={(val) => setTime(val)}
+        initialTime={time || '02:00 PM'}
+        title="Select Proposed Time"
+      />
+
+      <DatePickerModal
+        key="reschedule-date-picker"
+        visible={isDatePickerVisible}
+        onClose={() => setDatePickerVisible(false)}
+        onConfirm={(val) => setDate(val)}
+        initialDate={date}
+        title="Select Proposed Date"
+      />
     </SafeAreaView>
   );
 }

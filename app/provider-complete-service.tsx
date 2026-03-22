@@ -18,8 +18,8 @@ export default function ProviderCompleteServiceScreen() {
     satisfied: false,
     cleaned: false,
     toolsRemoved: false,
+    paymentReceived: false,
   });
-  const [paymentMethod, setPaymentMethod] = useState<'digital' | 'cash'>('digital');
   const [notes, setNotes] = useState('');
   const [caption, setCaption] = useState('');
 
@@ -155,34 +155,18 @@ export default function ProviderCompleteServiceScreen() {
             </View>
 
             <TouchableOpacity 
-              style={[styles.radioItem, paymentMethod === 'digital' && styles.radioItemActive]}
-              onPress={() => setPaymentMethod('digital')}
+              style={[styles.radioItem, checklist.paymentReceived && styles.radioItemActive]}
+              onPress={() => toggleCheck('paymentReceived' as any)}
             >
-              <View style={[styles.radioButton, paymentMethod === 'digital' && styles.radioButtonActive]}>
-                {paymentMethod === 'digital' && <View style={styles.radioInner} />}
+              <View style={[styles.radioButton, checklist.paymentReceived && styles.radioButtonActive]}>
+                {checklist.paymentReceived && <View style={styles.radioInner} />}
               </View>
               <View style={styles.radioContent}>
                 <View style={styles.radioLabelRow}>
-                  <Ionicons name="card-outline" size={18} color={paymentMethod === 'digital' ? '#00B761' : '#555'} />
-                  <Text style={[styles.radioLabel, paymentMethod === 'digital' && styles.radioLabelActive]}>Digital (auto-charged)</Text>
+                  <Ionicons name="cash-outline" size={18} color={checklist.paymentReceived ? '#00B761' : '#555'} />
+                  <Text style={[styles.radioLabel, checklist.paymentReceived && styles.radioLabelActive]}>Cash Payment Received</Text>
                 </View>
-                <Text style={styles.radioSubLabel}>Automatically charged to customer</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.radioItem, paymentMethod === 'cash' && styles.radioItemActive]}
-              onPress={() => setPaymentMethod('cash')}
-            >
-              <View style={[styles.radioButton, paymentMethod === 'cash' && styles.radioButtonActive]}>
-                {paymentMethod === 'cash' && <View style={styles.radioInner} />}
-              </View>
-              <View style={styles.radioContent}>
-                <View style={styles.radioLabelRow}>
-                  <Ionicons name="cash-outline" size={18} color={paymentMethod === 'cash' ? '#00B761' : '#555'} />
-                  <Text style={[styles.radioLabel, paymentMethod === 'cash' && styles.radioLabelActive]}>Cash (confirm amount received)</Text>
-                </View>
-                <Text style={styles.radioSubLabel}>Confirm you received cash payment</Text>
+                <Text style={styles.radioSubLabel}>Confirm you have received ₱{total.toLocaleString()} from the customer</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -358,13 +342,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   summaryCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: '#F7FFF9',
     borderRadius: 24,
     padding: 24,
     marginBottom: 20,
     borderWidth: 2,
     borderColor: '#00B761',
-    backgroundColor: '#F7FFF9',
   },
   summaryRow: {
     flexDirection: 'row',

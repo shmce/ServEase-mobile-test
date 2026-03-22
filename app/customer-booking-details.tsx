@@ -167,9 +167,19 @@ const BookingDetailsScreen = () => {
               <Text style={styles.detailValue}>{booking.address}</Text>
             </View>
           </View>
+
+          <View style={styles.detailItem}>
+            <View style={styles.detailIconContainer}>
+              <Ionicons name="wallet-outline" size={20} color="#666" />
+            </View>
+            <View>
+              <Text style={styles.detailLabel}>Payment Method</Text>
+              <Text style={styles.detailValue}>Cash (Pay after service)</Text>
+            </View>
+          </View>
           
           <View style={styles.priceContainer}>
-            <Text style={styles.totalLabel}>Total Amount</Text>
+            <Text style={styles.totalLabel}>Total Amount (Cash)</Text>
             <Text style={styles.totalValue}>₱{booking.totalAmount}</Text>
           </View>
         </View>

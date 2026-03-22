@@ -27,28 +27,59 @@ export default function ProviderTabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: 'Dashboard',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "home" : "home-outline"} size={24} color={color} />
+            <Ionicons name={focused ? "grid" : "grid-outline"} size={22} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="messages"
+        name="metrics"
         options={{
-          title: 'Messages',
+          title: 'Metrics',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "chatbubble" : "chatbubble-outline"} size={24} color={color} />
+            <Ionicons name={focused ? "stats-chart" : "stats-chart-outline"} size={22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="bookings"
+        options={{
+          title: 'Bookings',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "calendar" : "calendar-outline"} size={24} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="more"
         options={{
-          title: 'More',
+          title: 'Settings',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "ellipsis-horizontal" : "ellipsis-horizontal-outline"} size={24} color={color} />
+            <Ionicons name={focused ? "settings" : "settings-outline"} size={24} color={color} />
           ),
+        }}
+      />
+      {/* Hide legacy tabs from bottom bar but keep them accessible via router if needed */}
+      <Tabs.Screen
+        name="messages"
+        options={{
+          href: null,
+          title: 'Messages',
+        }}
+      />
+      <Tabs.Screen
+        name="pricing"
+        options={{
+          href: null,
+          title: 'Pricing',
+        }}
+      />
+      <Tabs.Screen
+        name="ratings"
+        options={{
+          href: null,
+          title: 'Ratings',
         }}
       />
     </Tabs>

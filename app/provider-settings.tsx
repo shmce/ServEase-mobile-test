@@ -77,7 +77,6 @@ export default function ProviderSettingsScreen() {
             label="Availability" 
             onPress={() => router.push('/provider-availability' as any)}
           />
-          <SettingItem icon="card-outline" label="Payment Methods" />
         </View>
 
         {/* Notifications Section */}

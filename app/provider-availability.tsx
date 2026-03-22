@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Switch, TextInput, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Switch, TextInput, Platform, Keyboard, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { TimePickerModal } from '../components/TimePickerModal';
+import { DatePickerModal } from '../components/DatePickerModal';
 
-const DayScheduleItem = ({ day, active, onToggle, breakTime, onAddBreak, onRemoveBreak, onTimeChange, onBreakChange }: any) => (
+const DayScheduleItem = ({ day, active, onToggle, breakTime, onAddBreak, onRemoveBreak, onTimeChange, onBreakChange, startTime, endTime }: any) => (
   <View style={styles.dayCard}>
     <View style={styles.dayHeader}>
       <Text style={styles.dayName}>{day}</Text>
@@ -18,35 +20,23 @@ const DayScheduleItem = ({ day, active, onToggle, breakTime, onAddBreak, onRemov
     {active ? (
       <View style={styles.timeSettings}>
         <View style={styles.timeRow}>
-          <View style={styles.timeInputBox}>
+          <TouchableOpacity style={styles.timeInputBox} onPress={() => onTimeChange('start', startTime)}>
             <Text style={styles.timeLabel}>Start Time</Text>
             <View style={styles.timeInput}>
-              <TextInput 
-                style={styles.timeText}
-                defaultValue="08:00 am"
-                placeholder="--:-- --"
-                onChangeText={(val) => onTimeChange('start', val)}
-              />
-              <Ionicons name="time-outline" size={16} color="#CCC" />
+              <Text style={styles.timeText}>{startTime || '08:00 AM'}</Text>
+              <Ionicons name="time-outline" size={16} color="#00B761" />
             </View>
-            <Text style={styles.timeFormat}>8:00 AM</Text>
-          </View>
+          </TouchableOpacity>
           
           <Text style={styles.toText}>to</Text>
           
-          <View style={styles.timeInputBox}>
+          <TouchableOpacity style={styles.timeInputBox} onPress={() => onTimeChange('end', endTime)}>
             <Text style={styles.timeLabel}>End Time</Text>
             <View style={styles.timeInput}>
-              <TextInput 
-                style={styles.timeText}
-                defaultValue="05:00 pm"
-                placeholder="--:-- --"
-                onChangeText={(val) => onTimeChange('end', val)}
-              />
-              <Ionicons name="time-outline" size={16} color="#CCC" />
+              <Text style={styles.timeText}>{endTime || '05:00 PM'}</Text>
+              <Ionicons name="time-outline" size={16} color="#00B761" />
             </View>
-            <Text style={styles.timeFormat}>5:00 PM</Text>
-          </View>
+          </TouchableOpacity>
         </View>
         
         {breakTime ? (
@@ -58,23 +48,21 @@ const DayScheduleItem = ({ day, active, onToggle, breakTime, onAddBreak, onRemov
               </TouchableOpacity>
             </View>
             <View style={styles.timeRow}>
-              <View style={[styles.timeInput, styles.breakTimeInput]}>
-                <TextInput 
-                  style={styles.timeText}
-                  value={breakTime.start}
-                  placeholder="--:-- --"
-                  onChangeText={(val) => onBreakChange('start', val)}
-                />
-              </View>
+              <TouchableOpacity 
+                style={[styles.timeInput, styles.breakTimeInput]} 
+                onPress={() => onBreakChange('start', breakTime.start)}
+              >
+                <Text style={styles.timeText}>{breakTime.start || '12:00 PM'}</Text>
+                <Ionicons name="time-outline" size={14} color="#00B761" />
+              </TouchableOpacity>
               <Text style={styles.breakToText}>to</Text>
-              <View style={[styles.timeInput, styles.breakTimeInput]}>
-                <TextInput 
-                  style={styles.timeText}
-                  value={breakTime.end}
-                  placeholder="--:-- --"
-                  onChangeText={(val) => onBreakChange('end', val)}
-                />
-              </View>
+              <TouchableOpacity 
+                style={[styles.timeInput, styles.breakTimeInput]}
+                onPress={() => onBreakChange('end', breakTime.end)}
+              >
+                <Text style={styles.timeText}>{breakTime.end || '01:00 PM'}</Text>
+                <Ionicons name="time-outline" size={14} color="#00B761" />
+              </TouchableOpacity>
             </View>
           </View>
         ) : (
@@ -92,14 +80,36 @@ const DayScheduleItem = ({ day, active, onToggle, breakTime, onAddBreak, onRemov
 export default function ProviderAvailabilityScreen() {
   const router = useRouter();
   const [schedule, setSchedule] = useState<any>({
-    Monday: { active: true, start: '08:00 am', end: '05:00 pm', break: null },
-    Tuesday: { active: true, start: '08:00 am', end: '05:00 pm', break: null },
-    Wednesday: { active: true, start: '08:00 am', end: '05:00 pm', break: null },
-    Thursday: { active: true, start: '08:00 am', end: '05:00 pm', break: null },
-    Friday: { active: true, start: '08:00 am', end: '05:00 pm', break: null },
-    Saturday: { active: false, start: '08:00 am', end: '05:00 pm', break: null },
-    Sunday: { active: false, start: '08:00 am', end: '05:00 pm', break: null },
+    Monday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
+    Tuesday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
+    Wednesday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
+    Thursday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
+    Friday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
+    Saturday: { active: false, start: '08:00 AM', end: '05:00 PM', break: null },
+    Sunday: { active: false, start: '08:00 AM', end: '05:00 PM', break: null },
   });
+
+  const [isPickerVisible, setPickerVisible] = useState(false);
+  const [isDatePickerVisible, setDatePickerVisible] = useState(false);
+  const [pickerConfig, setPickerConfig] = useState<{ day: string, type: 'start' | 'end' | 'breakStart' | 'breakEnd', initial: string } | null>(null);
+
+  const openPicker = (day: string, type: 'start' | 'end' | 'breakStart' | 'breakEnd', initial: string) => {
+    Keyboard.dismiss();
+    setPickerConfig({ day, type, initial });
+    setPickerVisible(true);
+  };
+
+  const handlePickerConfirm = (time: string) => {
+    if (pickerConfig) {
+      if (pickerConfig.type === 'start' || pickerConfig.type === 'end') {
+        updateWorkTime(pickerConfig.day, pickerConfig.type, time);
+      } else if (pickerConfig.type === 'breakStart') {
+        updateBreakTime(pickerConfig.day, 'start', time);
+      } else if (pickerConfig.type === 'breakEnd') {
+        updateBreakTime(pickerConfig.day, 'end', time);
+      }
+    }
+  };
 
   const updateWorkTime = (day: string, type: 'start' | 'end', value: string) => {
     setSchedule((prev: any) => ({
@@ -111,7 +121,10 @@ export default function ProviderAvailabilityScreen() {
   const updateBreakTime = (day: string, type: 'start' | 'end', value: string) => {
     setSchedule((prev: any) => ({
       ...prev,
-      [day]: { ...prev[day], break: { ...prev[day].break, [type]: value } }
+      [day]: { 
+        ...prev[day], 
+        break: { ...(prev[day].break || { start: '', end: '' }), [type]: value } 
+      }
     }));
   };
 
@@ -139,7 +152,7 @@ export default function ProviderAvailabilityScreen() {
   const [newDayOffDate, setNewDayOffDate] = useState('');
 
   const addDayOff = () => {
-    if (!newDayOffDate) return; // Prevent empty dates
+    if (!newDayOffDate) return;
     
     const newEntry = {
       id: Date.now().toString(),
@@ -185,10 +198,15 @@ export default function ProviderAvailabilityScreen() {
               active={schedule[day].active} 
               onToggle={() => toggleDay(day)}
               breakTime={schedule[day].break}
+              startTime={schedule[day].start}
+              endTime={schedule[day].end}
               onAddBreak={() => addBreak(day)}
               onRemoveBreak={() => removeBreak(day)}
-              onTimeChange={(type: any, val: string) => updateWorkTime(day, type, val)}
-              onBreakChange={(type: any, val: string) => updateBreakTime(day, type, val)}
+              onTimeChange={(type: any, initial: string) => openPicker(day, type, initial)}
+              onBreakChange={(type: any, initial: string) => {
+                const fullType = type === 'start' ? 'breakStart' : 'breakEnd';
+                openPicker(day, fullType, initial);
+              }}
             />
           ))}
 
@@ -203,16 +221,18 @@ export default function ProviderAvailabilityScreen() {
           <View style={styles.daysOffCard}>
              <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Select Date</Text>
-                <View style={styles.dateInput}>
-                  <TextInput 
-                    style={styles.dateText}
-                    placeholder="dd/mm/yyyy"
-                    placeholderTextColor="#AAA"
-                    value={newDayOffDate}
-                    onChangeText={setNewDayOffDate}
-                  />
+                <TouchableOpacity 
+                  style={styles.dateInput} 
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setDatePickerVisible(true);
+                  }}
+                >
+                  <Text style={[styles.dateText, !newDayOffDate && { color: '#AAA' }]}>
+                    {newDayOffDate || 'dd/mm/yyyy'}
+                  </Text>
                   <Ionicons name="calendar-outline" size={18} color="#00B761" />
-                </View>
+                </TouchableOpacity>
              </View>
 
              <View style={styles.inputGroup}>
@@ -260,6 +280,22 @@ export default function ProviderAvailabilityScreen() {
           <Text style={styles.saveButtonText}>Save Changes</Text>
         </TouchableOpacity>
       </View>
+
+      <TimePickerModal
+        key={pickerConfig ? `${pickerConfig.day}-${pickerConfig.type}` : 'time-picker'}
+        visible={isPickerVisible}
+        onClose={() => setPickerVisible(false)}
+        onConfirm={handlePickerConfirm}
+        initialTime={pickerConfig?.initial || '08:00 AM'}
+        title={`Set ${pickerConfig?.type?.replace('break', 'Break ') || 'Time'}`}
+      />
+
+      <DatePickerModal
+        visible={isDatePickerVisible}
+        onClose={() => setDatePickerVisible(false)}
+        onConfirm={(val) => setNewDayOffDate(val)}
+        initialDate={newDayOffDate}
+      />
     </SafeAreaView>
   );
 }
@@ -392,6 +428,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#555',
     fontWeight: '600',
+    paddingBottom: 4,
   },
   breakTimeInput: {
     flex: 1,

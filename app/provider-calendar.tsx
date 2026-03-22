@@ -1,75 +1,97 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Dimensions } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  SafeAreaView, 
+  ScrollView, 
+  StatusBar, 
+  Dimensions,
+  Modal,
+  TextInput,
+  Platform,
+  KeyboardAvoidingView,
+  Alert,
+  Keyboard
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { TimePickerModal } from '../components/TimePickerModal';
 
 const { width } = Dimensions.get('window');
 
-// Mock Data for the calendar
-const DAYS_IN_MONTH = 31;
-const START_DAY_OFFSET = 0; // Assuming month starts on a Sunday for this mock
-const CURRENT_MONTH = 'March 2026';
-
-const BOOKED_DAYS = [13, 14, 20, 21, 24];
-const BLOCKED_DAYS = [15, 22];
-
 // Mock Schedule Data for March 13
-const SCHEDULE_DATA = [
-  { id: 1, time: '8:00 AM', type: 'available', customer: null, service: null },
-  { id: 2, time: '9:00 AM - 10:00 AM', type: 'confirmed', customer: 'John Smith', service: 'Home Cleaning' },
-  { id: 3, time: '10:00 AM', type: 'available', customer: null, service: null },
-  { id: 4, time: '11:00 AM', type: 'available', customer: null, service: null },
-  { id: 5, time: '12:00 PM', type: 'available', customer: null, service: null },
+const INITIAL_SCHEDULE_DATA = [
+  { id: '1', type: 'Working Hours', title: 'Regular Shift', time: '08:00 AM - 05:00 PM', icon: 'briefcase', color: '#00B761' },
+  { id: '2', type: 'Appointment', title: 'John Smith', service: 'Home Cleaning', time: '09:00 AM - 10:00 AM', status: 'Confirmed', icon: 'person', color: '#3A86FF' },
+  { id: '3', type: 'Availability', title: 'Available', time: '10:00 AM - 12:00 PM', status: 'Open', icon: 'add-circle', color: '#E0E0E0' },
 ];
 
 export default function ProviderCalendarScreen() {
   const router = useRouter();
-  const [selectedDay, setSelectedDay] = useState(13);
   const [viewMode, setViewMode] = useState<'Month' | 'Week' | 'Day'>('Month');
+  const [selectedDay, setSelectedDay] = useState(13); // Default to March 13
+  const [blockedDays, setBlockedDays] = useState<number[]>([]);
+  const [modalType, setModalType] = useState<'hours' | 'event' | null>(null);
+  const [modalData, setModalData] = useState({ title: '', startTime: '', endTime: '', description: '' });
+  
+  const [isPickerVisible, setPickerVisible] = useState(false);
+  const [pickerTarget, setPickerTarget] = useState<'startTime' | 'endTime' | null>(null);
 
-  const renderCalendarGrid = () => {
+  const DAYS_IN_MONTH = 31;
+  const START_DAY_OFFSET = 0; // March 2026 starts on Sunday (offset 0)
+
+  const handleToggleBlockDay = () => {
+    if (blockedDays.includes(selectedDay)) {
+      setBlockedDays(blockedDays.filter(d => d !== selectedDay));
+      Alert.alert('Day Unblocked', `March ${selectedDay} is now available for bookings.`);
+    } else {
+      setBlockedDays([...blockedDays, selectedDay]);
+      Alert.alert('Day Blocked', `March ${selectedDay} is now blocked for all bookings.`);
+    }
+  };
+
+  const handleTimeConfirm = (timeStr: string) => {
+    if (pickerTarget) {
+      setModalData({ ...modalData, [pickerTarget]: timeStr });
+    }
+  };
+
+  const handleSaveModal = () => {
+    const typeLabel = modalType === 'hours' ? 'Working hours' : 'Personal event';
+    setModalType(null);
+    // Use setTimeout to ensure UI is stable before showing Alert
+    setTimeout(() => {
+      Alert.alert('Success', `${typeLabel} updated for March ${selectedDay}.`);
+    }, 300);
+  };
+
+  const renderMonthView = () => {
     const days = [];
-    const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-    // Header abbreviations
-    const headerRow = weekdays.map((day, ix) => (
-      <View key={`header-${ix}`} style={styles.dayCell}>
-        <Text style={styles.dayHeaderText}>{day}</Text>
-      </View>
-    ));
-    days.push(<View key="header-row" style={styles.calendarRow}>{headerRow}</View>);
-
-    // Grid days
     let currentRow = [];
-    // Add empty cells for offset
+    
+    // Fill initial empty days
     for (let i = 0; i < START_DAY_OFFSET; i++) {
         currentRow.push(<View key={`empty-${i}`} style={styles.dayCell} />);
     }
 
     for (let day = 1; day <= DAYS_IN_MONTH; day++) {
-        const isSelected = day === selectedDay;
-        const isBooked = BOOKED_DAYS.includes(day);
-        const isBlocked = BLOCKED_DAYS.includes(day);
-        const isAvailable = !isBooked && !isBlocked;
-
+        const isSelected = selectedDay === day;
+        const isBlocked = blockedDays.includes(day);
+        
         currentRow.push(
-          <TouchableOpacity 
-            key={`day-${day}`} 
-            style={[styles.dayCell, isSelected && styles.selectedDayCell]}
-            onPress={() => setSelectedDay(day)}
-          >
-            <Text style={[styles.dayText, isSelected && styles.selectedDayText]}>{day}</Text>
-            {/* Indicators */}
-            <View style={styles.indicatorContainer}>
-                {isBooked && <View style={[styles.indicatorDot, { backgroundColor: '#3B82F6' }]} />}
-                {isBlocked && <View style={[styles.indicatorDot, { backgroundColor: '#EF4444' }]} />}
-                {!isBooked && !isBlocked && <View style={[styles.indicatorDot, { backgroundColor: '#10B981' }]} />}
-            </View>
-          </TouchableOpacity>
+            <TouchableOpacity 
+                key={day} 
+                style={[styles.dayCell, isSelected && styles.selectedDayCell, isBlocked && styles.blockedDayCell]}
+                onPress={() => setSelectedDay(day)}
+            >
+                <Text style={[styles.dayText, isSelected && styles.selectedDayText, isBlocked && styles.blockedDayText]}>{day}</Text>
+                {day === 13 && !isBlocked && <View style={styles.eventDot} />}
+            </TouchableOpacity>
         );
 
         if (currentRow.length === 7 || day === DAYS_IN_MONTH) {
-            // Fill remaining with next month placeholder
             if (day === DAYS_IN_MONTH) {
                 let fillerCount = 1;
                 while (currentRow.length < 7) {
@@ -85,8 +107,39 @@ export default function ProviderCalendarScreen() {
             currentRow = [];
         }
     }
-
     return days;
+  };
+
+  const renderWeekView = () => {
+    const startOfWeek = Math.floor((selectedDay - 1) / 7) * 7 + 1;
+    
+    return (
+      <View style={styles.weekView}>
+        <View style={styles.weekHeader}>
+          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+            <Text key={i} style={styles.weekHeaderText}>{d}</Text>
+          ))}
+        </View>
+        <View style={styles.calendarRow}>
+          {Array.from({ length: 7 }).map((_, i) => {
+            const day = startOfWeek + i;
+            if (day > DAYS_IN_MONTH) return <View key={`week-empty-${i}`} style={styles.weekDayCell} />;
+            const isSelected = selectedDay === day;
+            const isBlocked = blockedDays.includes(day);
+            return (
+              <TouchableOpacity 
+                key={day} 
+                style={[styles.weekDayCell, isSelected && styles.selectedDayCell, isBlocked && styles.blockedDayCell]}
+                onPress={() => setSelectedDay(day)}
+              >
+                <Text style={[styles.dayText, isSelected && styles.selectedDayText, isBlocked && styles.blockedDayText]}>{day}</Text>
+                {day === 13 && !isBlocked && <View style={styles.eventDot} />}
+              </TouchableOpacity>
+            )
+          })}
+        </View>
+      </View>
+    );
   };
 
   return (
@@ -98,121 +151,212 @@ export default function ProviderCalendarScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
-        
-        <Text style={styles.headerTitle}>Calendar</Text>
-        
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle}>March 2026</Text>
+          <Ionicons name="chevron-down" size={16} color="#0D1B2A" style={{ marginLeft: 4 }} />
+        </View>
         <TouchableOpacity style={styles.todayButton} onPress={() => setSelectedDay(13)}>
-          <Text style={styles.todayButtonText}>Today</Text>
+          <Text style={styles.todayText}>Today</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        
-        {/* Top Controls */}
-        <View style={styles.topControls}>
-            <View style={styles.segmentControl}>
-                <TouchableOpacity style={[styles.segmentButton, viewMode === 'Month' && styles.segmentButtonActive]} onPress={() => setViewMode('Month')}>
-                    <Text style={[styles.segmentText, viewMode === 'Month' && styles.segmentTextActive]}>Month</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.segmentButton, viewMode === 'Week' && styles.segmentButtonActive]} onPress={() => setViewMode('Week')}>
-                    <Text style={[styles.segmentText, viewMode === 'Week' && styles.segmentTextActive]}>Week</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.segmentButton, viewMode === 'Day' && styles.segmentButtonActive]} onPress={() => setViewMode('Day')}>
-                    <Text style={[styles.segmentText, viewMode === 'Day' && styles.segmentTextActive]}>Day</Text>
-                </TouchableOpacity>
+        <View style={styles.container}>
+          {/* Calendar Controls */}
+          <View style={styles.calendarControls}>
+             <View style={styles.viewTabs}>
+                {['Month', 'Week', 'Day'].map((mode) => (
+                  <TouchableOpacity 
+                    key={mode} 
+                    style={[styles.viewTab, viewMode === mode && styles.activeViewTab]}
+                    onPress={() => setViewMode(mode as any)}
+                  >
+                    <Text style={[styles.viewTabText, viewMode === mode && styles.activeViewTabText]}>{mode}</Text>
+                  </TouchableOpacity>
+                ))}
+             </View>
+          </View>
+
+          {/* Calendar Rendering */}
+          <View style={styles.calendarCard}>
+            {viewMode === 'Month' ? (
+              <View>
+                <View style={styles.weekHeader}>
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => (
+                    <Text key={i} style={styles.weekHeaderText}>{d}</Text>
+                  ))}
+                </View>
+                {renderMonthView()}
+              </View>
+            ) : viewMode === 'Week' ? (
+              renderWeekView()
+            ) : (
+              <View style={styles.dayViewMini}>
+                 <Text style={styles.miniDayText}>Showing full schedule for March {selectedDay}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Schedule Details Panel */}
+          <View style={[styles.dayDetailsPanel, viewMode === 'Day' && styles.fullDayPanel]}>
+            <View style={styles.panelHeader}>
+              <Text style={styles.panelTitle}>Schedule for March {selectedDay}</Text>
+              {blockedDays.includes(selectedDay) && (
+                <View style={styles.blockedBadge}>
+                  <Text style={styles.blockedBadgeText}>Blocked</Text>
+                </View>
+              )}
             </View>
 
-            <View style={styles.monthSelector}>
-                <Text style={styles.monthTitle}>{CURRENT_MONTH}</Text>
-                <View style={styles.monthChevrons}>
-                    <TouchableOpacity style={styles.chevronButton}>
-                        <Ionicons name="chevron-back" size={20} color="#555" />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.chevronButton}>
-                        <Ionicons name="chevron-forward" size={20} color="#555" />
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </View>
-
-        {/* Calendar Card */}
-        <View style={styles.calendarCard}>
-            {renderCalendarGrid()}
-
-            <View style={styles.legendContainer}>
-                <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: '#3B82F6' }]} />
-                    <Text style={styles.legendText}>Bookings</Text>
-                </View>
-                <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: '#EF4444' }]} />
-                    <Text style={styles.legendText}>Blocked</Text>
-                </View>
-                <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: '#10B981' }]} />
-                    <Text style={styles.legendText}>Available</Text>
-                </View>
-            </View>
-        </View>
-
-        {/* Selected Day Details Panel */}
-        <View style={styles.dayDetailsPanel}>
-            <View style={styles.dayDetailsHeader}>
-                <View>
-                    <Text style={styles.dayDetailsDateText}>March {selectedDay}, 2026</Text>
-                    {selectedDay === 13 && <Text style={styles.dayDetailsBookingsCount}>3 Bookings</Text>}
-                    {selectedDay !== 13 && <Text style={styles.dayDetailsBookingsCount}>No Bookings</Text>}
-                </View>
-                <TouchableOpacity style={styles.closePanelButton}>
-                    <Ionicons name="close" size={20} color="#FFF" />
-                </TouchableOpacity>
-            </View>
-
-            <View style={styles.dayDetailsContent}>
-                {selectedDay === 13 ? (
-                   SCHEDULE_DATA.map((slot) => (
-                    slot.type === 'available' ? (
-                        <TouchableOpacity key={slot.id} style={styles.availableSlot}>
-                            <View style={styles.addIconContainer}>
-                                <Ionicons name="add" size={16} color="#8E8E93" />
-                            </View>
-                            <Text style={styles.availableSlotText}>{slot.time} - Available</Text>
-                        </TouchableOpacity>
-                    ) : (
-                        <View key={slot.id} style={styles.confirmedSlot}>
-                            <View style={styles.confirmedSlotHeader}>
-                                <Text style={styles.confirmedTimeText}>{slot.time}</Text>
-                                <View style={styles.confirmedBadge}>
-                                    <Text style={styles.confirmedBadgeText}>Confirmed</Text>
-                                </View>
-                            </View>
-                            <Text style={styles.confirmedCustomerText}>{slot.customer}</Text>
-                            <Text style={styles.confirmedServiceText}>{slot.service}</Text>
+            {selectedDay === 13 && !blockedDays.includes(selectedDay) ? (
+                INITIAL_SCHEDULE_DATA.map((item) => (
+                    <View key={item.id} style={styles.scheduleItem}>
+                        <View style={[styles.scheduleIconContainer, { backgroundColor: item.color + '20' }]}>
+                            <Ionicons name={item.icon as any} size={20} color={item.color} />
                         </View>
-                    )
-                   ))
-                ) : (
-                    <View style={styles.emptyStateContainer}>
-                        <Text style={styles.emptyStateText}>Select a day to view schedule</Text>
+                        <View style={styles.scheduleInfo}>
+                            <View style={styles.scheduleItemHeader}>
+                                <Text style={styles.scheduleItemTitle}>{item.title}</Text>
+                                {item.status && (
+                                    <View style={[styles.statusBadge, { backgroundColor: item.status === 'Confirmed' ? '#E6F9F0' : '#F2F3F5' }]}>
+                                        <Text style={[styles.statusText, { color: item.status === 'Confirmed' ? '#00B761' : '#8E8E93' }]}>{item.status}</Text>
+                                    </View>
+                                )}
+                            </View>
+                            {item.service && <Text style={styles.scheduleItemSub}>{item.service}</Text>}
+                            <Text style={styles.scheduleItemTime}>{item.time}</Text>
+                        </View>
                     </View>
-                )}
-            </View>
-            
-            {/* Bottom Actions */}
-            <View style={styles.bottomActions}>
-                <TouchableOpacity style={styles.blockDayButton}>
-                    <Text style={styles.blockDayText}>Block This Day</Text>
+                ))
+            ) : (
+                <View style={styles.emptyState}>
+                    <Ionicons name="calendar-outline" size={48} color="#EEE" />
+                    <Text style={styles.emptyText}>
+                        {blockedDays.includes(selectedDay) ? 'This day is blocked.' : 'No events scheduled for this day.'}
+                    </Text>
+                </View>
+            )}
+
+            <View style={styles.actionButtons}>
+                <TouchableOpacity style={styles.blockDayButton} onPress={handleToggleBlockDay}>
+                    <Text style={styles.blockDayText}>
+                      {blockedDays.includes(selectedDay) ? 'Unblock This Day' : 'Block This Day'}
+                    </Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.setHoursButton}>
+                <TouchableOpacity style={styles.setHoursButton} onPress={() => setModalType('hours')}>
                     <Text style={styles.setHoursText}>Set Working Hours</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.addEventButton}>
+                <TouchableOpacity style={styles.addEventButton} onPress={() => setModalType('event')}>
                     <Text style={styles.addEventText}>Add Personal Event</Text>
                 </TouchableOpacity>
             </View>
+          </View>
         </View>
-
       </ScrollView>
+
+      {/* Action Sheet (Absolute positioned View for stability) */}
+      {!!modalType && (
+        <View style={StyleSheet.absoluteFill}>
+          <TouchableOpacity 
+            style={styles.modalOverlay} 
+            activeOpacity={1} 
+            onPress={() => setModalType(null)}
+          >
+            <TouchableOpacity 
+              activeOpacity={1} 
+              style={{ width: '100%', justifyContent: 'flex-end' }}
+            >
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>
+                    {modalType === 'hours' ? 'Set Working Hours' : 'Add Personal Event'}
+                  </Text>
+                  <TouchableOpacity onPress={() => setModalType(null)}>
+                    <Ionicons name="close" size={24} color="#0D1B2A" />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={styles.modalForm} showsVerticalScrollIndicator={false}>
+                  <Text style={styles.inputLabel}>
+                    {modalType === 'hours' ? 'Work Schedule Title' : 'Event Name'}
+                  </Text>
+                  <TextInput 
+                    style={styles.input}
+                    placeholder={modalType === 'hours' ? "e.g. Regular Shift" : "e.g. Doctor's Appointment"}
+                    value={modalData.title}
+                    onChangeText={(text) => setModalData({...modalData, title: text})}
+                  />
+
+                  <View style={styles.row}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={styles.inputLabel}>Start Time</Text>
+                      <TouchableOpacity 
+                        style={styles.pickerTrigger} 
+                        onPress={() => { 
+                          Keyboard.dismiss();
+                          setPickerTarget('startTime'); 
+                          setPickerVisible(true); 
+                        }}
+                      >
+                        <Text style={[styles.pickerTriggerText, !modalData.startTime && styles.placeholderText]}>
+                          {modalData.startTime || '08:00 AM'}
+                        </Text>
+                        <Ionicons name="time-outline" size={18} color="#AAA" />
+                      </TouchableOpacity>
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 8 }}>
+                      <Text style={styles.inputLabel}>End Time</Text>
+                      <TouchableOpacity 
+                        style={styles.pickerTrigger} 
+                        onPress={() => { 
+                          Keyboard.dismiss();
+                          setPickerTarget('endTime'); 
+                          setPickerVisible(true); 
+                        }}
+                      >
+                        <Text style={[styles.pickerTriggerText, !modalData.endTime && styles.placeholderText]}>
+                          {modalData.endTime || '05:00 PM'}
+                        </Text>
+                        <Ionicons name="time-outline" size={18} color="#AAA" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <Text style={styles.inputLabel}>Notes (Optional)</Text>
+                  <TextInput 
+                    style={[styles.input, styles.textArea]}
+                    placeholder="Additional details..."
+                    value={modalData.description}
+                    onChangeText={(text) => setModalData({...modalData, description: text})}
+                    multiline
+                    numberOfLines={3}
+                  />
+
+                  <TouchableOpacity 
+                    style={styles.modalSaveButton} 
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      handleSaveModal();
+                    }}
+                  >
+                    <Text style={styles.modalSaveButtonText}>Save Schedule</Text>
+                  </TouchableOpacity>
+                  <View style={{ height: Platform.OS === 'ios' ? 40 : 20 }} />
+                </ScrollView>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <TimePickerModal
+        key={pickerTarget || 'calendar-time-picker'}
+        visible={isPickerVisible}
+        onClose={() => setPickerVisible(false)}
+        onConfirm={handleTimeConfirm}
+        initialTime={(pickerTarget && modalData[pickerTarget]) ? modalData[pickerTarget] : '08:00 AM'}
+        title={pickerTarget === 'startTime' ? 'Select Start Time' : 'Select End Time'}
+      />
     </SafeAreaView>
   );
 }
@@ -226,8 +370,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
     backgroundColor: '#FFF',
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
@@ -235,9 +379,13 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
   },
+  headerTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#0D1B2A',
   },
   todayButton: {
@@ -246,319 +394,356 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
   },
-  todayButtonText: {
+  todayText: {
     color: '#FFF',
-    fontSize: 14,
     fontWeight: '700',
+    fontSize: 14,
   },
   scrollContainer: {
     flex: 1,
   },
-  topControls: {
-    padding: 16,
+  container: {
+    padding: 24,
   },
-  segmentControl: {
-    flexDirection: 'row',
-    backgroundColor: '#F0F0F0',
-    borderRadius: 12,
-    padding: 4,
+  calendarControls: {
     marginBottom: 20,
   },
-  segmentButton: {
+  viewTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#F2F3F5',
+    borderRadius: 12,
+    padding: 4,
+  },
+  viewTab: {
     flex: 1,
-    paddingVertical: 12,
-    justifyContent: 'center',
+    paddingVertical: 10,
     alignItems: 'center',
     borderRadius: 8,
   },
-  segmentButtonActive: {
+  activeViewTab: {
     backgroundColor: '#FFF',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowRadius: 4,
     elevation: 2,
   },
-  segmentText: {
+  viewTabText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#555',
-  },
-  segmentTextActive: {
-    color: '#00B761',
+    color: '#8E8E93',
     fontWeight: '600',
   },
-  monthSelector: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-    paddingHorizontal: 4,
-  },
-  monthTitle: {
-    fontSize: 22,
-    fontWeight: '400',
-    color: '#0D1B2A', 
-  },
-  monthChevrons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  chevronButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+  activeViewTabText: {
+    color: '#0D1B2A',
   },
   calendarCard: {
     backgroundColor: '#FFF',
     borderRadius: 24,
-    padding: 20,
-    marginHorizontal: 16,
-    marginBottom: 20,
+    padding: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
-    shadowRadius: 10,
+    shadowRadius: 15,
     elevation: 3,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
   },
-  calendarRow: {
+  weekHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 16,
   },
+  weekHeaderText: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#AAA',
+    textTransform: 'uppercase',
+  },
+  calendarRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
   dayCell: {
-    width: (width - 72) / 7,
-    height: 44,
+    flex: 1,
+    aspectRatio: 1,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 12,
   },
   selectedDayCell: {
-    borderWidth: 1.5,
-    borderColor: '#00B761',
-    backgroundColor: '#F0FBF6',
-  },
-  dayHeaderText: {
-    fontSize: 12,
-    color: '#8E8E93',
-    fontWeight: '600',
+    backgroundColor: '#00B761',
   },
   dayText: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: '#0D1B2A',
-  },
-  fillerDayText: {
-    fontSize: 16,
-    color: '#E0E0E0',
-    fontWeight: '500',
   },
   selectedDayText: {
-    color: '#0D1B2A',
+    color: '#FFF',
   },
-  indicatorContainer: {
-    flexDirection: 'row',
-    gap: 2,
-    marginTop: 4,
-    height: 4,
+  fillerDayText: {
+    color: '#EEE',
+    fontSize: 14,
   },
-  indicatorDot: {
+  eventDot: {
     width: 4,
     height: 4,
     borderRadius: 2,
+    backgroundColor: '#00B761',
+    marginTop: 4,
   },
-  legendContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 24,
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+  blockedDayCell: {
+    backgroundColor: '#FEEFEF',
   },
-  legendItem: {
-    flexDirection: 'row',
+  blockedDayText: {
+    color: '#FF4D4D',
+  },
+  dayViewMini: {
+    padding: 20,
     alignItems: 'center',
-    gap: 6,
   },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendText: {
-    fontSize: 12,
-    color: '#555',
+  miniDayText: {
+    color: '#8E8E93',
+    fontSize: 14,
     fontWeight: '500',
+  },
+  weekView: {
+    paddingBottom: 10,
+  },
+  weekDayCell: {
+    flex: 1,
+    aspectRatio: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
   },
   dayDetailsPanel: {
     backgroundColor: '#FFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    marginHorizontal: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 5,
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
   },
-  dayDetailsHeader: {
-    backgroundColor: '#00B761',
+  fullDayPanel: {
+    minHeight: 400,
+  },
+  panelHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    marginBottom: 20,
   },
-  dayDetailsDateText: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 4,
+  panelTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0D1B2A',
   },
-  dayDetailsBookingsCount: {
-    color: '#FFF',
-    fontSize: 20,
-    fontWeight: '400',
+  blockedBadge: {
+    backgroundColor: '#FEEFEF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  closePanelButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dayDetailsContent: {
-    padding: 20,
-    backgroundColor: '#FFF',
-  },
-  availableSlot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: '#DDD',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-  },
-  addIconContainer: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#F8F9FA',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-    borderWidth: 1,
-    borderColor: '#EEE',
-  },
-  availableSlotText: {
-    fontSize: 14,
-    color: '#555',
-    fontWeight: '500',
-  },
-  confirmedSlot: {
-    borderWidth: 1.5,
-    borderColor: '#3B82F6',
-    borderLeftWidth: 4,
-    backgroundColor: '#F0F7FF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-  },
-  confirmedSlotHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  confirmedTimeText: {
-    fontSize: 13,
-    color: '#3B82F6',
-    fontWeight: '600',
-  },
-  confirmedBadge: {
-    backgroundColor: '#10B98120',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  confirmedBadgeText: {
-    color: '#10B981',
-    fontSize: 10,
+  blockedBadgeText: {
+    color: '#FF4D4D',
+    fontSize: 12,
     fontWeight: '700',
   },
-  confirmedCustomerText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#0D1B2A',
+  scheduleItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+  },
+  scheduleIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  scheduleInfo: {
+    flex: 1,
+  },
+  scheduleItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 4,
   },
-  confirmedServiceText: {
+  scheduleItemTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0D1B2A',
+  },
+  scheduleItemSub: {
     fontSize: 13,
-    color: '#555',
-  },
-  emptyStateContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  emptyStateText: {
     color: '#8E8E93',
+    marginBottom: 4,
   },
-  bottomActions: {
-    padding: 20,
+  scheduleItemTime: {
+    fontSize: 13,
+    color: '#444',
+    fontWeight: '600',
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#AAA',
+    textAlign: 'center',
+  },
+  actionButtons: {
+    marginTop: 20,
     gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-    paddingBottom: 40,
   },
   blockDayButton: {
-    borderWidth: 1,
-    borderColor: '#EF4444',
+    height: 56,
+    backgroundColor: '#FFF',
     borderRadius: 16,
-    paddingVertical: 16,
+    justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FF4D4D',
   },
   blockDayText: {
-    color: '#EF4444',
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FF4D4D',
   },
   setHoursButton: {
+    height: 56,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#00B761',
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
   },
   setHoursText: {
+    fontSize: 16,
+    fontWeight: '700',
     color: '#00B761',
-    fontSize: 15,
-    fontWeight: '500',
   },
   addEventButton: {
-    borderWidth: 1,
-    borderColor: '#8E8E93',
+    height: 56,
+    backgroundColor: '#FFF',
     borderRadius: 16,
-    paddingVertical: 16,
+    justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#DDD',
   },
   addEventText: {
+    fontSize: 16,
+    fontWeight: '700',
     color: '#555',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0D1B2A',
+  },
+  modalForm: {
+    paddingTop: 24,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#555',
+    marginBottom: 10,
+    marginTop: 16,
+  },
+  input: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 52,
     fontSize: 15,
-    fontWeight: '500',
+    color: '#0D1B2A',
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+  },
+  pickerTrigger: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+    height: 52,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+  },
+  pickerTriggerText: {
+    fontSize: 15,
+    color: '#0D1B2A',
+  },
+  placeholderText: {
+    color: '#AAA',
+  },
+  textArea: {
+    height: 100,
+    paddingTop: 16,
+    textAlignVertical: 'top',
+  },
+  row: {
+    flexDirection: 'row',
+  },
+  modalSaveButton: {
+    height: 56,
+    backgroundColor: '#00B761',
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  modalSaveButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFF',
   },
 });

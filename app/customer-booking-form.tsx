@@ -275,7 +275,7 @@ export default function CustomerBookingFormScreen() {
       {/* Bottom Action */}
       <View style={styles.bottomContainer}>
         <View style={styles.priceContainer}>
-          <Text style={styles.priceLabel}>Estimated Total</Text>
+          <Text style={styles.priceLabel}>Estimated Total (Cash Basis)</Text>
           <Text style={styles.priceValue}>₱1,500.00</Text>
         </View>
         <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmBooking}>

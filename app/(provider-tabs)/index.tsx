@@ -88,9 +88,12 @@ export default function ProviderDashboard() {
         <View style={styles.earningsCard}>
           <View style={styles.earningsHeader}>
             <Text style={styles.earningsLabel}>Total Earnings</Text>
-            <View style={styles.walletIconContainer}>
+            <TouchableOpacity 
+              style={styles.walletIconContainer}
+              onPress={() => router.push('/provider-earnings' as any)}
+            >
               <Ionicons name="wallet-outline" size={20} color="#00B761" />
-            </View>
+            </TouchableOpacity>
           </View>
           <Text style={styles.earningsAmount}>₱24,850.00</Text>
           <View style={styles.trendRow}>
@@ -99,24 +102,31 @@ export default function ProviderDashboard() {
           </View>
         </View>
 
-        {/* Stats Row */}
+        {/* Today's Jobs Card - Standalone */}
         <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>New{"\n"}Requests</Text>
-            <Text style={styles.statValue}>5</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Today</Text>
+          <TouchableOpacity 
+            style={styles.statCard}
+            onPress={() => router.push('/provider-calendar' as any)}
+          >
+            <Text style={styles.statLabel}>Today's{"\n"}Jobs</Text>
             <Text style={styles.statValue}>3</Text>
-          </View>
-          <View style={styles.statCard}>
+          </TouchableOpacity>
+        </View>
+
+        {/* Rating Card - Standalone */}
+        <TouchableOpacity 
+          style={styles.ratingCardFull}
+          onPress={() => router.push('/ratings' as any)}
+        >
+          <View>
             <Text style={styles.statLabel}>Rating</Text>
             <View style={styles.ratingBox}>
               <Text style={styles.statValue}>4.9</Text>
-              <Ionicons name="star" size={16} color="#FFD700" style={{ marginLeft: 4 }} />
+              <Ionicons name="star" size={18} color="#FFD700" style={{ marginLeft: 4 }} />
             </View>
           </View>
-        </View>
+          <Ionicons name="chevron-forward" size={24} color="#CCC" />
+        </TouchableOpacity>
 
         {/* Booking Alert */}
         <TouchableOpacity 
@@ -203,6 +213,7 @@ export default function ProviderDashboard() {
             icon="cash-outline" 
             label="Update Pricing" 
             color="#00B761" 
+            onPress={() => router.push('/pricing' as any)}
           />
           <QuickAction 
             icon="trending-up-outline" 
@@ -248,12 +259,21 @@ export default function ProviderDashboard() {
         </ScrollView>
 
         {/* Performance Metrics */}
-        <Text style={styles.sectionTitlePadding}>Performance Metrics</Text>
-        <View style={styles.metricsContainer}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Performance Metrics</Text>
+          <TouchableOpacity onPress={() => router.push('/metrics' as any)}>
+            <Text style={styles.viewAllText}>Analysis</Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity 
+          style={styles.metricsContainer} 
+          activeOpacity={0.7}
+          onPress={() => router.push('/metrics' as any)}
+        >
           <MetricItem label="Acceptance Rate" value="92%" progress="92%" />
           <MetricItem label="Completion Rate" value="98%" progress="98%" />
           <MetricItem label="Response Time" value="< 5 min" progress="85%" />
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.footerSpacer} />
       </ScrollView>
@@ -393,6 +413,22 @@ const styles = StyleSheet.create({
   ratingBox: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 4,
+  },
+  ratingCardFull: {
+    backgroundColor: '#FFF',
+    marginHorizontal: 24,
+    marginTop: 12,
+    borderRadius: 20,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
   },
   bookingAlert: {
     backgroundColor: '#00B761',
