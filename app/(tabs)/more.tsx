@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { logoutCustomer } from '@/lib/customer-session';
 
 const MenuItem = ({ icon, label, sublabel, onPress, isDestructive }: any) => (
   <TouchableOpacity 
@@ -72,7 +73,10 @@ export default function MoreScreen() {
           <MenuItem 
             icon="log-out-outline" 
             label="Log Out" 
-            onPress={() => router.replace('/login' as any)}
+            onPress={() => {
+              logoutCustomer();
+              router.replace('/login' as any);
+            }}
             isDestructive={true}
           />
         </View>

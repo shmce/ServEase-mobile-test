@@ -37,17 +37,6 @@ const INITIAL_ADDRESSES = [
   },
 ];
 
-const DATE_OPTIONS = Array.from({ length: 14 }, (_, index) => {
-  const optionDate = new Date();
-  optionDate.setDate(optionDate.getDate() + index);
-
-  return optionDate.toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
-});
-
 const TIME_OPTIONS = [
   '8:00 AM',
   '9:00 AM',
@@ -59,6 +48,66 @@ const TIME_OPTIONS = [
   '4:00 PM',
   '5:00 PM',
 ];
+
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const BOOKABLE_DAYS = 21;
+
+function formatDateValue(date: Date) {
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatDateKey(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function isSameMonth(left: Date, right: Date) {
+  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth();
+}
+
+function buildBookableDays(monthDate: Date) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const availableKeys = new Set<string>();
+  for (let index = 0; index < BOOKABLE_DAYS; index += 1) {
+    const nextDate = new Date(today);
+    nextDate.setDate(today.getDate() + index);
+    availableKeys.add(formatDateKey(nextDate));
+  }
+
+  const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+  const leadingDays = firstDay.getDay();
+
+  const cells: Array<
+    | { key: string; type: 'empty' }
+    | { key: string; type: 'day'; date: Date; isAvailable: boolean }
+  > = [];
+
+  for (let index = 0; index < leadingDays; index += 1) {
+    cells.push({ key: `empty-${index}`, type: 'empty' });
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = new Date(monthDate.getFullYear(), monthDate.getMonth(), day);
+    cells.push({
+      key: formatDateKey(date),
+      type: 'day',
+      date,
+      isAvailable: availableKeys.has(formatDateKey(date)),
+    });
+  }
+
+  return cells;
+}
 
 export default function CustomerBookingFormScreen() {
   const router = useRouter();
@@ -78,6 +127,10 @@ export default function CustomerBookingFormScreen() {
   const [address, setAddress] = useState<any>(null);
   const [notes, setNotes] = useState('');
   const [savedAddresses, setSavedAddresses] = useState(INITIAL_ADDRESSES);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
 
   useEffect(() => {
     let changed = false;
@@ -107,8 +160,16 @@ export default function CustomerBookingFormScreen() {
   // Modal States
   const [isServiceModalVisible, setServiceModalVisible] = useState(false);
   const [isAddressModalVisible, setAddressModalVisible] = useState(false);
-  const [isDateModalVisible, setDateModalVisible] = useState(false);
   const [isTimeModalVisible, setTimeModalVisible] = useState(false);
+
+  const calendarDays = buildBookableDays(calendarMonth);
+  const monthLabel = calendarMonth.toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  });
+  const today = new Date();
+  const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const isCurrentMonth = isSameMonth(calendarMonth, currentMonth);
 
   const handleConfirmBooking = () => {
     // Validate
@@ -192,33 +253,98 @@ export default function CustomerBookingFormScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Date & Time */}
-          <View style={styles.rowContainer}>
-            <View style={[styles.fieldContainer, { flex: 1, marginRight: 10 }]}>
-              <Text style={styles.fieldLabel}>Date <Text style={styles.requiredAsterisk}>*</Text></Text>
-              <TouchableOpacity 
-                style={styles.dropdownButton}
-                onPress={() => setDateModalVisible(true)}
-              >
-                <Ionicons name="calendar-outline" size={20} color={date ? "#0D1B2A" : "#8E8E93"} style={styles.inputIcon} />
-                <Text style={[styles.dropdownText, !date && styles.placeholderText]}>
-                  {date || 'Select Date'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+          {/* Date */}
+          <View style={styles.fieldContainer}>
+            <Text style={styles.fieldLabel}>Date <Text style={styles.requiredAsterisk}>*</Text></Text>
+            <View style={styles.calendarCard}>
+              <View style={styles.calendarHeader}>
+                <View>
+                  <Text style={styles.calendarMonth}>{monthLabel}</Text>
+                  <Text style={styles.calendarCaption}>
+                    {date || 'Choose an available booking date'}
+                  </Text>
+                </View>
+                <View style={styles.calendarActions}>
+                  <TouchableOpacity
+                    style={[styles.calendarNavButton, isCurrentMonth && styles.calendarNavButtonDisabled]}
+                    onPress={() =>
+                      setCalendarMonth(
+                        (prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1)
+                      )
+                    }
+                    disabled={isCurrentMonth}
+                  >
+                    <Ionicons name="chevron-back" size={18} color={isCurrentMonth ? '#C8CDD6' : '#0D1B2A'} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.calendarNavButton}
+                    onPress={() =>
+                      setCalendarMonth(
+                        (prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1)
+                      )
+                    }
+                  >
+                    <Ionicons name="chevron-forward" size={18} color="#0D1B2A" />
+                  </TouchableOpacity>
+                </View>
+              </View>
 
-            <View style={[styles.fieldContainer, { flex: 1, marginLeft: 10 }]}>
-              <Text style={styles.fieldLabel}>Time <Text style={styles.requiredAsterisk}>*</Text></Text>
-              <TouchableOpacity 
-                style={styles.dropdownButton}
-                onPress={() => setTimeModalVisible(true)}
-              >
-                <Ionicons name="time-outline" size={20} color={time ? "#0D1B2A" : "#8E8E93"} style={styles.inputIcon} />
-                <Text style={[styles.dropdownText, !time && styles.placeholderText]}>
-                  {time || 'Select Time'}
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.weekdayRow}>
+                {WEEKDAY_LABELS.map((label) => (
+                  <Text key={label} style={styles.weekdayLabel}>
+                    {label}
+                  </Text>
+                ))}
+              </View>
+
+              <View style={styles.calendarGrid}>
+                {calendarDays.map((cell) => {
+                  if (cell.type === 'empty') {
+                    return <View key={cell.key} style={styles.calendarCell} />;
+                  }
+
+                  const formattedDate = formatDateValue(cell.date);
+                  const isSelected = date === formattedDate;
+
+                  return (
+                    <View key={cell.key} style={styles.calendarCell}>
+                      <TouchableOpacity
+                        style={[
+                          styles.calendarDateButton,
+                          isSelected && styles.calendarDateButtonSelected,
+                          !cell.isAvailable && styles.calendarDateButtonDisabled,
+                        ]}
+                        onPress={() => setDate(formattedDate)}
+                        disabled={!cell.isAvailable}
+                      >
+                        <Text
+                          style={[
+                            styles.calendarDateText,
+                            isSelected && styles.calendarDateTextSelected,
+                            !cell.isAvailable && styles.calendarDateTextDisabled,
+                          ]}
+                        >
+                          {cell.date.getDate()}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
             </View>
+          </View>
+
+          <View style={styles.fieldContainer}>
+            <Text style={styles.fieldLabel}>Time <Text style={styles.requiredAsterisk}>*</Text></Text>
+            <TouchableOpacity 
+              style={styles.dropdownButton}
+              onPress={() => setTimeModalVisible(true)}
+            >
+              <Ionicons name="time-outline" size={20} color={time ? "#0D1B2A" : "#8E8E93"} style={styles.inputIcon} />
+              <Text style={[styles.dropdownText, !time && styles.placeholderText]}>
+                {time || 'Select Time'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Address */}
@@ -297,26 +423,6 @@ export default function CustomerBookingFormScreen() {
           >
             <Text style={[styles.modalOptionText, service === item && styles.modalOptionTextSelected]}>{item}</Text>
             {service === item && <Ionicons name="checkmark-circle" size={24} color="#00B761" />}
-          </TouchableOpacity>
-        )}
-      />
-
-      <SelectionModal
-        visible={isDateModalVisible}
-        title="Select Date"
-        data={DATE_OPTIONS}
-        onClose={() => setDateModalVisible(false)}
-        renderItem={(item: string, index: number) => (
-          <TouchableOpacity 
-            key={index}
-            style={[styles.modalOption, date === item && styles.modalOptionSelected]}
-            onPress={() => {
-              setDate(item);
-              setDateModalVisible(false);
-            }}
-          >
-            <Text style={[styles.modalOptionText, date === item && styles.modalOptionTextSelected]}>{item}</Text>
-            {date === item && <Ionicons name="checkmark-circle" size={24} color="#00B761" />}
           </TouchableOpacity>
         )}
       />
@@ -438,6 +544,90 @@ const styles = StyleSheet.create({
   },
   fieldContainer: {
     marginBottom: 20,
+  },
+  calendarCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 18,
+    padding: 16,
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  calendarMonth: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#0D1B2A',
+  },
+  calendarCaption: {
+    fontSize: 13,
+    color: '#8E8E93',
+    marginTop: 4,
+  },
+  calendarActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  calendarNavButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+  },
+  calendarNavButtonDisabled: {
+    backgroundColor: '#F8F9FA',
+  },
+  weekdayRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  weekdayLabel: {
+    width: '14.28%',
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8E8E93',
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  calendarCell: {
+    width: '14.28%',
+    paddingVertical: 4,
+    alignItems: 'center',
+  },
+  calendarDateButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarDateButtonSelected: {
+    backgroundColor: '#00B761',
+  },
+  calendarDateButtonDisabled: {
+    backgroundColor: '#F3F4F6',
+  },
+  calendarDateText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0D1B2A',
+  },
+  calendarDateTextSelected: {
+    color: '#FFF',
+  },
+  calendarDateTextDisabled: {
+    color: '#C0C4CC',
   },
   rowContainer: {
     flexDirection: 'row',

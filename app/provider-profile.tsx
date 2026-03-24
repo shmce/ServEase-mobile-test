@@ -601,7 +601,7 @@ const styles = StyleSheet.create({
   },
   profileInfoContainer: {
     position: 'absolute',
-    bottom: -40,
+    bottom: -24,
     left: 0,
     right: 0,
     alignItems: 'center',
@@ -630,8 +630,10 @@ const styles = StyleSheet.create({
     marginTop: 15,
   },
   badgeRow: {
+    position: 'relative',
     flexDirection: 'row',
-    marginTop: 10,
+    marginTop: 20,
+    top: 20,
   },
   badge: {
     flexDirection: 'row',
@@ -654,7 +656,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 15,
-    marginTop: 60,
+    marginTop: 74,
   },
   statCard: {
     width: (width - 60) / 2,
