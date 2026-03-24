@@ -91,6 +91,10 @@ const RECENT_BOOKINGS = [
     price: '₱3,500.00',
     initial: 'C',
     color: '#00C853',
+    date: 'March 18',
+    year: '2026',
+    time: '10:00 AM',
+    address: '123 Mabini Street, Barangay San Jose, Quezon City',
   },
   {
     id: '2',
@@ -99,6 +103,10 @@ const RECENT_BOOKINGS = [
     price: '₱1,200.00',
     initial: 'L',
     color: '#00C853',
+    date: 'March 20',
+    year: '2026',
+    time: '2:00 PM',
+    address: '456 Ayala Avenue, Makati Central Business District',
   },
 ];
 
@@ -109,6 +117,18 @@ export default function HomeScreen() {
     currentCustomer?.profile?.fullName?.trim().split(/\s+/)[0] ||
     currentCustomer?.signupName?.trim().split(/\s+/)[0] ||
     'Customer';
+
+  const handleBookAgain = (booking: typeof RECENT_BOOKINGS[number]) => {
+    router.push({
+      pathname: '/customer-book-again',
+      params: {
+        booking: JSON.stringify({
+          ...booking,
+          providerName: booking.provider,
+        }),
+      },
+    } as any);
+  };
 
   return (
     <View style={styles.container}>
@@ -148,7 +168,12 @@ export default function HomeScreen() {
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.recentBookingsScroll}>
           {RECENT_BOOKINGS.map((item) => (
-            <TouchableOpacity key={item.id} style={styles.recentBookingCard}>
+            <TouchableOpacity
+              key={item.id}
+              style={styles.recentBookingCard}
+              onPress={() => handleBookAgain(item)}
+              activeOpacity={0.85}
+            >
               <View style={[styles.bookingAvatar, { backgroundColor: item.color }]}>
                 <Text style={styles.bookingInitialText}>{item.initial}</Text>
               </View>
