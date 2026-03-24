@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -17,32 +17,43 @@ const { width } = Dimensions.get('window');
 
 const BookingDetailsScreen = () => {
   const router = useRouter();
-  useLocalSearchParams();
+  const params = useLocalSearchParams<{ booking?: string }>();
 
-  // Mock data for the specific booking
-  const booking = {
-    id: 'BK-2026-03-011',
-    service: 'Plumbing Repair',
-    address: '45 Mabini Ave, Pasig City',
-    date: 'March 17',
-    year: '2026',
-    time: '2:00 PM',
-    status: 'Upcoming Service',
-    provider: {
-      name: 'Juan Dela Cruz',
-      rating: 4.9,
-      specialty: 'Plumbing Repair',
-      avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=400&auto=format&fit=crop&q=60',
-      isVerified: true,
-    },
-    totalAmount: '2,200.00',
-    countdown: {
-      days: '3',
-      hours: '4',
-      mins: '19',
+  const booking = useMemo(() => {
+    if (params.booking) {
+      try {
+        return JSON.parse(params.booking);
+      } catch {}
     }
-  };
-  const canReviewBooking = booking.status === 'Completed';
+
+    return {
+      id: 'BK-2026-03-011',
+      service: 'Plumbing Repair',
+      address: '45 Mabini Ave, Pasig City',
+      date: 'March 17',
+      year: '2026',
+      time: '2:00 PM',
+      status: 'Confirmed',
+      provider: {
+        name: 'Juan Dela Cruz',
+        rating: 4.9,
+        specialty: 'Plumbing Repair',
+        avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=400&auto=format&fit=crop&q=60',
+        isVerified: true,
+      },
+      totalAmount: '2,200.00',
+      countdown: {
+        days: '3',
+        hours: '4',
+        mins: '19',
+      },
+    };
+  }, [params.booking]);
+
+  const isCompleted = booking.status === 'Completed';
+  const isCancelled = booking.status === 'Cancelled';
+  const isUpcoming = !isCompleted && !isCancelled;
+  const canReviewBooking = isCompleted;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -68,9 +79,29 @@ const BookingDetailsScreen = () => {
         
         {/* Status and Service Title */}
         <View style={styles.serviceInfoSection}>
-          <View style={styles.statusBadge}>
-            <View style={styles.statusDot} />
-            <Text style={styles.statusText}>{booking.status}</Text>
+          <View
+            style={[
+              styles.statusBadge,
+              isCompleted && styles.statusBadgeCompleted,
+              isCancelled && styles.statusBadgeCancelled,
+            ]}
+          >
+            <View
+              style={[
+                styles.statusDot,
+                isCompleted && styles.statusDotCompleted,
+                isCancelled && styles.statusDotCancelled,
+              ]}
+            />
+            <Text
+              style={[
+                styles.statusText,
+                isCompleted && styles.statusTextCompleted,
+                isCancelled && styles.statusTextCancelled,
+              ]}
+            >
+              {booking.status}
+            </Text>
           </View>
           <Text style={styles.serviceTitle}>{booking.service}</Text>
           <Text style={styles.serviceAddress}>{booking.address}</Text>
@@ -90,26 +121,37 @@ const BookingDetailsScreen = () => {
           </View>
         </View>
 
-        {/* Countdown Timer */}
-        <View style={styles.countdownSection}>
-          <Text style={styles.countdownLabel}>SERVICE STARTS IN</Text>
-          <View style={styles.timerRow}>
-            <View style={styles.timerItem}>
-              <View style={styles.timerBox}><Text style={styles.timerNumber}>{booking.countdown.days}</Text></View>
-              <Text style={styles.timerLabel}>DAYS</Text>
-            </View>
-            <Text style={styles.timerSeparator}>:</Text>
-            <View style={styles.timerItem}>
-              <View style={styles.timerBox}><Text style={styles.timerNumber}>{booking.countdown.hours}</Text></View>
-              <Text style={styles.timerLabel}>HRS</Text>
-            </View>
-            <Text style={styles.timerSeparator}>:</Text>
-            <View style={styles.timerItem}>
-              <View style={styles.timerBox}><Text style={styles.timerNumber}>{booking.countdown.mins}</Text></View>
-              <Text style={styles.timerLabel}>MINS</Text>
+        {/* Status Summary */}
+        {isUpcoming ? (
+          <View style={styles.countdownSection}>
+            <Text style={styles.countdownLabel}>SERVICE STARTS IN</Text>
+            <View style={styles.timerRow}>
+              <View style={styles.timerItem}>
+                <View style={styles.timerBox}><Text style={styles.timerNumber}>{booking.countdown.days}</Text></View>
+                <Text style={styles.timerLabel}>DAYS</Text>
+              </View>
+              <Text style={styles.timerSeparator}>:</Text>
+              <View style={styles.timerItem}>
+                <View style={styles.timerBox}><Text style={styles.timerNumber}>{booking.countdown.hours}</Text></View>
+                <Text style={styles.timerLabel}>HRS</Text>
+              </View>
+              <Text style={styles.timerSeparator}>:</Text>
+              <View style={styles.timerItem}>
+                <View style={styles.timerBox}><Text style={styles.timerNumber}>{booking.countdown.mins}</Text></View>
+                <Text style={styles.timerLabel}>MINS</Text>
+              </View>
             </View>
           </View>
-        </View>
+        ) : (
+          <View style={[styles.countdownSection, isCancelled && styles.countdownSectionCancelled]}>
+            <Text style={styles.summaryTitle}>{isCompleted ? 'SERVICE COMPLETED' : 'BOOKING CANCELLED'}</Text>
+            <Text style={styles.summaryText}>
+              {isCompleted
+                ? 'This booking has been completed successfully. You can review the provider or book the service again.'
+                : 'This booking was cancelled. You can still review the details for your records.'}
+            </Text>
+          </View>
+        )}
 
         {/* Provider Assigned Section */}
         <View style={styles.sectionHeader}>
@@ -187,26 +229,42 @@ const BookingDetailsScreen = () => {
         {/* Bottom Actions */}
         <View style={styles.bottomActions}>
           {canReviewBooking ? (
-            <TouchableOpacity 
-              style={[styles.cancelBookingButton, { borderColor: '#00C853', backgroundColor: '#E8FBF2', marginBottom: 15 }]}
-              onPress={() => router.push({
-                pathname: '/customer-review',
-                params: { booking: JSON.stringify(booking) }
-              })}
-            >
-              <Ionicons name="star" size={20} color="#00C853" />
-              <Text style={[styles.cancelBookingText, { color: '#00C853' }]}>Leave a Review</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity 
+                style={[styles.cancelBookingButton, { borderColor: '#00C853', backgroundColor: '#E8FBF2', marginBottom: 15 }]}
+                onPress={() => router.push({
+                  pathname: '/customer-review',
+                  params: { booking: JSON.stringify(booking) }
+                })}
+              >
+                <Ionicons name="star" size={20} color="#00C853" />
+                <Text style={[styles.cancelBookingText, { color: '#00C853' }]}>Leave a Review</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.rebookButton}
+                onPress={() => router.push({
+                  pathname: '/customer-book-again',
+                  params: { booking: JSON.stringify(booking) }
+                } as any)}
+              >
+                <Ionicons name="refresh-outline" size={20} color="#fff" />
+                <Text style={styles.rebookButtonText}>Book Again</Text>
+              </TouchableOpacity>
+            </>
           ) : null}
 
-          <TouchableOpacity 
-            style={styles.cancelBookingButton}
-            onPress={() => router.push('/customer-cancel-booking' as any)}
-          >
-            <Ionicons name="close" size={20} color="#FF5252" />
-            <Text style={styles.cancelBookingText}>Cancel Booking</Text>
-          </TouchableOpacity>
-          <Text style={styles.policyFootnote}>Free cancellation up to 24 hours before the service</Text>
+          {isUpcoming ? (
+            <>
+              <TouchableOpacity 
+                style={styles.cancelBookingButton}
+                onPress={() => router.push('/customer-cancel-booking' as any)}
+              >
+                <Ionicons name="close" size={20} color="#FF5252" />
+                <Text style={styles.cancelBookingText}>Cancel Booking</Text>
+              </TouchableOpacity>
+              <Text style={styles.policyFootnote}>Free cancellation up to 24 hours before the service</Text>
+            </>
+          ) : null}
         </View>
 
         <View style={{ height: 40 }} />
@@ -270,6 +328,12 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginBottom: 15,
   },
+  statusBadgeCompleted: {
+    backgroundColor: '#E8FBF2',
+  },
+  statusBadgeCancelled: {
+    backgroundColor: '#FFF1F1',
+  },
   statusDot: {
     width: 6,
     height: 6,
@@ -277,10 +341,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#00C853',
     marginRight: 8,
   },
+  statusDotCompleted: {
+    backgroundColor: '#00C853',
+  },
+  statusDotCancelled: {
+    backgroundColor: '#FF5252',
+  },
   statusText: {
     fontSize: 12,
     fontWeight: '700',
     color: '#008C4A',
+  },
+  statusTextCompleted: {
+    color: '#008C4A',
+  },
+  statusTextCancelled: {
+    color: '#C62828',
   },
   serviceTitle: {
     fontSize: 26,
@@ -342,12 +418,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F0F0F5',
   },
+  countdownSectionCancelled: {
+    backgroundColor: '#FFF8F8',
+  },
   countdownLabel: {
     fontSize: 11,
     fontWeight: '700',
     color: '#999',
     letterSpacing: 1.5,
     marginBottom: 20,
+  },
+  summaryTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0D1B2A',
+    letterSpacing: 1.2,
+    marginBottom: 10,
+  },
+  summaryText: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: '#6B7280',
+    textAlign: 'center',
   },
   timerRow: {
     flexDirection: 'row',
@@ -549,6 +641,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 15,
   },
+  rebookButton: {
+    width: '100%',
+    height: 56,
+    borderRadius: 20,
+    backgroundColor: '#00C853',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
   cancelBookingButton: {
     width: '100%',
     height: 56,
@@ -565,6 +667,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FF5252',
+  },
+  rebookButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
   },
   policyFootnote: {
     fontSize: 12,

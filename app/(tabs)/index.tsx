@@ -13,6 +13,7 @@ import {
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
+import { useCustomerSession } from '@/lib/customer-session';
 
 const { width } = Dimensions.get('window');
 
@@ -103,6 +104,11 @@ const RECENT_BOOKINGS = [
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { currentCustomer } = useCustomerSession();
+  const firstName =
+    currentCustomer?.profile?.fullName?.trim().split(/\s+/)[0] ||
+    currentCustomer?.signupName?.trim().split(/\s+/)[0] ||
+    'Customer';
 
   return (
     <View style={styles.container}>
@@ -116,7 +122,7 @@ export default function HomeScreen() {
               </View>
               <View style={styles.welcomeTextContainer}>
                 <Text style={styles.greetingText}>Good Afternoon</Text>
-                <Text style={styles.userNameText}>Kisshia</Text>
+                <Text style={styles.userNameText}>{firstName}</Text>
               </View>
             </View>
             <TouchableOpacity style={styles.notificationBtn}>

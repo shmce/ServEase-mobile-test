@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import { loginCustomer } from '@/lib/customer-session';
 
 export default function CustomerLoginScreen() {
   const router = useRouter();
@@ -88,7 +89,9 @@ export default function CustomerLoginScreen() {
               style={[styles.loginButton, isLoginReady ? styles.loginButtonActive : styles.loginButtonDisabled]}
               onPress={() => {
                 if (!isLoginReady) return;
-                router.push('/(tabs)');
+
+                loginCustomer(email, password);
+                router.replace('/(tabs)' as any);
               }}
               activeOpacity={0.8}
               disabled={!isLoginReady}

@@ -14,12 +14,13 @@ import {
   KeyboardAvoidingView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 const LABELS = ['Home', 'Office', 'Other'];
 
 export default function AddAddressScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
 
   // Form State
   const [addressLine1, setAddressLine1] = useState('');

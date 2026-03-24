@@ -12,6 +12,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import { registerCustomerAccount } from '@/lib/customer-session';
 
 const { width } = Dimensions.get('window');
 
@@ -24,9 +25,12 @@ export default function CustomerSignupScreen() {
     fullName: '',
     email: '',
     phone: '',
+    referralCode: '',
     password: '',
     confirmPassword: '',
   });
+
+  const isValidPhoneNumber = /^9\d{9}$/.test(formData.phone);
 
   const [passwordCriteria, setPasswordCriteria] = useState({
     length: false,
@@ -44,6 +48,13 @@ export default function CustomerSignupScreen() {
       number: /[0-9]/.test(password),
     });
   }, [formData.password]);
+
+  const isSignupReady =
+    formData.fullName.trim().length > 0 &&
+    formData.email.trim().length > 0 &&
+    isValidPhoneNumber &&
+    Object.values(passwordCriteria).every(Boolean) &&
+    formData.password === formData.confirmPassword;
 
   const CheckItem = ({ label, met }: { label: string; met: boolean }) => (
     <View style={styles.criteriaItem}>
@@ -67,7 +78,7 @@ export default function CustomerSignupScreen() {
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle}>Customer Registration</Text>
-          <Text style={styles.headerSubtitle}>Step 1 of 2</Text>
+          <Text style={styles.headerSubtitle}>Create Account</Text>
         </View>
         <View style={{ width: 40 }} />
       </View>
@@ -118,11 +129,33 @@ export default function CustomerSignupScreen() {
                 placeholder="9XX XXX XXXX"
                 placeholderTextColor="#CCC"
                 value={formData.phone}
-                onChangeText={(text) => setFormData({...formData, phone: text})}
+                onChangeText={(text) => {
+                  const digitsOnly = text.replace(/\D/g, '');
+                  let nextPhone = digitsOnly;
+
+                  if (digitsOnly.length > 0 && digitsOnly[0] !== '9') {
+                    nextPhone = `9${digitsOnly.slice(1)}`;
+                  }
+
+                  setFormData({ ...formData, phone: nextPhone.slice(0, 10) });
+                }}
                 keyboardType="phone-pad"
+                maxLength={10}
               />
             </View>
-            <Text style={styles.helperText}>Philippine mobile number (e.g. 9171234567)</Text>
+            <Text style={styles.helperText}>Enter 10 digits starting with 9 (e.g. 9171234567)</Text>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Referral Code</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter referral code (optional)"
+              placeholderTextColor="#CCC"
+              value={formData.referralCode}
+              onChangeText={(text) => setFormData({...formData, referralCode: text})}
+              autoCapitalize="characters"
+            />
           </View>
 
           <View style={styles.inputGroup}>
@@ -189,11 +222,24 @@ export default function CustomerSignupScreen() {
 
       <View style={styles.footer}>
         <TouchableOpacity 
-          style={styles.nextButton}
-          onPress={() => router.push('/customer-login' as any)}
+          style={[styles.nextButton, !isSignupReady && styles.nextButtonDisabled]}
+          onPress={() => {
+            if (!isSignupReady) return;
+
+            registerCustomerAccount({
+              fullName: formData.fullName,
+              email: formData.email,
+              phone: formData.phone,
+              referralCode: formData.referralCode,
+              password: formData.password,
+            });
+
+            router.replace('/customer-onboarding-address' as any);
+          }}
           activeOpacity={0.8}
+          disabled={!isSignupReady}
         >
-          <Text style={styles.nextButtonText}>Next Step</Text>
+          <Text style={styles.nextButtonText}>Continue</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -421,6 +467,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
+  },
+  nextButtonDisabled: {
+    backgroundColor: '#A5E6BA',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   nextButtonText: {
     color: '#FFF',

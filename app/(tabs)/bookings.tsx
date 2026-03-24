@@ -154,27 +154,35 @@ const BOOKINGS_BY_TAB = {
   cancelled: CANCELLED_BOOKINGS,
 } as const;
 
+const buildBookingPayload = (booking: any) => ({
+  id: booking.id,
+  service: booking.service,
+  address: booking.address || '45 Mabini Ave, Pasig City',
+  date: booking.date,
+  year: booking.year || '2026',
+  time: booking.time,
+  status: booking.status,
+  totalAmount: booking.price?.replace('₱', '').replace(',', '') || '1,500.00',
+  countdown: {
+    days: '3',
+    hours: '4',
+    mins: '19',
+  },
+  provider: {
+    name: booking.providerName,
+    rating: booking.providerRating,
+    specialty: booking.service,
+    avatar: booking.providerAvatar,
+    isVerified: true,
+  },
+  providerName: booking.providerName,
+});
+
 const BookingCard = ({ booking }: { booking: any }) => {
   const router = useRouter();
   const isCompleted = booking.status === 'Completed';
   const isCancelled = booking.status === 'Cancelled';
-  const completedBookingPayload = {
-    id: booking.id,
-    service: booking.service,
-    address: booking.address || '45 Mabini Ave, Pasig City',
-    date: booking.date,
-    year: booking.year || '2026',
-    time: booking.time,
-    status: booking.status,
-    provider: {
-      name: booking.providerName,
-      rating: booking.providerRating,
-      specialty: booking.service,
-      avatar: booking.providerAvatar,
-      isVerified: true,
-    },
-    providerName: booking.providerName,
-  };
+  const bookingPayload = buildBookingPayload(booking);
 
   return (
     <View style={styles.bookingCard}>
@@ -223,35 +231,54 @@ const BookingCard = ({ booking }: { booking: any }) => {
 
       {isCompleted ? (
         <View style={styles.completedActions}>
+          <View style={styles.completedPrimaryActions}>
+            <TouchableOpacity
+              style={styles.reviewButton}
+              onPress={() =>
+                router.push({
+                  pathname: '/customer-booking-details',
+                  params: { booking: JSON.stringify(bookingPayload) },
+                } as any)
+              }
+            >
+              <Ionicons name="document-text-outline" size={18} color="#00C853" style={{ marginRight: 8 }} />
+              <Text style={styles.reviewButtonText}>View Details</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.bookAgainButton}
+              onPress={() =>
+                router.push({
+                  pathname: '/customer-book-again',
+                  params: { booking: JSON.stringify(bookingPayload) },
+                } as any)
+              }
+            >
+              <Ionicons name="refresh-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.bookAgainButtonText}>Book Again</Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
-            style={styles.reviewButton}
+            style={styles.completedSecondaryButton}
             onPress={() =>
               router.push({
                 pathname: '/customer-review',
-                params: { booking: JSON.stringify(completedBookingPayload) },
+                params: { booking: JSON.stringify(bookingPayload) },
               } as any)
             }
           >
             <Ionicons name="star-outline" size={18} color="#00C853" style={{ marginRight: 8 }} />
             <Text style={styles.reviewButtonText}>Review</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.bookAgainButton}
-            onPress={() =>
-              router.push({
-                pathname: '/customer-book-again',
-                params: { booking: JSON.stringify(completedBookingPayload) },
-              } as any)
-            }
-          >
-            <Ionicons name="refresh-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-            <Text style={styles.bookAgainButtonText}>Book Again</Text>
-          </TouchableOpacity>
         </View>
       ) : isCancelled ? (
         <TouchableOpacity 
           style={styles.cancelledButton}
-          onPress={() => router.push('/customer-booking-details' as any)}
+          onPress={() =>
+            router.push({
+              pathname: '/customer-booking-details',
+              params: { booking: JSON.stringify(bookingPayload) },
+            } as any)
+          }
         >
           <Ionicons name="document-text-outline" size={18} color="#C62828" style={{ marginRight: 8 }} />
           <Text style={styles.cancelledButtonText}>View Details</Text>
@@ -264,7 +291,10 @@ const BookingCard = ({ booking }: { booking: any }) => {
             if (booking.actionLabel === 'Track Order') {
               router.push('/customer-track-order' as any);
             } else if (booking.actionLabel === 'View Details') {
-              router.push('/customer-booking-details' as any);
+              router.push({
+                pathname: '/customer-booking-details',
+                params: { booking: JSON.stringify(bookingPayload) },
+              } as any);
             }
           }}
         >
@@ -563,8 +593,21 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   completedActions: {
+    gap: 12,
+  },
+  completedPrimaryActions: {
     flexDirection: 'row',
     gap: 12,
+  },
+  completedSecondaryButton: {
+    height: 50,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#00C853',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
   },
   reviewButton: {
     flex: 1,
