@@ -1,139 +1,88 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, TextInput, Image, Dimensions } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { BOOKINGS_DATA } from './provider-bookings';
-
-const { width } = Dimensions.get('window');
+import { useAuth } from '@/hooks/useAuth';
+import { getErrorMessage } from '@/lib/error-handling';
+import { getProviderBookingById, updateBookingStatus } from '@/services/providerBookingService';
 
 export default function ProviderStartServiceScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
-  
-  // Find the booking or default
-  const booking = BOOKINGS_DATA.find(b => b.id === id) || BOOKINGS_DATA[0];
+  const { user } = useAuth();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [address, setAddress] = useState('123 Placeholder Street, Quezon City');
+  const [isLoadingBooking, setIsLoadingBooking] = useState(false);
 
-  const [checklist, setChecklist] = useState({
-    scope: false,
-    tools: false,
-    instructions: false,
-  });
-  const [caption, setCaption] = useState('');
-  const [timer, setTimer] = useState(0);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  React.useEffect(() => {
+    let mounted = true;
+    async function loadBookingAddress() {
+      if (!id) return;
+      setIsLoadingBooking(true);
+      try {
+        const data = await getProviderBookingById(String(id));
+        if (mounted && data?.service_address) {
+          setAddress(String(data.service_address));
+        }
+      } catch {
+        // Keep placeholder address if fetch fails.
+      } finally {
+        if (mounted) setIsLoadingBooking(false);
+      }
+    }
+    loadBookingAddress();
+    return () => {
+      mounted = false;
+    };
+  }, [id]);
 
-  const toggleCheck = (key: keyof typeof checklist) => {
-    setChecklist(prev => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const isReady = checklist.scope && checklist.tools && checklist.instructions;
-
-  // Format timer as HH:MM:SS
-  const formatTime = (seconds: number) => {
-    const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
-    const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
-    const s = (seconds % 60).toString().padStart(2, '0');
-    return `${h}:${m}:${s}`;
+  const onStart = async () => {
+    if (!id) {
+      Alert.alert('Missing Booking', 'Booking id is missing. Please open this booking again.');
+      return;
+    }
+    if (!user?.id) {
+      Alert.alert('Login Required', 'Please log in again before starting service.');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await updateBookingStatus(String(id), user.id, 'in_progress');
+      Alert.alert('Service Started', 'Booking is now in progress.', [{ text: 'OK', onPress: () => router.replace('/provider-bookings' as any) }]);
+    } catch (err) {
+      Alert.alert('Failed', getErrorMessage(err, 'Could not start service.'));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" />
-      
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
-        </TouchableOpacity>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}><Ionicons name="arrow-back" size={24} color="#0D1B2A" /></TouchableOpacity>
         <Text style={styles.headerTitle}>Start Service</Text>
+        <View style={{ width: 24 }} />
       </View>
+      <View style={styles.content}>
+        <Text style={styles.info}>When ready, start this service and we will update the booking status in the database.</Text>
 
-      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
-          <Text style={styles.heroTitle}>Ready to Start{'\n'}Service?</Text>
-
-          {/* Customer Card */}
-          <View style={styles.customerCard}>
-            <View style={styles.customerHeader}>
-              <Text style={styles.labelSmall}>Customer</Text>
-            </View>
-            <View style={styles.customerInfo}>
-              <Image 
-                source={{ uri: booking.avatar }} 
-                style={styles.avatar} 
-              />
-              <View>
-                <Text style={styles.customerName}>{booking.customer}</Text>
-                <Text style={styles.serviceName}>{booking.service}</Text>
-              </View>
-            </View>
+        <View style={styles.locationCard}>
+          <View style={styles.locationHeader}>
+            <Ionicons name="location-outline" size={18} color="#0D1B2A" />
+            <Text style={styles.locationTitle}>Service Location (Placeholder)</Text>
           </View>
-
-          {/* Checklist */}
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Service Checklist</Text>
-            
-            <TouchableOpacity style={styles.checkItem} onPress={() => toggleCheck('scope')}>
-              <View style={[styles.checkbox, checklist.scope && styles.checkboxActive]}>
-                {checklist.scope && <Ionicons name="checkmark" size={14} color="#FFF" />}
-              </View>
-              <Text style={styles.checkText}>Service scope confirmed with customer</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.checkItem} onPress={() => toggleCheck('tools')}>
-              <View style={[styles.checkbox, checklist.tools && styles.checkboxActive]}>
-                {checklist.tools && <Ionicons name="checkmark" size={14} color="#FFF" />}
-              </View>
-              <Text style={styles.checkText}>All necessary tools and materials ready</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.checkItem} onPress={() => toggleCheck('instructions')}>
-              <View style={[styles.checkbox, checklist.instructions && styles.checkboxActive]}>
-                {checklist.instructions && <Ionicons name="checkmark" size={14} color="#FFF" />}
-              </View>
-              <Text style={styles.checkText}>Special instructions reviewed</Text>
-            </TouchableOpacity>
+          <Text style={styles.locationAddress}>{isLoadingBooking ? 'Loading address...' : address}</Text>
+          <Text style={styles.locationMeta}>Latitude: 14.6760</Text>
+          <Text style={styles.locationMeta}>Longitude: 121.0437</Text>
+          <Text style={styles.locationMeta}>Distance: 3.2 km | ETA: 12 mins</Text>
+          <View style={styles.mapPlaceholder}>
+            <Ionicons name="map-outline" size={18} color="#64748B" />
+            <Text style={styles.mapPlaceholderText}>Map Preview Placeholder</Text>
           </View>
-
-          {/* Photo Section */}
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Take Before Photos</Text>
-            <TextInput
-              style={styles.captionInput}
-              placeholder="Add caption (optional)"
-              placeholderTextColor="#AAA"
-              value={caption}
-              onChangeText={setCaption}
-            />
-            <TouchableOpacity style={styles.uploadButton}>
-              <Ionicons name="camera-outline" size={20} color="#00B761" />
-              <Text style={styles.uploadText}>Upload Photo</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Timer Section */}
-          <View style={[styles.sectionCard, styles.timerCard]}>
-            <Text style={styles.timerLabel}>Service Timer</Text>
-            <View style={styles.timerRow}>
-              <Ionicons name="time-outline" size={32} color="#0D1B2A" />
-              <Text style={styles.timerText}>{formatTime(timer)}</Text>
-            </View>
-            <Text style={styles.timerStatus}>Ready to start</Text>
-          </View>
-
-          <View style={styles.spacer} />
         </View>
-      </ScrollView>
 
-      {/* Footer Button */}
-      <View style={styles.footer}>
-        <TouchableOpacity 
-          style={[styles.startButton, !isReady && styles.startButtonDisabled]}
-          disabled={!isReady}
-          onPress={() => router.push({ pathname: '/provider-service-in-progress', params: { id: booking.id } } as any)}
-        >
-          <Ionicons name="time-outline" size={20} color="#FFF" />
-          <Text style={styles.startButtonText}>Start Service Timer</Text>
+        <TouchableOpacity style={styles.btn} onPress={onStart} disabled={isSubmitting}>
+          <Text style={styles.btnText}>{isSubmitting ? 'Please wait...' : 'Start Service'}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -141,204 +90,19 @@ export default function ProviderStartServiceScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FFF',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0D1B2A',
-    marginLeft: 8,
-  },
-  scrollContainer: {
-    flex: 1,
-  },
-  content: {
-    padding: 24,
-  },
-  heroTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#0D1B2A',
-    marginBottom: 32,
-    lineHeight: 40,
-  },
-  customerCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.02,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  customerHeader: {
-    marginBottom: 12,
-  },
-  labelSmall: {
-    fontSize: 12,
-    color: '#8E8E93',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  customerInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    marginRight: 16,
-  },
-  customerName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0D1B2A',
-    marginBottom: 2,
-  },
-  serviceName: {
-    fontSize: 14,
-    color: '#8E8E93',
-    fontWeight: '500',
-  },
-  sectionCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0D1B2A',
-    marginBottom: 16,
-  },
-  checkItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#00B761',
-    marginRight: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkboxActive: {
-    backgroundColor: '#00B761',
-  },
-  checkText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#444',
-    fontWeight: '500',
-    lineHeight: 20,
-  },
-  captionInput: {
-    backgroundColor: '#F2F3F5',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 48,
-    fontSize: 14,
-    color: '#0D1B2A',
-    marginBottom: 12,
-  },
-  uploadButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#00B761',
-    gap: 8,
-  },
-  uploadText: {
-    color: '#00B761',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  timerCard: {
-    backgroundColor: '#F8F9FA',
-    alignItems: 'center',
-    paddingVertical: 32,
-  },
-  timerLabel: {
-    fontSize: 12,
-    color: '#8E8E93',
-    fontWeight: '600',
-    marginBottom: 16,
-    textTransform: 'uppercase',
-  },
-  timerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    marginBottom: 8,
-  },
-  timerText: {
-    fontSize: 48,
-    fontWeight: '800',
-    color: '#0D1B2A',
-    fontVariant: ['tabular-nums'],
-  },
-  timerStatus: {
-    fontSize: 13,
-    color: '#8E8E93',
-    fontWeight: '500',
-  },
-  spacer: {
-    height: 40,
-  },
-  footer: {
-    padding: 24,
-    backgroundColor: '#FFF',
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-  },
-  startButton: {
-    flexDirection: 'row',
-    height: 56,
-    backgroundColor: '#99E6C3',
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 10,
-    shadowColor: '#00B761',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  startButtonDisabled: {
-    opacity: 0.6,
-  },
-  startButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  safeArea: { flex: 1, backgroundColor: '#FFF' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#EEE' },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#0D1B2A' },
+  content: { padding: 16 },
+  info: { color: '#556', marginBottom: 14 },
+  locationCard: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: '#E2E8F0' },
+  locationHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  locationTitle: { fontSize: 14, fontWeight: '700', color: '#0D1B2A' },
+  locationAddress: { fontSize: 13, color: '#334155', marginBottom: 8 },
+  locationMeta: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  mapPlaceholder: { marginTop: 10, height: 72, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  mapPlaceholderText: { fontSize: 12, color: '#64748B' },
+  btn: { backgroundColor: '#00B761', borderRadius: 10, height: 44, justifyContent: 'center', alignItems: 'center' },
+  btnText: { color: '#FFF', fontWeight: '700' },
 });
+

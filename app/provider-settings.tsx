@@ -51,7 +51,7 @@ export default function ProviderSettingsScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
@@ -66,7 +66,11 @@ export default function ProviderSettingsScreen() {
             label="Edit Profile" 
             onPress={() => router.push('/provider-edit-profile' as any)}
           />
-          <SettingItem icon="cash-outline" label="Services & Pricing" />
+          <SettingItem
+            icon="cash-outline"
+            label="Services & Pricing"
+            onPress={() => router.push('/(provider-tabs)/pricing' as any)}
+          />
           <SettingItem 
             icon="location-outline" 
             label="Manage Addresses" 
@@ -289,3 +293,4 @@ const styles = StyleSheet.create({
     height: 40,
   },
 });
+

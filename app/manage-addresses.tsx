@@ -1,101 +1,47 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Dimensions } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-
-const { width } = Dimensions.get('window');
-
-interface Address {
-  id: string;
-  type: 'Home' | 'Office' | 'Other';
-  addressLine1: string;
-  addressLine2: string;
-  isDefault: boolean;
-}
-
-const INITIAL_ADDRESSES: Address[] = [
-  {
-    id: '1',
-    type: 'Home',
-    addressLine1: '123 Mabini Street, Barangay San Jose',
-    addressLine2: 'Quezon City, Metro Manila 1100',
-    isDefault: true,
-  },
-  {
-    id: '2',
-    type: 'Office',
-    addressLine1: '456 Ayala Avenue, Makati Central Business District',
-    addressLine2: 'Makati City, Metro Manila 1226',
-    isDefault: false,
-  },
-  {
-    id: '3',
-    type: 'Other',
-    addressLine1: '789 Rizal Boulevard, Bonifacio Global City',
-    addressLine2: 'Taguig City, Metro Manila 1634',
-    isDefault: false,
-  },
-];
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
+import { getUserAddresses, AddressRecord } from '@/services/addressService';
 
 const AddressCard = ({ 
   address, 
-  onSetDefault,
   onEdit 
 }: { 
-  address: Address; 
-  onSetDefault: (id: string) => void;
+  address: AddressRecord; 
   onEdit: (id: string) => void;
 }) => {
-  const getIcon = () => {
-    switch (address.type) {
-      case 'Home': return 'home-outline';
-      case 'Office': return 'business-outline';
-      default: return 'location-outline';
-    }
-  };
+  const line2 = [address.city, address.province, address.zip_code].filter(Boolean).join(', ');
 
   return (
     <View style={styles.addressCard}>
       <View style={styles.cardHeader}>
         <View style={styles.typeContainer}>
           <View style={styles.iconCircle}>
-            <Ionicons name={getIcon()} size={20} color="#00B761" />
+            <Ionicons name="location-outline" size={20} color="#00B761" />
           </View>
           <View>
-            <Text style={styles.addressType}>{address.type}</Text>
-            {address.isDefault && (
-              <View style={styles.defaultBadge}>
-                <Text style={styles.defaultText}>Default</Text>
-              </View>
-            )}
+            <Text style={styles.addressType}>Saved Address</Text>
           </View>
         </View>
         <TouchableOpacity style={styles.moreButton}>
-          <Ionicons name="ellipsis-vertical" size={20} color="#8E8E93" />
+           <Ionicons name="ellipsis-vertical" size={20} color="#8E8E93" />
         </TouchableOpacity>
       </View>
 
       <View style={styles.addressInfo}>
-        <Text style={styles.addressLine1}>{address.addressLine1}</Text>
-        <Text style={styles.addressLine2}>{address.addressLine2}</Text>
+        <Text style={styles.addressLine1}>{address.street_address || 'No street provided'}</Text>
+        {line2 ? <Text style={styles.addressLine2}>{line2}</Text> : null}
       </View>
 
       <View style={styles.cardActions}>
         <TouchableOpacity 
-          style={[styles.actionButton, styles.editButton, address.isDefault && { width: '100%' }]}
-          onPress={() => onEdit(address.id)}
+          style={[styles.actionButton, styles.editButton, { width: '100%' }]}
+          onPress={() => address.id && onEdit(address.id)}
         >
           <Text style={styles.editButtonText}>Edit</Text>
         </TouchableOpacity>
-        
-        {!address.isDefault && (
-          <TouchableOpacity 
-            style={[styles.actionButton, styles.setDefaultButton]}
-            onPress={() => onSetDefault(address.id)}
-          >
-            <Text style={styles.setDefaultText}>Set as Default</Text>
-          </TouchableOpacity>
-        )}
       </View>
     </View>
   );
@@ -103,45 +49,28 @@ const AddressCard = ({
 
 export default function ManageAddressesScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const [addresses, setAddresses] = useState<Address[]>(INITIAL_ADDRESSES);
+  const { user } = useAuth();
+  
+  const [addresses, setAddresses] = useState<AddressRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    let changed = false;
-    if (params.newAddress) {
-      try {
-        const parsed = JSON.parse(params.newAddress as string);
-        setAddresses(prev => {
-          if (prev.find(a => a.id === parsed.id)) return prev;
-          return [...prev, parsed];
-        });
-        changed = true;
-      } catch(e) {}
-    }
-    if (params.updatedAddress) {
-      try {
-        const parsed = JSON.parse(params.updatedAddress as string);
-        setAddresses(prev => prev.map(a => a.id === parsed.id ? parsed : a));
-        changed = true;
-      } catch(e) {}
-    }
-    if (params.deletedAddressId) {
-      const idStr = params.deletedAddressId as string;
-      setAddresses(prev => prev.filter(a => a.id !== idStr));
-      changed = true;
-    }
-    
-    if (changed) {
-      router.setParams({ newAddress: '', updatedAddress: '', deletedAddressId: '' });
-    }
-  }, [params.newAddress, params.updatedAddress, params.deletedAddressId]);
-
-  const handleSetDefault = (id: string) => {
-    setAddresses(prev => prev.map(addr => ({
-      ...addr,
-      isDefault: addr.id === id
-    })));
-  };
+  useFocusEffect(
+    React.useCallback(() => {
+      async function fetchAddresses() {
+        if (!user) return;
+        setIsLoading(true);
+        try {
+          const data = await getUserAddresses(user.id);
+          setAddresses(data);
+        } catch (error) {
+          console.error('Failed to load addresses', error);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+      fetchAddresses();
+    }, [user])
+  );
 
   const handleEdit = (id: string) => {
     const addr = addresses.find(a => a.id === id);
@@ -159,7 +88,7 @@ export default function ManageAddressesScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Manage Addresses</Text>
@@ -169,21 +98,25 @@ export default function ManageAddressesScreen() {
         {/* Add New Address Button */}
         <TouchableOpacity 
           style={styles.addAddressButton}
-          onPress={() => router.push('/add-address')}
+          onPress={() => router.push('/add-address' as any)}
         >
           <Ionicons name="add" size={24} color="#FFF" />
           <Text style={styles.addAddressText}>Add New Address</Text>
         </TouchableOpacity>
 
-        {/* Address Cards */}
-        {addresses.map(address => (
-          <AddressCard 
-            key={address.id} 
-            address={address} 
-            onSetDefault={handleSetDefault}
-            onEdit={handleEdit}
-          />
-        ))}
+        {isLoading ? (
+          <ActivityIndicator size="large" color="#00B761" style={{ marginTop: 40 }} />
+        ) : addresses.length === 0 ? (
+          <Text style={{ textAlign: 'center', color: '#999', marginTop: 40 }}>No addresses saved yet.</Text>
+        ) : (
+          addresses.map(address => (
+            <AddressCard 
+              key={address.id} 
+              address={address} 
+              onEdit={handleEdit}
+            />
+          ))
+        )}
 
         <View style={styles.footerSpacer} />
       </ScrollView>
@@ -277,19 +210,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#0D1B2A',
   },
-  defaultBadge: {
-    backgroundColor: '#E8FBF2',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginTop: 4,
-    alignSelf: 'flex-start',
-  },
-  defaultText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#00B761',
-  },
   moreButton: {
     padding: 4,
   },
@@ -325,15 +245,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#0D1B2A',
   },
-  setDefaultButton: {
-    backgroundColor: '#00B761',
-  },
-  setDefaultText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFF',
-  },
   footerSpacer: {
     height: 40,
   },
 });
+

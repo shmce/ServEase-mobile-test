@@ -181,7 +181,7 @@ export default function ProviderAvailabilityScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Work Availability</Text>
@@ -276,7 +276,7 @@ export default function ProviderAvailabilityScreen() {
 
       {/* Save Button */}
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.saveButton} activeOpacity={0.8} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.saveButton} activeOpacity={0.8} onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}>
           <Text style={styles.saveButtonText}>Save Changes</Text>
         </TouchableOpacity>
       </View>
@@ -578,3 +578,4 @@ const styles = StyleSheet.create({
     height: 40,
   },
 });
+

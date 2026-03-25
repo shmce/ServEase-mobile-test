@@ -33,7 +33,7 @@ export default function CustomerReviewScreen() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Leave a Review</Text>
@@ -135,3 +135,4 @@ const styles = StyleSheet.create({
   submitButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   footerSpacer: { height: 100 },
 });
+

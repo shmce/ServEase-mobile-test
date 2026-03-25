@@ -61,11 +61,11 @@ export default function ProviderEditProfileScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}>
           <Text style={styles.headerButtonText}>Cancel</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit Profile</Text>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}>
           <Text style={[styles.headerButtonText, styles.saveButtonText]}>Save</Text>
         </TouchableOpacity>
       </View>
@@ -549,3 +549,4 @@ const styles = StyleSheet.create({
     height: 60,
   },
 });
+

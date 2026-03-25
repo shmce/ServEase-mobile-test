@@ -7,17 +7,21 @@ import {
   SafeAreaView,
   TextInput,
   ScrollView,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { loginCustomer } from '@/lib/customer-session';
+import { getErrorMessage } from '@/lib/error-handling';
 
 export default function CustomerLoginScreen() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const isLoginReady = email.trim().length > 0 && password.trim().length > 0;
 
   return (
@@ -25,7 +29,7 @@ export default function CustomerLoginScreen() {
       <StatusBar style="dark" />
       <View style={styles.header}>
         <TouchableOpacity 
-          onPress={() => router.back()} 
+          onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} 
           style={styles.backButton}
           activeOpacity={0.7}
         >
@@ -87,16 +91,26 @@ export default function CustomerLoginScreen() {
 
             <TouchableOpacity 
               style={[styles.loginButton, isLoginReady ? styles.loginButtonActive : styles.loginButtonDisabled]}
-              onPress={() => {
+              onPress={async () => {
                 if (!isLoginReady) return;
-
-                loginCustomer(email, password);
-                router.replace('/(tabs)' as any);
+                setIsSubmitting(true);
+                try {
+                  await loginCustomer(email, password);
+                  router.replace('/(tabs)' as any);
+                } catch (err: any) {
+                  Alert.alert('Login Failed', getErrorMessage(err, 'Invalid email or password.'));
+                } finally {
+                  setIsSubmitting(false);
+                }
               }}
               activeOpacity={0.8}
-              disabled={!isLoginReady}
+              disabled={!isLoginReady || isSubmitting}
             >
-              <Text style={styles.loginButtonText}>Login</Text>
+              {isSubmitting ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.loginButtonText}>Login</Text>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -284,3 +298,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+

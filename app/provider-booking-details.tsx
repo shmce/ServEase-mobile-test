@@ -1,676 +1,151 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Image, Dimensions, Platform } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-// Import data from bookings file
-import { BOOKINGS_DATA } from './provider-bookings';
-
-const { width } = Dimensions.get('window');
-
-const StatusStep = ({ icon, label, completed, active }: { icon: string, label: string, completed: boolean, active: boolean }) => (
-  <View style={styles.statusStep}>
-    <View style={styles.stepIconContainer}>
-      <View style={[styles.stepLine, completed && styles.completedLine]} />
-      <View style={[
-        styles.stepCircle, 
-        completed && styles.completedCircle,
-        active && styles.activeCircle
-      ]}>
-        <Ionicons 
-          name={icon as any} 
-          size={16} 
-          color={completed || active ? '#FFF' : '#AAA'} 
-        />
-      </View>
-    </View>
-    <Text style={[styles.stepLabel, active && styles.activeStepLabel]}>{label}</Text>
-  </View>
-);
+import { useAuth } from '@/hooks/useAuth';
+import { getErrorMessage } from '@/lib/error-handling';
+import { getProviderBookingById, updateBookingStatus } from '@/services/providerBookingService';
+import { getPaymentByBookingId } from '@/services/paymentService';
 
 export default function ProviderBookingDetailsScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  const { user } = useAuth();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const [booking, setBooking] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [payment, setPayment] = useState<any>(null);
 
-  // Find the booking or default to a safe mock
-  const booking = BOOKINGS_DATA.find(b => b.id === id) || BOOKINGS_DATA[0];
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      if (!id) {
+        setError('Booking ID is missing.');
+        setIsLoading(false);
+        return;
+      }
+      setIsLoading(true);
+      setError('');
+      try {
+        const data = await getProviderBookingById(String(id));
+        if (mounted) {
+          setBooking(data);
+          if (data?.id) {
+            try {
+              const pay = await getPaymentByBookingId(String(data.id));
+              if (mounted) setPayment(pay);
+            } catch {
+              if (mounted) setPayment(null);
+            }
+          }
+        }
+      } catch (err) {
+        if (mounted) setError(getErrorMessage(err, 'Failed to load booking details.'));
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    }
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [id]);
 
-  // Derive status details
-  const isPending = booking.status === 'Pending';
-  const isConfirmed = booking.status === 'Confirmed';
-  const isInProgress = booking.status === 'In Progress';
+  const schedule = useMemo(() => {
+    if (!booking?.scheduled_at) return 'N/A';
+    const d = new Date(booking.scheduled_at);
+    if (Number.isNaN(d.getTime())) return 'N/A';
+    return `${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} at ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+  }, [booking?.scheduled_at]);
 
-  // Derived fee calculation
-  const amountNum = parseFloat(booking.amount.replace(/,/g, ''));
-  const platformFee = Math.round(amountNum * 0.1);
-  const earnings = amountNum - platformFee;
+  const onUpdate = async (target: 'in_progress' | 'completed' | 'cancelled' | 'confirmed') => {
+    if (!user?.id) {
+      Alert.alert('Login Required', 'Please log in again before updating booking.');
+      return;
+    }
+    if (!booking?.id) {
+      Alert.alert('Missing Booking', 'Booking id is missing.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await updateBookingStatus(booking.id, user.id, target);
+      Alert.alert('Success', 'Booking updated.', [{ text: 'OK', onPress: () => router.replace('/provider-bookings' as any) }]);
+    } catch (err) {
+      const message = getErrorMessage(err, 'Failed to update booking.');
+      setError(message);
+      Alert.alert('Update Failed', message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" />
-      
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
-        </TouchableOpacity>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}><Ionicons name="arrow-back" size={24} color="#0D1B2A" /></TouchableOpacity>
         <Text style={styles.headerTitle}>Booking Details</Text>
+        <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
-          <Text style={styles.bookingId}>{booking.id}</Text>
-          
-          <View style={[
-            styles.statusBadge, 
-            isConfirmed && styles.confirmedBadge,
-            isPending && styles.pendingBadge,
-            isInProgress && styles.inProgressBadge
-          ]}>
-            <Text style={[
-              styles.statusBadgeText,
-              isConfirmed && styles.confirmedText,
-              isPending && styles.pendingText,
-              isInProgress && styles.inProgressText
-            ]}>
-              {booking.status === 'Pending' ? 'Pending Confirmation' : booking.status}
-            </Text>
+      {isLoading ? <ActivityIndicator size="large" color="#00B761" style={{ marginTop: 40 }} /> : null}
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      {!isLoading && booking ? (
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.card}>
+            <Text style={styles.ref}>{booking.booking_reference || booking.id}</Text>
+            <Text style={styles.title}>{booking.service_title}</Text>
+            <Text style={styles.sub}>Customer: {booking.customer_name}</Text>
+            <Text style={styles.sub}>When: {schedule}</Text>
+            <Text style={styles.sub}>Address: {booking.service_address || 'N/A'}</Text>
+            <Text style={styles.sub}>Status: {String(booking.status)}</Text>
+            <Text style={styles.amount}>P{Number(booking.total_amount || 0).toFixed(2)}</Text>
+            <Text style={styles.sub}>Payment Status: {String(payment?.status || 'not_recorded')}</Text>
+            <Text style={styles.sub}>Payment Method: {String(payment?.method || 'not_recorded')}</Text>
+            {payment?.transaction_reference ? (
+              <Text style={styles.sub}>Transaction Ref: {String(payment.transaction_reference)}</Text>
+            ) : null}
+            {booking.service_description ? <Text style={styles.desc}>{booking.service_description}</Text> : null}
           </View>
 
-          {/* Timeline - Show if not cancelled */}
-          <View style={styles.timelineContainer}>
-            <StatusStep icon="checkmark" label="Confirmed" completed={isConfirmed || isInProgress} active={isConfirmed} />
-            <StatusStep icon="navigate" label="On the Way" completed={isInProgress} active={false} />
-            <StatusStep icon="location" label="Arrived" completed={isInProgress} active={false} />
-            <StatusStep icon="play" label="In Progress" completed={false} active={isInProgress} />
-            <StatusStep icon="checkmark-done" label="Completed" completed={false} active={false} />
-          </View>
-
-          {/* Customer Card */}
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionLabel}>Customer</Text>
-            <View style={styles.customerRow}>
-              <Image 
-                source={{ uri: booking.avatar }} 
-                style={styles.customerAvatar} 
-              />
-              <View style={styles.customerInfo}>
-                <Text style={styles.customerName}>{booking.customer}</Text>
-                <View style={styles.ratingRow}>
-                  <Ionicons name="star" size={14} color="#FFB800" />
-                  <Text style={styles.ratingText}>4.6 <Text style={styles.reviewCount}>(18 reviews)</Text></Text>
-                </View>
-                <View style={styles.phoneRow}>
-                  <Ionicons name="call-outline" size={14} color="#777" />
-                  <Text style={styles.phoneText}>*** **** **89</Text>
-                </View>
-              </View>
-            </View>
-            <View style={styles.contactButtonsRow}>
-              <TouchableOpacity style={styles.callButton}>
-                <Ionicons name="call" size={18} color="#FFF" />
-                <Text style={styles.callButtonText}>Call</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.messageButton}
-                onPress={() => router.push('/provider-messages' as any)}
-              >
-                <Ionicons name="chatbubble-outline" size={18} color="#00B761" />
-                <Text style={styles.messageButtonText}>Message</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Service Details */}
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionLabel}>Service Details</Text>
-            <Text style={styles.serviceName}>{booking.service}</Text>
-            
-            <View style={styles.detailItem}>
-              <Ionicons name="calendar-outline" size={18} color="#777" />
-              <Text style={styles.detailText}>{booking.date} at {booking.time}</Text>
-            </View>
-            <View style={styles.detailItem}>
-              <Ionicons name="time-outline" size={18} color="#777" />
-              <Text style={styles.detailText}>Est. Duration: 3 hours</Text>
-            </View>
-
-            {/* Map Placeholder */}
-            <View style={styles.mapContainer}>
-              <Ionicons name="location" size={40} color="#CCC" />
-              <Text style={styles.mapText}>Location Map</Text>
-            </View>
-
-            <View style={styles.addressRow}>
-              <Ionicons name="location-outline" size={18} color="#777" />
-              <Text style={styles.addressText}>{booking.address}, Brgy. Fort Bonifacio, Taguig City, Metro Manila</Text>
-            </View>
-
-            <View style={styles.descriptionSection}>
-              <Text style={styles.subLabel}>Description</Text>
-              <Text style={styles.descriptionText}>
-                Need to install additional outlets in the living room and bedroom. Also check the circuit breaker.
-              </Text>
-            </View>
-
-            <View style={styles.specialInstructions}>
-              <Text style={styles.instructionLabel}>Special Instructions</Text>
-              <Text style={styles.instructionText}>Please bring extension cords. Building security requires ID.</Text>
-            </View>
-
-            <View style={styles.photosSection}>
-              <Text style={styles.subLabel}>Photos</Text>
-              <View style={styles.photoRow}>
-                <Image 
-                  source={{ uri: 'https://images.unsplash.com/photo-1581094794329-c8112a89af12?q=80&w=2070&auto=format&fit=crop' }} 
-                  style={styles.jobPhoto} 
-                />
-              </View>
-            </View>
-          </View>
-
-          {/* Pricing Breakdown */}
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionLabel}>Pricing Breakdown</Text>
-            <View style={styles.financeRow}>
-              <Text style={styles.financeLabel}>Service Fee</Text>
-              <Text style={styles.financeValue}>₱{booking.amount}</Text>
-            </View>
-            <View style={styles.financeRow}>
-              <Text style={styles.financeLabel}>Additional Charges</Text>
-              <Text style={styles.financeValue}>₱0</Text>
-            </View>
-            <View style={[styles.financeRow, { marginTop: 12 }]}>
-              <Text style={styles.financeLabel}>Platform Fee (10%)</Text>
-              <Text style={styles.feeValue}>-₱{platformFee.toLocaleString()}</Text>
-            </View>
-            <View style={styles.earningsContainer}>
-              <Text style={styles.earningsLabel}>Your Earnings</Text>
-              <Text style={styles.earningsValue}>₱{earnings.toLocaleString()}</Text>
-            </View>
-          </View>
-
-          {/* Action Buttons */}
-          <View style={styles.actionsFooter}>
-            {isConfirmed && (
-              <TouchableOpacity 
-                style={styles.startTripButton}
-                onPress={() => router.push({ pathname: '/provider-navigation', params: { id: booking.id } } as any)}
-              >
-                <Ionicons name="navigate" size={20} color="#FFF" />
-                <Text style={styles.startTripText}>Start Trip</Text>
-              </TouchableOpacity>
-            )}
-
-            {isInProgress && (
-              <TouchableOpacity 
-                style={styles.startTripButton}
-                onPress={() => router.push('/provider-service-in-progress' as any)}
-              >
-                <Ionicons name="play" size={20} color="#FFF" />
-                <Text style={styles.startTripText}>Continue Service</Text>
-              </TouchableOpacity>
-            )}
-
-            {isPending && (
-              <TouchableOpacity style={styles.startTripButton}>
-                <Ionicons name="checkmark-circle" size={20} color="#FFF" />
-                <Text style={styles.startTripText}>Confirm Booking</Text>
-              </TouchableOpacity>
-            )}
-            
-            <TouchableOpacity 
-              style={styles.actionButtonOutline}
-              onPress={() => router.push('/provider-additional-charges' as any)}
+          <View style={styles.actions}>
+            <TouchableOpacity style={styles.btn} onPress={() => onUpdate('confirmed')} disabled={busy}><Text style={styles.btnText}>Confirm</Text></TouchableOpacity>
+            <TouchableOpacity
+              style={styles.btn}
+              onPress={() =>
+                router.push({ pathname: '/provider-start-service', params: { id: booking.id } } as any)
+              }
+              disabled={busy}
             >
-              <Ionicons name="add-circle-outline" size={20} color="#00B761" />
-              <Text style={styles.actionButtonTextOutline}>Add Additional Charges</Text>
+              <Text style={styles.btnText}>Start Service</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.actionButtonLight}
-              onPress={() => router.push('/provider-reschedule' as any)}
-            >
-              <Ionicons name="calendar-outline" size={18} color="#555" />
-              <Text style={styles.actionButtonTextLight}>Request Reschedule</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.actionButtonDanger}
-              onPress={() => router.push({ pathname: '/provider-cancel-booking', params: { id: booking.id } } as any)}
-            >
-              <Text style={styles.actionButtonTextDanger}>Cancel Booking</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.actionButtonLight}
-              onPress={() => router.push({ pathname: '/provider-report-issue', params: { id: booking.id } } as any)}
-            >
-              <Ionicons name="alert-circle-outline" size={18} color="#555" />
-              <Text style={styles.actionButtonTextLight}>Report Issue</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={styles.btn} onPress={() => onUpdate('completed')} disabled={busy}><Text style={styles.btnText}>Mark Complete</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.btnDanger} onPress={() => onUpdate('cancelled')} disabled={busy}><Text style={styles.btnDangerText}>Cancel Booking</Text></TouchableOpacity>
           </View>
-
-          <View style={styles.footerSpacer} />
-        </View>
-      </ScrollView>
+        </ScrollView>
+      ) : null}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FFF',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0D1B2A',
-    marginLeft: 8,
-  },
-  scrollContainer: {
-    flex: 1,
-  },
-  content: {
-    padding: 24,
-  },
-  bookingId: {
-    fontSize: 14,
-    color: '#8E8E93',
-    marginBottom: 8,
-  },
-  confirmedBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#E8FBF2',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 12,
-    marginBottom: 24,
-  },
-  confirmedText: {
-    color: '#00B761',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  statusBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 12,
-    marginBottom: 24,
-  },
-  statusBadgeText: {
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  pendingBadge: {
-    backgroundColor: '#FFF9E6',
-  },
-  pendingText: {
-    color: '#FFB800',
-  },
-  inProgressBadge: {
-    backgroundColor: '#EBF5FF',
-  },
-  inProgressText: {
-    color: '#007AFF',
-  },
-  timelineContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 32,
-    paddingHorizontal: 4,
-  },
-  statusStep: {
-    alignItems: 'center',
-    width: (width - 48) / 5,
-  },
-  stepIconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    marginBottom: 8,
-  },
-  stepLine: {
-    position: 'absolute',
-    left: '50%',
-    width: width / 5,
-    height: 2,
-    backgroundColor: '#F0F0F0',
-    zIndex: -1,
-  },
-  completedLine: {
-    backgroundColor: '#00B761',
-  },
-  stepCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F0F0F0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFF',
-  },
-  completedCircle: {
-    backgroundColor: '#00B761',
-  },
-  activeCircle: {
-    backgroundColor: '#00B761',
-    borderWidth: 4,
-    borderColor: '#E8FBF2',
-  },
-  stepLabel: {
-    fontSize: 10,
-    color: '#8E8E93',
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  activeStepLabel: {
-    color: '#0D1B2A',
-    fontWeight: '800',
-  },
-  sectionCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.02,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  sectionLabel: {
-    fontSize: 12,
-    color: '#8E8E93',
-    fontWeight: '600',
-    marginBottom: 16,
-  },
-  customerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  customerAvatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    marginRight: 16,
-  },
-  customerInfo: {
-    flex: 1,
-  },
-  customerName: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0D1B2A',
-    marginBottom: 4,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  ratingText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0D1B2A',
-    marginLeft: 4,
-  },
-  reviewCount: {
-    fontWeight: '400',
-    color: '#8E8E93',
-  },
-  phoneRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  phoneText: {
-    fontSize: 13,
-    color: '#555',
-    marginLeft: 6,
-  },
-  contactButtonsRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  callButton: {
-    flex: 1,
-    flexDirection: 'row',
-    height: 48,
-    backgroundColor: '#00B761',
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  callButtonText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  messageButton: {
-    flex: 1,
-    flexDirection: 'row',
-    height: 48,
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#00B761',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  messageButtonText: {
-    color: '#00B761',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  serviceName: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#0D1B2A',
-    marginBottom: 16,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  detailText: {
-    fontSize: 14,
-    color: '#444',
-    marginLeft: 12,
-    fontWeight: '500',
-  },
-  mapContainer: {
-    height: 160,
-    backgroundColor: '#F8F9FA',
-    borderRadius: 16,
-    marginTop: 8,
-    marginBottom: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  mapText: {
-    marginTop: 8,
-    color: '#8E8E93',
-    fontWeight: '600',
-  },
-  addressRow: {
-    flexDirection: 'row',
-    marginBottom: 20,
-  },
-  addressText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#555',
-    marginLeft: 12,
-    lineHeight: 20,
-  },
-  subLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0D1B2A',
-    marginBottom: 8,
-  },
-  descriptionSection: {
-    marginBottom: 20,
-  },
-  descriptionText: {
-    fontSize: 14,
-    color: '#555',
-    lineHeight: 22,
-  },
-  specialInstructions: {
-    backgroundColor: '#FFF9E6',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
-  },
-  instructionLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#8B6E12',
-    marginBottom: 4,
-  },
-  instructionText: {
-    fontSize: 14,
-    color: '#8B6E12',
-    lineHeight: 20,
-  },
-  photosSection: {
-    marginBottom: 8,
-  },
-  photoRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  jobPhoto: {
-    width: (width - 100) / 2,
-    height: 120,
-    borderRadius: 16,
-  },
-  financeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  financeLabel: {
-    fontSize: 14,
-    color: '#555',
-  },
-  financeValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0D1B2A',
-  },
-  feeValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FF4D4D',
-  },
-  earningsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#E8FBF2',
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 16,
-  },
-  earningsLabel: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#00B761',
-  },
-  earningsValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#00B761',
-  },
-  actionsFooter: {
-    gap: 12,
-    marginTop: 12,
-  },
-  startTripButton: {
-    flexDirection: 'row',
-    height: 56,
-    backgroundColor: '#00B761',
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 10,
-    shadowColor: '#00B761',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  startTripText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  actionButtonOutline: {
-    flexDirection: 'row',
-    height: 52,
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#00B761',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  actionButtonTextOutline: {
-    color: '#00B761',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  actionButtonLight: {
-    flexDirection: 'row',
-    height: 52,
-    backgroundColor: '#F8F9FA',
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  actionButtonTextLight: {
-    color: '#0D1B2A',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  actionButtonDanger: {
-    height: 52,
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#FF4D4D',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionButtonTextDanger: {
-    color: '#FF4D4D',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  footerSpacer: {
-    height: 48,
-  },
+  safeArea: { flex: 1, backgroundColor: '#FFF' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#EEE' },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#0D1B2A' },
+  content: { padding: 16, gap: 14 },
+  card: { backgroundColor: '#F8F9FA', borderRadius: 12, padding: 14 },
+  ref: { fontSize: 12, color: '#667' },
+  title: { fontSize: 16, fontWeight: '700', color: '#0D1B2A', marginTop: 4 },
+  sub: { fontSize: 13, color: '#556', marginTop: 5 },
+  amount: { marginTop: 8, fontSize: 16, fontWeight: '800', color: '#00B761' },
+  desc: { marginTop: 8, color: '#445', fontSize: 13 },
+  actions: { gap: 10 },
+  btn: { height: 44, borderRadius: 10, backgroundColor: '#00B761', justifyContent: 'center', alignItems: 'center' },
+  btnText: { color: '#FFF', fontWeight: '700' },
+  btnDanger: { height: 44, borderRadius: 10, backgroundColor: '#FFE6E6', justifyContent: 'center', alignItems: 'center' },
+  btnDangerText: { color: '#C62828', fontWeight: '700' },
+  error: { color: '#C62828', padding: 12 },
 });
+

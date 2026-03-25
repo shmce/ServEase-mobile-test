@@ -16,7 +16,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
-  finishSignupOnboarding,
   savePendingCustomerAddress,
   useCustomerSession,
 } from '@/lib/customer-session';
@@ -213,7 +212,6 @@ export default function CustomerOnboardingAddressScreen() {
       locationNote: locationNote.trim(),
       isDefault,
     });
-    finishSignupOnboarding();
     router.replace('/customer-login' as any);
   };
 
@@ -267,7 +265,7 @@ export default function CustomerOnboardingAddressScreen() {
       <StatusBar style="dark" />
       <View style={styles.card}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backIconButton} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.backIconButton} onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}>
             <Ionicons name="arrow-back" size={24} color="#162033" />
           </TouchableOpacity>
           <Text style={styles.logo}>ServEase</Text>
@@ -677,3 +675,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+

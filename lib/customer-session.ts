@@ -1,4 +1,7 @@
 import { useSyncExternalStore } from 'react';
+import { supabase } from './supabase';
+import { useAuth } from '../hooks/useAuth';
+import { getErrorMessage } from './error-handling';
 
 export type CustomerProfile = {
   fullName: string;
@@ -84,11 +87,49 @@ function getActiveEmail() {
   return state.pendingOnboardingEmail ?? state.currentCustomerEmail;
 }
 
+async function persistCustomerToDatabase(userId: string, email: string, customer: CustomerAccount) {
+  const fullName = customer.profile?.fullName || customer.signupName || email.split('@')[0] || 'Customer';
+  const contactNumber = customer.profile?.mobileNumber || customer.signupPhone || '';
+  const addressText = customer.address
+    ? [
+        customer.address.streetAddress,
+        customer.address.barangay,
+        customer.address.city,
+        customer.address.province,
+        customer.address.postalCode,
+      ]
+        .filter(Boolean)
+        .join(', ')
+    : '';
+
+  try {
+    await supabase.from('users').upsert({
+      id: userId,
+      email,
+      full_name: fullName,
+      contact_number: contactNumber,
+      role: 'customer',
+    });
+  } catch {}
+
+  if (addressText) {
+    try {
+      await supabase.from('customer_profiles').upsert({
+        user_id: userId,
+        address: addressText,
+      });
+    } catch {}
+  }
+}
+
 export function useCustomerSession() {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  const currentCustomer = snapshot.currentCustomerEmail
-    ? snapshot.customers[snapshot.currentCustomerEmail] ?? null
+  const { user } = useAuth();
+
+  const currentCustomer = user?.email
+    ? snapshot.customers[user.email.toLowerCase()] ?? null
     : null;
+    
   const pendingCustomer = snapshot.pendingOnboardingEmail
     ? snapshot.customers[snapshot.pendingOnboardingEmail] ?? null
     : null;
@@ -96,12 +137,12 @@ export function useCustomerSession() {
   return {
     currentCustomer,
     pendingCustomer,
-    isLoggedIn: Boolean(currentCustomer),
+    isLoggedIn: !!user,
     isInSignupOnboarding: Boolean(pendingCustomer),
   };
 }
 
-export function registerCustomerAccount(input: {
+export async function registerCustomerAccount(input: {
   email: string;
   password: string;
   fullName: string;
@@ -110,25 +151,49 @@ export function registerCustomerAccount(input: {
 }) {
   const email = input.email.trim().toLowerCase();
 
+  // 1. Send to Supabase Auth
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password: input.password,
+    options: {
+      data: {
+        role: 'customer',
+        full_name: input.fullName.trim(),
+        phone: input.phone.trim(),
+        referral_code: input.referralCode.trim(),
+      }
+    }
+  });
+  if (error) {
+    throw new Error(getErrorMessage(error, 'Unable to create customer account.'));
+  }
+
+  // 2. Fallback to mock state to prevent UI breakage during transition
+  const nextCustomer: CustomerAccount = {
+    email,
+    password: input.password,
+    signupName: input.fullName.trim(),
+    signupPhone: input.phone.trim(),
+    profile: {
+      fullName: input.fullName.trim(),
+      mobileNumber: input.phone.trim(),
+      referralCode: input.referralCode.trim(),
+    },
+    address: null,
+  };
+
   setState({
     ...state,
     pendingOnboardingEmail: email,
     customers: {
       ...state.customers,
-      [email]: {
-        email,
-        password: input.password,
-        signupName: input.fullName.trim(),
-        signupPhone: input.phone.trim(),
-        profile: {
-          fullName: input.fullName.trim(),
-          mobileNumber: input.phone.trim(),
-          referralCode: input.referralCode.trim(),
-        },
-        address: null,
-      },
+      [email]: nextCustomer,
     },
   });
+
+  if (data.user?.id) {
+    await persistCustomerToDatabase(data.user.id, email, nextCustomer);
+  }
 }
 
 export function savePendingCustomerAddress(address: CustomerAddress) {
@@ -159,31 +224,48 @@ export function finishSignupOnboarding() {
   });
 }
 
-export function loginCustomer(email: string, password: string) {
+export async function loginCustomer(email: string, password: string) {
   const normalizedEmail = email.trim().toLowerCase();
-  const customer = state.customers[normalizedEmail];
+  
+  // 1. Supabase Auth Login
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: normalizedEmail,
+    password: password.trim(),
+  });
+  if (error) {
+    throw new Error(getErrorMessage(error, 'Unable to log in.'));
+  }
+
+  // 2. Fallback to mock state
+  let customer = state.customers[normalizedEmail];
 
   if (!customer) {
+    customer = {
+      email: normalizedEmail,
+      password: password.trim(),
+      signupName: normalizedEmail.split('@')[0] || 'Customer',
+      signupPhone: '',
+      profile: {
+        fullName: normalizedEmail.split('@')[0] || 'Customer',
+        mobileNumber: '',
+        referralCode: '',
+      },
+      address: null,
+    };
+
     setState({
       ...state,
       currentCustomerEmail: normalizedEmail,
       pendingOnboardingEmail: null,
       customers: {
         ...state.customers,
-        [normalizedEmail]: {
-          email: normalizedEmail,
-          password: password.trim(),
-          signupName: normalizedEmail.split('@')[0] || 'Customer',
-          signupPhone: '',
-          profile: {
-            fullName: normalizedEmail.split('@')[0] || 'Customer',
-            mobileNumber: '',
-            referralCode: '',
-          },
-          address: null,
-        },
+        [normalizedEmail]: customer,
       },
     });
+
+    if (data.user?.id) {
+      await persistCustomerToDatabase(data.user.id, normalizedEmail, customer);
+    }
 
     return { ok: true as const };
   }
@@ -194,10 +276,15 @@ export function loginCustomer(email: string, password: string) {
     pendingOnboardingEmail: null,
   });
 
+  if (data.user?.id) {
+    await persistCustomerToDatabase(data.user.id, normalizedEmail, customer);
+  }
+
   return { ok: true as const };
 }
 
-export function logoutCustomer() {
+export async function logoutCustomer() {
+  await supabase.auth.signOut();
   setState({
     ...state,
     currentCustomerEmail: null,

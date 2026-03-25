@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -8,9 +8,12 @@ import {
   SafeAreaView,
   Image,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
+import { getCustomerBookings } from '@/services/bookingService';
 
 const IN_PROGRESS_BOOKINGS = [
   {
@@ -178,6 +181,16 @@ const buildBookingPayload = (booking: any) => ({
   providerName: booking.providerName,
 });
 
+const formatScheduledDate = (value?: string | null) => {
+  if (!value) return { date: 'N/A', time: 'N/A' };
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return { date: 'N/A', time: 'N/A' };
+  return {
+    date: parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+    time: parsed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+  };
+};
+
 const BookingCard = ({ booking }: { booking: any }) => {
   const router = useRouter();
   const isCompleted = booking.status === 'Completed';
@@ -308,19 +321,112 @@ const BookingCard = ({ booking }: { booking: any }) => {
 };
 
 export default function BookingsScreen() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [liveBookings, setLiveBookings] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<(typeof TAB_CONFIG)[number]['key']>('inProgress');
-  const bookings = BOOKINGS_BY_TAB[activeTab];
+
+  useFocusEffect(
+    React.useCallback(() => {
+      async function loadBookings() {
+        if (!user) {
+          setLiveBookings([]);
+          setIsLoading(false);
+          return;
+        }
+        setIsLoading(true);
+        try {
+          const data = await getCustomerBookings(user.id);
+          setLiveBookings(data || []);
+        } catch (error) {
+          console.error('Failed to load bookings:', error);
+          setLiveBookings([]);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+      loadBookings();
+    }, [user])
+  );
+
+  const mappedLiveBookings = useMemo(() => {
+    return liveBookings.map((item: any, idx: number) => {
+      const providerName = item?.provider?.full_name || item?.provider_name || 'Service Provider';
+      const providerRating = Number(item?.provider_rating || 4.8);
+      const statusRaw = String(item?.status || 'Pending');
+      const statusLower = statusRaw.toLowerCase();
+      const statusType = statusLower.includes('cancel')
+        ? 'cancelled'
+        : statusLower.includes('complete')
+          ? 'completed'
+          : statusLower.includes('way')
+            ? 'warning'
+            : 'success';
+
+      const actionLabel = statusType === 'cancelled'
+        ? 'View Details'
+        : statusType === 'completed'
+          ? 'View Details'
+          : statusLower.includes('way')
+            ? 'Track Order'
+            : 'View Details';
+
+      const actionIcon = actionLabel === 'Track Order' ? 'location-outline' : 'calendar-outline';
+      const schedule = formatScheduledDate(item?.scheduled_at);
+
+      return {
+        id: String(item.id || idx + 1),
+        service: item?.service?.title || item?.service_name || 'Service Booking',
+        providerName,
+        providerRating,
+        providerAvatar: item?.provider_avatar || 'https://i.pravatar.cc/100?img=12',
+        price: `P${item?.service?.price || item?.total_amount || '0.00'}`,
+        date: schedule.date,
+        time: schedule.time,
+        status: statusRaw,
+        statusType,
+        actionLabel,
+        actionIcon,
+        address: item?.service_address || '',
+      };
+    });
+  }, [liveBookings]);
+
+  const bookingsByTab = useMemo(() => {
+    if (!mappedLiveBookings.length) return BOOKINGS_BY_TAB;
+    return {
+      inProgress: mappedLiveBookings.filter((b) => !['completed', 'cancelled'].includes(String(b.statusType))),
+      completed: mappedLiveBookings.filter((b) => String(b.statusType) === 'completed'),
+      cancelled: mappedLiveBookings.filter((b) => String(b.statusType) === 'cancelled'),
+    };
+  }, [mappedLiveBookings]);
+
+  const tabConfig = useMemo(() => {
+    if (!mappedLiveBookings.length) return TAB_CONFIG;
+    return [
+      { key: 'inProgress', label: 'In Progress', icon: 'location-outline', count: bookingsByTab.inProgress.length },
+      { key: 'completed', label: 'Completed', icon: 'checkmark-circle-outline', count: bookingsByTab.completed.length },
+      { key: 'cancelled', label: 'Cancelled', icon: 'close-circle-outline', count: bookingsByTab.cancelled.length },
+    ] as const;
+  }, [bookingsByTab, mappedLiveBookings.length]);
+
+  const bookings = bookingsByTab[activeTab];
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={22} color="#0D1B2A" />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>My Bookings</Text>
+        <View style={{ width: 38 }} />
       </View>
 
       {/* Custom Tabs */}
       <View style={styles.tabContainer}>
-        {TAB_CONFIG.map((tab) => {
+        {tabConfig.map((tab) => {
           const isActive = activeTab === tab.key;
 
           return (
@@ -346,11 +452,21 @@ export default function BookingsScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.bookingCount}>{bookings.length} bookings</Text>
-        
-        {bookings.map((booking) => (
-          <BookingCard key={booking.id} booking={booking} />
-        ))}
+        {isLoading ? (
+          <ActivityIndicator size="large" color="#00B761" style={{ marginTop: 30 }} />
+        ) : (
+          <>
+            <Text style={styles.bookingCount}>{bookings.length} bookings</Text>
+            {bookings.map((booking) => (
+              <BookingCard key={booking.id} booking={booking} />
+            ))}
+            {!bookings.length ? (
+              <Text style={{ textAlign: 'center', color: '#8E8E93', marginTop: 20 }}>
+                No bookings found for this tab.
+              </Text>
+            ) : null}
+          </>
+        )}
 
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -368,6 +484,17 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 20,
     backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 28,
@@ -645,3 +772,4 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
+

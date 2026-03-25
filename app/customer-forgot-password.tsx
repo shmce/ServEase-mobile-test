@@ -72,7 +72,7 @@ export default function CustomerForgotPasswordScreen() {
       <StatusBar style="dark" />
       <View style={styles.header}>
         <TouchableOpacity 
-          onPress={() => router.back()} 
+          onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} 
           style={styles.backButton}
           activeOpacity={0.7}
         >
@@ -116,7 +116,7 @@ export default function CustomerForgotPasswordScreen() {
 
             <TouchableOpacity 
               style={styles.textButton}
-              onPress={() => router.back()}
+              onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}
             >
               <Text style={styles.textButtonLabel}>Back to Login</Text>
             </TouchableOpacity>
@@ -224,3 +224,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+

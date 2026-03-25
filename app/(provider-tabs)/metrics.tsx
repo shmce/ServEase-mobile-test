@@ -70,7 +70,7 @@ export default function PerformanceMetricsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#00B761" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Performance Metrics</Text>
@@ -507,3 +507,4 @@ const styles = StyleSheet.create({
     height: 40,
   },
 });
+

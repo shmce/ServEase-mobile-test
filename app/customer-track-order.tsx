@@ -53,7 +53,7 @@ export default function CustomerTrackOrderScreen() {
       <SafeAreaView style={styles.headerOverlay}>
         <View style={styles.headerContent}>
           <TouchableOpacity 
-            onPress={() => router.back()} 
+            onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} 
             style={styles.closeButton}
             hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
@@ -486,3 +486,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+

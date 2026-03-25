@@ -9,76 +9,74 @@ import {
   StatusBar, 
   TextInput,
   Alert,
-  Modal,
   Platform,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-
-const LABELS = ['Home', 'Office', 'Other'];
+import { useAuth } from '@/hooks/useAuth';
+import { addAddress } from '@/services/addressService';
+import { getErrorMessage } from '@/lib/error-handling';
 
 export default function AddAddressScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{ returnTo?: string }>();
+  const { user } = useAuth();
 
   // Form State
   const [addressLine1, setAddressLine1] = useState('');
   const [addressLine2, setAddressLine2] = useState('');
-  const [label, setLabel] = useState('');
-  
-  // Modal State
-  const [isLabelModalVisible, setLabelModalVisible] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSaveAddress = () => {
+  const handleSaveAddress = async () => {
     // Validate
-    if (!addressLine1 || !addressLine2 || !label) {
-      Alert.alert('Missing Fields', 'Please fill in all required fields (Address, City/Province/ZIP, and Label).');
+    if (!addressLine1 || !addressLine2) {
+      Alert.alert('Missing Fields', 'Please fill in all required fields.');
+      return;
+    }
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to save an address.');
       return;
     }
 
-    const newAddress = {
-      id: Date.now().toString(),
-      type: label,
-      addressLine1,
-      addressLine2,
-      isDefault: false
-    };
+    setIsSaving(true);
+    try {
+      // Split commonly entered city/province/zip format (basic parsing)
+      const parts = addressLine2.split(',').map(p => p.trim());
+      const city = parts[0] || '';
+      const province = parts[1] || '';
+      const zip_code = parts[2] || '';
 
-    const returnTo = (params.returnTo as string) || '/manage-addresses';
+      const created = await addAddress({
+        user_id: user.id,
+        street_address: addressLine1,
+        city,
+        province,
+        zip_code
+      });
 
-    // Pass the new address and navigate back
-    router.push({
-      // @ts-ignore dynamic routing
-      pathname: returnTo,
-      params: { newAddress: JSON.stringify(newAddress) }
-    });
+      if (params.returnTo) {
+        router.replace({
+          pathname: params.returnTo as any,
+          params: {
+            newAddress: JSON.stringify({
+              id: created.id,
+              type: 'Home',
+              addressLine1,
+              addressLine2,
+            }),
+          },
+        });
+      } else {
+        if (router.canGoBack?.()) router.back(); else router.replace('/' as any);
+      }
+    } catch (error: any) {
+      Alert.alert('Error', getErrorMessage(error, 'Failed to save address.'));
+    } finally {
+      setIsSaving(false);
+    }
   };
-
-  const SelectionModal = ({ 
-    visible, 
-    title, 
-    data, 
-    onClose, 
-    renderItem 
-  }: any) => (
-    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
-      <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{title}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.modalCloseButton}>
-              <Ionicons name="close" size={24} color="#0D1B2A" />
-            </TouchableOpacity>
-          </View>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {data.map((item: any, index: number) => renderItem(item, index))}
-            <View style={{ height: 30 }} />
-          </ScrollView>
-        </View>
-      </TouchableOpacity>
-    </Modal>
-  );
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -86,7 +84,7 @@ export default function AddAddressScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Add New Address</Text>
@@ -103,7 +101,7 @@ export default function AddAddressScreen() {
         >
           {/* Full Address / Landmark */}
           <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>Full Address / Landmark <Text style={styles.requiredAsterisk}>*</Text></Text>
+            <Text style={styles.fieldLabel}>Street Address / Landmark <Text style={styles.requiredAsterisk}>*</Text></Text>
             <TextInput
               style={styles.textInput}
               placeholder="e.g. 123 Mabini Street, Barangay San Jose"
@@ -115,28 +113,14 @@ export default function AddAddressScreen() {
 
           {/* City / Province / ZIP Code */}
           <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>City / Province / ZIP Code <Text style={styles.requiredAsterisk}>*</Text></Text>
+            <Text style={styles.fieldLabel}>City, Province, ZIP Code <Text style={styles.requiredAsterisk}>*</Text></Text>
             <TextInput
               style={styles.textInput}
-              placeholder="e.g. Quezon City, Metro Manila 1100"
+              placeholder="e.g. Quezon City, Metro Manila, 1100"
               placeholderTextColor="#8E8E93"
               value={addressLine2}
               onChangeText={setAddressLine2}
             />
-          </View>
-
-          {/* Label */}
-          <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>Label <Text style={styles.requiredAsterisk}>*</Text></Text>
-            <TouchableOpacity 
-              style={styles.dropdownButton} 
-              onPress={() => setLabelModalVisible(true)}
-            >
-              <Text style={[styles.dropdownText, !label && styles.placeholderText]}>
-                {label || 'Select a label (Home, Office, Other)'}
-              </Text>
-              <Ionicons name="chevron-down" size={20} color="#8E8E93" />
-            </TouchableOpacity>
           </View>
 
           <View style={{ height: 100 }} />
@@ -145,28 +129,18 @@ export default function AddAddressScreen() {
 
       {/* Bottom Action */}
       <View style={styles.bottomContainer}>
-        <TouchableOpacity style={styles.saveButton} onPress={handleSaveAddress}>
-          <Text style={styles.saveButtonText}>Save Address</Text>
+        <TouchableOpacity 
+          style={[styles.saveButton, isSaving && { opacity: 0.7 }]} 
+          onPress={handleSaveAddress}
+          disabled={isSaving}
+        >
+          {isSaving ? (
+             <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.saveButtonText}>Save Address</Text>
+          )}
         </TouchableOpacity>
       </View>
-
-      {/* Label Selection Modal */}
-      <SelectionModal
-        visible={isLabelModalVisible}
-        title="Select Label"
-        data={LABELS}
-        onClose={() => setLabelModalVisible(false)}
-        renderItem={(item: string, index: number) => (
-          <TouchableOpacity 
-            key={index} 
-            style={[styles.modalOption, label === item && styles.modalOptionSelected]}
-            onPress={() => { setLabel(item); setLabelModalVisible(false); }}
-          >
-            <Text style={[styles.modalOptionText, label === item && styles.modalOptionTextSelected]}>{item}</Text>
-            {label === item && <Ionicons name="checkmark-circle" size={24} color="#00B761" />}
-          </TouchableOpacity>
-        )}
-      />
 
     </SafeAreaView>
   );
@@ -223,24 +197,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#0D1B2A',
   },
-  dropdownButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 52,
-  },
-  dropdownText: {
-    fontSize: 15,
-    color: '#0D1B2A',
-  },
-  placeholderText: {
-    color: '#8E8E93',
-  },
   bottomContainer: {
     position: 'absolute',
     bottom: 0,
@@ -276,55 +232,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#FFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
-    maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-    marginBottom: 10,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0D1B2A',
-  },
-  modalCloseButton: {
-    padding: 4,
-  },
-  modalOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F8F9FA',
-  },
-  modalOptionSelected: {
-    backgroundColor: '#F8FBF9',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-  },
-  modalOptionText: {
-    fontSize: 16,
-    color: '#0D1B2A',
-  },
-  modalOptionTextSelected: {
-    fontWeight: '700',
-    color: '#00B761',
-  },
 });
+

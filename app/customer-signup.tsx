@@ -8,11 +8,14 @@ import {
   TextInput,
   ScrollView,
   Dimensions,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { registerCustomerAccount } from '@/lib/customer-session';
+import { getErrorMessage } from '@/lib/error-handling';
 
 const { width } = Dimensions.get('window');
 
@@ -20,6 +23,7 @@ export default function CustomerSignupScreen() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [formData, setFormData] = useState({
     fullName: '',
@@ -70,7 +74,7 @@ export default function CustomerSignupScreen() {
       <StatusBar style="dark" />
       <View style={styles.header}>
         <TouchableOpacity 
-          onPress={() => router.back()} 
+          onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} 
           style={styles.backButton}
           activeOpacity={0.7}
         >
@@ -223,23 +227,33 @@ export default function CustomerSignupScreen() {
       <View style={styles.footer}>
         <TouchableOpacity 
           style={[styles.nextButton, !isSignupReady && styles.nextButtonDisabled]}
-          onPress={() => {
+          onPress={async () => {
             if (!isSignupReady) return;
+            setIsSubmitting(true);
+            try {
+              await registerCustomerAccount({
+                fullName: formData.fullName,
+                email: formData.email,
+                phone: formData.phone,
+                referralCode: formData.referralCode,
+                password: formData.password,
+              });
 
-            registerCustomerAccount({
-              fullName: formData.fullName,
-              email: formData.email,
-              phone: formData.phone,
-              referralCode: formData.referralCode,
-              password: formData.password,
-            });
-
-            router.replace('/customer-onboarding-address' as any);
+              router.replace('/customer-onboarding-address' as any);
+            } catch (err: any) {
+              Alert.alert('Signup Failed', getErrorMessage(err, 'Unable to create your account right now.'));
+            } finally {
+              setIsSubmitting(false);
+            }
           }}
           activeOpacity={0.8}
-          disabled={!isSignupReady}
+          disabled={!isSignupReady || isSubmitting}
         >
-          <Text style={styles.nextButtonText}>Continue</Text>
+          {isSubmitting ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.nextButtonText}>Continue</Text>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -479,3 +493,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+

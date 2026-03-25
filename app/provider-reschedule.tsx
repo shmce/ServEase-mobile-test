@@ -40,7 +40,7 @@ export default function ProviderRescheduleScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Reschedule Request</Text>
@@ -188,7 +188,7 @@ export default function ProviderRescheduleScreen() {
             onPress={() => {
               Keyboard.dismiss();
               Alert.alert('Success', 'Reschedule request sent to customer.');
-              router.back();
+              if (router.canGoBack?.()) router.back(); else router.replace('/' as any);
             }}
           >
             <Text style={styles.submitButtonText}>Send Reschedule Request</Text>
@@ -437,3 +437,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+

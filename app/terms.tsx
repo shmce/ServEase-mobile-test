@@ -19,7 +19,7 @@ export default function TermsScreen() {
       <StatusBar style="dark" />
       <View style={styles.header}>
         <TouchableOpacity 
-          onPress={() => router.back()} 
+          onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} 
           style={styles.backButton}
           activeOpacity={0.7}
         >
@@ -203,3 +203,4 @@ const styles = StyleSheet.create({
     height: 40,
   },
 });
+

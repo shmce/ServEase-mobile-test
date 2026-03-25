@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { supabase } from '../../lib/supabase';
 
 const MenuItem = ({ icon, label, onPress, isDestructive }: any) => (
   <TouchableOpacity 
@@ -22,9 +23,9 @@ const MenuItem = ({ icon, label, onPress, isDestructive }: any) => (
 export default function MoreScreen() {
   const router = useRouter();
 
-  const handleLogout = () => {
-    // Basic logout redirection
-    router.replace('/provider-login' as any);
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.replace('/login' as any);
   };
 
   return (

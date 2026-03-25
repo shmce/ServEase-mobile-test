@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -13,10 +13,15 @@ import {
   Platform, 
   Modal, 
   Pressable, 
-  FlatList 
+  FlatList,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
+import { cancelCustomerBooking, getBookingById } from '@/services/bookingService';
+import { getErrorMessage } from '@/lib/error-handling';
 
 const { width, height } = Dimensions.get('window');
 
@@ -33,24 +38,106 @@ const CANCELLATION_REASONS = [
 
 export default function CustomerCancelBookingScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  const { user } = useAuth();
+  const { id, booking: bookingParam } = useLocalSearchParams<{ id?: string; booking?: string }>();
   const [reason, setReason] = useState('');
   const [explanation, setExplanation] = useState('');
   const [showReasonsModal, setShowReasonsModal] = useState(false);
-  
-  // Mock data for the booking being cancelled
-  const booking = {
-    service: 'House Cleaning',
-    provider: 'Maria Santos',
-    date: 'March 14, 2026',
-    time: '10:00 AM',
-    address: '123 Rizal St, Makati City',
-    amount: '1,500.00'
-  };
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [bookingData, setBookingData] = useState<any | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function hydrateBooking() {
+      if (bookingParam) {
+        try {
+          const parsed = JSON.parse(bookingParam);
+          if (mounted) setBookingData(parsed);
+          return;
+        } catch {
+          // Continue with DB fallback
+        }
+      }
+
+      if (!id) return;
+      setIsLoading(true);
+      try {
+        const row = await getBookingById(String(id));
+        if (row && mounted) {
+          const scheduled = row.scheduled_at ? new Date(row.scheduled_at) : null;
+          setBookingData({
+            id: row.id,
+            service: row.service_name || 'Service Booking',
+            provider: row.provider_name || 'Service Provider',
+            date: scheduled ? scheduled.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A',
+            time: scheduled ? scheduled.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'N/A',
+            address: row.service_address || 'No address provided',
+            amount: String(row.total_amount || '0.00'),
+          });
+        }
+      } catch (err) {
+        if (mounted) {
+          Alert.alert('Load Failed', getErrorMessage(err, 'Could not load booking details.'));
+        }
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    }
+
+    hydrateBooking();
+    return () => {
+      mounted = false;
+    };
+  }, [bookingParam, id]);
+
+  const booking = useMemo(
+    () =>
+      bookingData || {
+        id: id || '',
+        service: 'Service Booking',
+        provider: 'Service Provider',
+        date: 'N/A',
+        time: 'N/A',
+        address: 'No address provided',
+        amount: '0.00',
+      },
+    [bookingData, id]
+  );
+
+  const providerDisplayName =
+    typeof booking?.provider === 'string'
+      ? booking.provider
+      : booking?.provider?.name || 'Service Provider';
 
   const handleSelectReason = (selectedReason: string) => {
     setReason(selectedReason);
     setShowReasonsModal(false);
+  };
+
+  const handleCancelBooking = async () => {
+    if (!reason || !explanation) return;
+    if (!user) {
+      Alert.alert('Login Required', 'Please sign in first.');
+      return;
+    }
+    if (!booking?.id) {
+      Alert.alert('Missing Booking', 'Could not determine which booking to cancel.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await cancelCustomerBooking(String(booking.id), user.id, reason, explanation);
+      Alert.alert('Booking Cancelled', 'Your booking has been cancelled successfully.', [
+        { text: 'OK', onPress: () => router.replace('/(tabs)/bookings' as any) },
+      ]);
+    } catch (err) {
+      Alert.alert('Cancellation Failed', getErrorMessage(err, 'Could not cancel this booking.'));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -59,7 +146,7 @@ export default function CustomerCancelBookingScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Cancel Booking</Text>
@@ -71,11 +158,15 @@ export default function CustomerCancelBookingScreen() {
       >
         <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
           
+          {isLoading ? (
+            <ActivityIndicator size="large" color="#00B761" style={{ marginTop: 32 }} />
+          ) : null}
+
           {/* Booking Details Card */}
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Booking Summary</Text>
             <Text style={styles.serviceName}>{booking.service}</Text>
-            <Text style={styles.providerName}>Provider: {booking.provider}</Text>
+            <Text style={styles.providerName}>Provider: {providerDisplayName}</Text>
             
             <View style={styles.detailRow}>
               <Ionicons name="calendar-outline" size={16} color="#00C853" />
@@ -146,12 +237,12 @@ export default function CustomerCancelBookingScreen() {
       {/* Footer Button */}
       <View style={styles.footer}>
         <TouchableOpacity 
-          style={[styles.confirmButton, (!reason || !explanation) && styles.confirmButtonDisabled]}
-          onPress={() => router.replace('/(tabs)/bookings' as any)}
-          disabled={!reason || !explanation}
+          style={[styles.confirmButton, (!reason || !explanation || isSubmitting) && styles.confirmButtonDisabled]}
+          onPress={handleCancelBooking}
+          disabled={!reason || !explanation || isSubmitting}
         >
           <Ionicons name="close-circle-outline" size={24} color="#FFF" style={styles.buttonIcon} />
-          <Text style={styles.confirmButtonText}>Cancel Appointment</Text>
+          <Text style={styles.confirmButtonText}>{isSubmitting ? 'Cancelling...' : 'Cancel Appointment'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -432,3 +523,4 @@ const styles = StyleSheet.create({
     height: 40,
   },
 });
+

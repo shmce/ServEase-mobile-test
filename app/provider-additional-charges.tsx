@@ -39,7 +39,7 @@ export default function ProviderAdditionalChargesScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Additional Charges</Text>
@@ -409,3 +409,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+

@@ -7,23 +7,29 @@ import {
   SafeAreaView,
   TextInput,
   ScrollView,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import { supabase } from '@/lib/supabase';
+import { getErrorMessage } from '@/lib/error-handling';
 
 export default function ProviderLoginScreen() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isLoginReady = email.trim().length > 0 && password.trim().length > 0;
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <View style={styles.header}>
         <TouchableOpacity 
-          onPress={() => router.back()} 
+          onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} 
           style={styles.backButton}
           activeOpacity={0.7}
         >
@@ -84,12 +90,71 @@ export default function ProviderLoginScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={[styles.loginButton, { backgroundColor: (email && password) ? '#00B761' : '#A5E6BA' }]}
-              onPress={() => router.replace('/(provider-tabs)' as any)}
+              style={[styles.loginButton, { backgroundColor: isLoginReady ? '#00B761' : '#A5E6BA' }]}
+              onPress={async () => {
+                if (!isLoginReady) return;
+                setIsSubmitting(true);
+                try {
+                  const normalizedEmail = email.trim().toLowerCase();
+                  const { data, error } = await supabase.auth.signInWithPassword({
+                    email: normalizedEmail,
+                    password: password.trim(),
+                  });
+
+                  if (error) {
+                    const normalizedError = getErrorMessage(error, 'Invalid email or password.');
+                    if (normalizedError.toLowerCase().includes('email not confirmed')) {
+                      Alert.alert('Email Not Confirmed', 'Please verify your email address first, then log in.');
+                      return;
+                    }
+                    throw error;
+                  }
+
+                  const roleRaw =
+                    data.user?.user_metadata?.role ??
+                    data.user?.app_metadata?.role ??
+                    data.user?.user_metadata?.user_type ??
+                    data.user?.app_metadata?.user_type ??
+                    '';
+                  let resolvedRole = String(roleRaw).toLowerCase();
+
+                  if (!resolvedRole && data.user?.id) {
+                    const { data: roleRow } = await supabase
+                      .from('users')
+                      .select('role')
+                      .eq('id', data.user.id)
+                      .single();
+                    resolvedRole = String(roleRow?.role || '').toLowerCase();
+                  }
+
+                  if (!resolvedRole && data.user?.id) {
+                    const { data: providerRow } = await supabase
+                      .from('provider_profiles')
+                      .select('user_id')
+                      .eq('user_id', data.user.id)
+                      .limit(1)
+                      .maybeSingle();
+                    if (providerRow) {
+                      resolvedRole = 'provider';
+                    }
+                  }
+
+                  const isProvider = resolvedRole.includes('provider');
+                  router.replace((isProvider ? '/(provider-tabs)' : '/(tabs)') as any);
+                } catch (err: any) {
+                  Alert.alert('Login Failed', getErrorMessage(err, 'Invalid email or password.'));
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }}
               activeOpacity={0.8}
-              disabled={!email || !password}
+              disabled={!isLoginReady || isSubmitting}
             >
-              <Text style={styles.loginButtonText}>Login</Text>
+              {isSubmitting ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.loginButtonText}>Login</Text>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -217,3 +282,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+

@@ -49,7 +49,7 @@ export default function ProviderNotificationPreferencesScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notification Preferences</Text>
@@ -101,7 +101,7 @@ export default function ProviderNotificationPreferencesScreen() {
 
         <TouchableOpacity 
           style={styles.saveButton}
-          onPress={() => router.back()}
+          onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}
         >
           <Text style={styles.saveButtonText}>Save Preferences</Text>
         </TouchableOpacity>
@@ -228,3 +228,4 @@ const styles = StyleSheet.create({
     height: 40,
   },
 });
+

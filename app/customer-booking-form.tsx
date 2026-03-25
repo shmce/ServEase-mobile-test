@@ -15,14 +15,17 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
+import { getUserAddresses } from '@/services/addressService';
+import { createBooking } from '@/services/bookingService';
+import { getErrorMessage } from '@/lib/error-handling';
+import { supabase } from '@/lib/supabase';
 
-const SERVICES = [
-  'Plumbing Repair',
-  'Electrical Setup',
-  'Home Cleaning',
-  'Carpentry',
-  'Aircon Servicing'
-];
+type ServiceOption = {
+  id: string;
+  title: string;
+  price: number;
+};
 
 const INITIAL_ADDRESSES = [
   {
@@ -111,6 +114,7 @@ function buildBookableDays(monthDate: Date) {
 
 export default function CustomerBookingFormScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const params = useLocalSearchParams<{
     newAddress?: string;
     serviceName?: string;
@@ -122,11 +126,17 @@ export default function CustomerBookingFormScreen() {
 
   // Form State
   const [service, setService] = useState(params.serviceName || '');
+  const [serviceId, setServiceId] = useState('');
   const [date, setDate] = useState(params.date || '');
+  const [dateKey, setDateKey] = useState('');
   const [time, setTime] = useState(params.time || '');
   const [address, setAddress] = useState<any>(null);
   const [notes, setNotes] = useState('');
+  const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
+  const [isServicesLoading, setIsServicesLoading] = useState(false);
+  const [servicesLoadError, setServicesLoadError] = useState('');
   const [savedAddresses, setSavedAddresses] = useState(INITIAL_ADDRESSES);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
@@ -156,6 +166,85 @@ export default function CustomerBookingFormScreen() {
       router.setParams({ newAddress: '' });
     }
   }, [params.newAddress, router]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadServiceOptions() {
+      setIsServicesLoading(true);
+      setServicesLoadError('');
+      try {
+        let query = supabase.from('provider_services').select('id,title,price').order('title', { ascending: true });
+
+        if (params.providerId) {
+          query = query.eq('provider_id', params.providerId);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        if (!active) return;
+
+        const rows: ServiceOption[] = (data || []).map((row: any) => ({
+          id: String(row.id),
+          title: String(row.title || ''),
+          price: Number(row.price || 0),
+        }));
+
+        setServiceOptions(rows);
+
+        if (rows.length > 0 && !serviceId) {
+          const matched = params.serviceName
+            ? rows.find((r) => r.title.toLowerCase() === String(params.serviceName).toLowerCase())
+            : null;
+          const picked = matched || rows[0];
+          setServiceId(picked.id);
+          setService(picked.title);
+        }
+      } catch (error) {
+        if (active) {
+          setServiceOptions([]);
+          setServicesLoadError(getErrorMessage(error, 'Unable to load services for this provider.'));
+          console.error('Failed to load service options', error);
+        }
+      } finally {
+        if (active) setIsServicesLoading(false);
+      }
+    }
+
+    loadServiceOptions();
+    return () => {
+      active = false;
+    };
+  }, [params.providerId, params.serviceName, serviceId]);
+
+  useEffect(() => {
+    async function loadAddresses() {
+      if (!user) return;
+      try {
+        const dbAddresses = await getUserAddresses(user.id);
+        if (!dbAddresses?.length) return;
+
+        const formatted = dbAddresses.map((item: any) => {
+          const line2 = [item.city, item.province, item.zip_code || item.postal_code].filter(Boolean).join(', ');
+          return {
+            id: item.id,
+            type: 'Home',
+            fullAddress: line2 ? `${item.street_address || ''}, ${line2}` : (item.street_address || ''),
+          };
+        });
+
+        setSavedAddresses(formatted);
+        if (!address && formatted.length > 0) {
+          setAddress(formatted[0]);
+        }
+      } catch (error) {
+        console.error('Failed to load customer addresses', error);
+      }
+    }
+
+    loadAddresses();
+  }, [address, user]);
   
   // Modal States
   const [isServiceModalVisible, setServiceModalVisible] = useState(false);
@@ -170,19 +259,58 @@ export default function CustomerBookingFormScreen() {
   const today = new Date();
   const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const isCurrentMonth = isSameMonth(calendarMonth, currentMonth);
+  const selectedService = serviceOptions.find((item) => item.id === serviceId);
 
-  const handleConfirmBooking = () => {
+  const handleConfirmBooking = async () => {
     // Validate
     if (!service || !date || !time || !address) {
       Alert.alert('Missing Fields', 'Please fill in all required fields (Service, Date, Time, and Address).');
       return;
     }
+    if (!dateKey) {
+      Alert.alert('Date Required', 'Please pick a date from the calendar.');
+      return;
+    }
+    if (!serviceId) {
+      Alert.alert('Service Required', 'Please select a valid service before confirming.');
+      return;
+    }
+    if (serviceOptions.length === 0) {
+      Alert.alert('No Services Available', 'This provider has no active services yet. Please try another provider.');
+      return;
+    }
+    if (!user) {
+      Alert.alert('Login Required', 'Please log in before creating a booking.');
+      return;
+    }
 
-    // Submit and navigate
-    router.push({
-      pathname: '/customer-booking-details',
-      params: { id: 'BK-2026-03-012', addressId: address.id }
-    });
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        customer_id: user.id,
+        provider_id: params.providerId || null,
+        service_id: serviceId || null,
+        service_name: service,
+        scheduled_date_key: dateKey,
+        scheduled_date: date,
+        scheduled_time: time,
+        service_address: address.fullAddress,
+        total_amount: selectedService?.price || 0,
+      };
+
+      const created = await createBooking(payload);
+      router.push({
+        pathname: '/customer-booking-details',
+        params: { id: created?.id || 'new-booking', addressId: address.id },
+      });
+    } catch (error: any) {
+      Alert.alert(
+        'Booking Save Failed',
+        error?.message || getErrorMessage(error, 'Could not save booking to server. Please check your database columns and try again.')
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const SelectionModal = ({ 
@@ -217,7 +345,7 @@ export default function CustomerBookingFormScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Book a Service</Text>
@@ -247,10 +375,14 @@ export default function CustomerBookingFormScreen() {
               onPress={() => setServiceModalVisible(true)}
             >
               <Text style={[styles.dropdownText, !service && styles.placeholderText]}>
-                {service || 'Select a service'}
+                {isServicesLoading ? 'Loading services...' : service || 'Select a service'}
               </Text>
               <Ionicons name="chevron-down" size={20} color="#8E8E93" />
             </TouchableOpacity>
+            {servicesLoadError ? <Text style={styles.fieldError}>{servicesLoadError}</Text> : null}
+            {!isServicesLoading && !servicesLoadError && serviceOptions.length === 0 ? (
+              <Text style={styles.fieldError}>No services are visible. Check provider services permissions/policies.</Text>
+            ) : null}
           </View>
 
           {/* Date */}
@@ -314,7 +446,10 @@ export default function CustomerBookingFormScreen() {
                           isSelected && styles.calendarDateButtonSelected,
                           !cell.isAvailable && styles.calendarDateButtonDisabled,
                         ]}
-                        onPress={() => setDate(formattedDate)}
+                        onPress={() => {
+                          setDate(formattedDate);
+                          setDateKey(cell.key);
+                        }}
                         disabled={!cell.isAvailable}
                       >
                         <Text
@@ -402,10 +537,14 @@ export default function CustomerBookingFormScreen() {
       <View style={styles.bottomContainer}>
         <View style={styles.priceContainer}>
           <Text style={styles.priceLabel}>Estimated Total (Cash Basis)</Text>
-          <Text style={styles.priceValue}>₱1,500.00</Text>
+          <Text style={styles.priceValue}>P{Number(selectedService?.price || 0).toFixed(2)}</Text>
         </View>
-        <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmBooking}>
-          <Text style={styles.confirmButtonText}>Confirm Booking</Text>
+        <TouchableOpacity
+          style={[styles.confirmButton, isSubmitting && { opacity: 0.7 }]}
+          onPress={handleConfirmBooking}
+          disabled={isSubmitting}
+        >
+          <Text style={styles.confirmButtonText}>{isSubmitting ? 'Saving...' : 'Confirm Booking'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -413,16 +552,22 @@ export default function CustomerBookingFormScreen() {
       <SelectionModal
         visible={isServiceModalVisible}
         title="Select Service"
-        data={SERVICES}
+        data={serviceOptions}
         onClose={() => setServiceModalVisible(false)}
-        renderItem={(item: string, index: number) => (
+        renderItem={(item: ServiceOption, index: number) => (
           <TouchableOpacity 
             key={index} 
-            style={[styles.modalOption, service === item && styles.modalOptionSelected]}
-            onPress={() => { setService(item); setServiceModalVisible(false); }}
+            style={[styles.modalOption, serviceId === item.id && styles.modalOptionSelected]}
+            onPress={() => {
+              setServiceId(item.id);
+              setService(item.title);
+              setServiceModalVisible(false);
+            }}
           >
-            <Text style={[styles.modalOptionText, service === item && styles.modalOptionTextSelected]}>{item}</Text>
-            {service === item && <Ionicons name="checkmark-circle" size={24} color="#00B761" />}
+            <Text style={[styles.modalOptionText, serviceId === item.id && styles.modalOptionTextSelected]}>
+              {item.title} (P{Number(item.price || 0).toFixed(2)})
+            </Text>
+            {serviceId === item.id && <Ionicons name="checkmark-circle" size={24} color="#00B761" />}
           </TouchableOpacity>
         )}
       />
@@ -660,6 +805,11 @@ const styles = StyleSheet.create({
   placeholderText: {
     color: '#8E8E93',
   },
+  fieldError: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#C62828',
+  },
   inputIcon: {
     marginRight: 8,
   },
@@ -862,3 +1012,4 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 });
+

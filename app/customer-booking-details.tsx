@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -8,18 +8,23 @@ import {
   SafeAreaView, 
   StatusBar, 
   Image, 
-  Dimensions 
+  Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { supabase } from '@/lib/supabase';
+import { getErrorMessage } from '@/lib/error-handling';
+import { getPaymentByBookingId } from '@/services/paymentService';
 
 const { width } = Dimensions.get('window');
 
 const BookingDetailsScreen = () => {
   const router = useRouter();
-  const params = useLocalSearchParams<{ booking?: string }>();
+  const params = useLocalSearchParams<{ booking?: string; id?: string }>();
+  const [isLoading, setIsLoading] = useState(false);
 
-  const booking = useMemo(() => {
+  const initialBooking = useMemo(() => {
     if (params.booking) {
       try {
         return JSON.parse(params.booking);
@@ -50,8 +55,112 @@ const BookingDetailsScreen = () => {
     };
   }, [params.booking]);
 
-  const isCompleted = booking.status === 'Completed';
-  const isCancelled = booking.status === 'Cancelled';
+  const [booking, setBooking] = useState<any>(initialBooking);
+  const provider = booking?.provider || {};
+  const [payment, setPayment] = useState<any>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadLiveBooking() {
+      const bookingId = String(params.id || initialBooking?.id || '').trim();
+      if (!bookingId || bookingId.startsWith('BK-')) return;
+
+      setIsLoading(true);
+      try {
+        const { data: bookingRow, error: bookingError } = await supabase
+          .from('bookings')
+          .select('id,booking_reference,status,service_address,scheduled_at,total_amount,provider_id,service_id')
+          .eq('id', bookingId)
+          .maybeSingle();
+        if (bookingError) throw bookingError;
+        if (!bookingRow) return;
+
+        const [providerRes, profileRes, serviceRes] = await Promise.all([
+          supabase.from('users').select('id,full_name,is_verified').eq('id', bookingRow.provider_id).maybeSingle(),
+          supabase
+            .from('provider_profiles')
+            .select('user_id,business_name,average_rating,verification_status')
+            .eq('user_id', bookingRow.provider_id)
+            .maybeSingle(),
+          supabase.from('provider_services').select('id,title').eq('id', bookingRow.service_id).maybeSingle(),
+        ]);
+
+        if (providerRes.error) throw providerRes.error;
+        if (profileRes.error) throw profileRes.error;
+        if (serviceRes.error) throw serviceRes.error;
+
+        const scheduled = bookingRow.scheduled_at ? new Date(bookingRow.scheduled_at) : null;
+        const now = new Date();
+        const diffMs = scheduled ? Math.max(0, scheduled.getTime() - now.getTime()) : 0;
+        const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+        const statusRaw = String(bookingRow.status || 'Pending');
+        const businessName = String(profileRes.data?.business_name || '').trim();
+        const providerName = String(providerRes.data?.full_name || 'Service Provider');
+        const serviceTitle = String(serviceRes.data?.title || initialBooking?.service || 'Service Booking');
+
+        const normalized = {
+          id: bookingRow.booking_reference || bookingRow.id,
+          rawId: bookingRow.id,
+          service: serviceTitle,
+          address: bookingRow.service_address || 'N/A',
+          date: scheduled
+            ? scheduled.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+            : initialBooking?.date || 'N/A',
+          year: scheduled ? String(scheduled.getFullYear()) : initialBooking?.year || '',
+          time: scheduled
+            ? scheduled.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+            : initialBooking?.time || 'N/A',
+          status: statusRaw,
+          totalAmount: Number(bookingRow.total_amount || 0).toFixed(2),
+          countdown: {
+            days: String(days),
+            hours: String(hours),
+            mins: String(mins),
+          },
+          provider: {
+            name: providerName,
+            rating: Number(profileRes.data?.average_rating || 0).toFixed(1),
+            specialty: businessName || serviceTitle,
+            avatar: `https://i.pravatar.cc/150?u=${bookingRow.provider_id}`,
+            isVerified: Boolean(providerRes.data?.is_verified) || String(profileRes.data?.verification_status || '').toLowerCase().includes('verified'),
+          },
+        };
+
+        if (active) {
+          setBooking((prev: any) => ({ ...prev, ...normalized }));
+          try {
+            const pay = await getPaymentByBookingId(String(bookingRow.id));
+            if (active) setPayment(pay);
+          } catch {
+            if (active) setPayment(null);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load booking details:', error);
+        if (active) {
+          setBooking((prev: any) => ({
+            ...prev,
+            loadError: getErrorMessage(error, 'Failed to load live booking details.'),
+          }));
+        }
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    }
+
+    loadLiveBooking();
+    return () => {
+      active = false;
+    };
+  }, [initialBooking?.id, initialBooking?.service, initialBooking?.time, initialBooking?.year, params.id]);
+
+  const statusLower = String(booking?.status || '').toLowerCase();
+  const isCompleted = statusLower.includes('complete') || statusLower === 'done';
+  const isCancelled = statusLower.includes('cancel');
   const isUpcoming = !isCompleted && !isCancelled;
   const canReviewBooking = isCompleted;
 
@@ -62,7 +171,7 @@ const BookingDetailsScreen = () => {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity 
-          onPress={() => router.back()} 
+          onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} 
           style={styles.closeButton}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
@@ -76,6 +185,13 @@ const BookingDetailsScreen = () => {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        {isLoading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="small" color="#00C853" />
+            <Text style={styles.loadingText}>Refreshing booking details from database...</Text>
+          </View>
+        ) : null}
+        {booking?.loadError ? <Text style={styles.errorText}>{String(booking.loadError)}</Text> : null}
         
         {/* Status and Service Title */}
         <View style={styles.serviceInfoSection}>
@@ -160,15 +276,15 @@ const BookingDetailsScreen = () => {
         <View style={styles.providerCard}>
           <View style={styles.providerHeader}>
             <View>
-              <Image source={{ uri: booking.provider.avatar }} style={styles.providerAvatar} />
+              <Image source={{ uri: provider.avatar || 'https://i.pravatar.cc/150?u=provider' }} style={styles.providerAvatar} />
               <View style={styles.verifiedBadge}>
                 <Ionicons name="checkmark-sharp" size={10} color="#fff" />
               </View>
             </View>
             <View style={styles.providerMainInfo}>
               <View style={styles.providerNameRow}>
-                <Text style={styles.providerName}>{booking.provider.name}</Text>
-                {booking.provider.isVerified && (
+                <Text style={styles.providerName}>{provider.name || 'Service Provider'}</Text>
+                {provider.isVerified && (
                   <View style={styles.verifiedTag}>
                     <Ionicons name="shield-checkmark" size={12} color="#00C853" />
                     <Text style={styles.verifiedText}>Verified</Text>
@@ -177,8 +293,8 @@ const BookingDetailsScreen = () => {
               </View>
               <View style={styles.providerRatingRow}>
                 <Ionicons name="star" size={14} color="#FFA000" />
-                <Text style={styles.providerRating}>{booking.provider.rating}</Text>
-                <Text style={styles.providerSpecialty}> • {booking.provider.specialty}</Text>
+                <Text style={styles.providerRating}>{provider.rating ?? '0.0'}</Text>
+                <Text style={styles.providerSpecialty}> • {provider.specialty || booking.service}</Text>
               </View>
             </View>
           </View>
@@ -216,13 +332,22 @@ const BookingDetailsScreen = () => {
             </View>
             <View>
               <Text style={styles.detailLabel}>Payment Method</Text>
-              <Text style={styles.detailValue}>Cash (Pay after service)</Text>
+              <Text style={styles.detailValue}>{String(payment?.method || 'Cash (Pay after service)')}</Text>
+            </View>
+          </View>
+          <View style={styles.detailItem}>
+            <View style={styles.detailIconContainer}>
+              <Ionicons name="card-outline" size={20} color="#666" />
+            </View>
+            <View>
+              <Text style={styles.detailLabel}>Payment Status</Text>
+              <Text style={styles.detailValue}>{String(payment?.status || 'not_recorded')}</Text>
             </View>
           </View>
           
           <View style={styles.priceContainer}>
             <Text style={styles.totalLabel}>Total Amount (Cash)</Text>
-            <Text style={styles.totalValue}>₱{booking.totalAmount}</Text>
+            <Text style={styles.totalValue}>P{booking.totalAmount}</Text>
           </View>
         </View>
 
@@ -257,7 +382,15 @@ const BookingDetailsScreen = () => {
             <>
               <TouchableOpacity 
                 style={styles.cancelBookingButton}
-                onPress={() => router.push('/customer-cancel-booking' as any)}
+                onPress={() =>
+                  router.push({
+                    pathname: '/customer-cancel-booking',
+                    params: {
+                      id: String(booking.rawId || booking.id || ''),
+                      booking: JSON.stringify(booking),
+                    },
+                  } as any)
+                }
               >
                 <Ionicons name="close" size={20} color="#FF5252" />
                 <Text style={styles.cancelBookingText}>Cancel Booking</Text>
@@ -310,6 +443,27 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 25,
+  },
+  loadingWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  loadingText: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  errorText: {
+    color: '#B91C1C',
+    fontSize: 12,
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 8,
   },
   serviceInfoSection: {
     alignItems: 'center',
@@ -679,3 +833,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+

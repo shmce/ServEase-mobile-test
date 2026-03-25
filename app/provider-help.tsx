@@ -97,7 +97,7 @@ export default function ProviderHelpScreen() {
       {/* Green Header Section */}
       <View style={styles.greenHeader}>
         <View style={styles.headerTop}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Help Center</Text>
@@ -391,3 +391,4 @@ const styles = StyleSheet.create({
     height: 40,
   },
 });
+

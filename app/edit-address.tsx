@@ -9,62 +9,71 @@ import {
   StatusBar, 
   TextInput,
   Alert,
-  Modal,
   Platform,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-
-const LABELS = ['Home', 'Office', 'Other'];
+import { useAuth } from '@/hooks/useAuth';
+import { updateAddress, deleteAddress } from '@/services/addressService';
+import { getErrorMessage } from '@/lib/error-handling';
 
 export default function EditAddressScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { user } = useAuth();
 
   // Form State
   const [addressLine1, setAddressLine1] = useState('');
   const [addressLine2, setAddressLine2] = useState('');
-  const [label, setLabel] = useState('');
   const [addressId, setAddressId] = useState('');
-  const [isDefault, setIsDefault] = useState(false);
-  
-  // Modal State
-  const [isLabelModalVisible, setLabelModalVisible] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (params.address) {
       try {
         const parsed = JSON.parse(params.address as string);
         setAddressId(parsed.id);
-        setAddressLine1(parsed.addressLine1);
-        setAddressLine2(parsed.addressLine2);
-        setLabel(parsed.type);
-        setIsDefault(parsed.isDefault);
+        setAddressLine1(parsed.street_address || '');
+        const line2 = [parsed.city, parsed.province, parsed.zip_code].filter(Boolean).join(', ');
+        setAddressLine2(line2);
       } catch (e) {
         console.error('Failed to parse address params', e);
       }
     }
   }, [params.address]);
 
-  const handleSaveAddress = () => {
-    if (!addressLine1 || !addressLine2 || !label) {
+  const handleSaveAddress = async () => {
+    if (!addressLine1 || !addressLine2) {
       Alert.alert('Missing Fields', 'Please fill in all required fields.');
       return;
     }
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in.');
+      return;
+    }
 
-    const updatedAddress = {
-      id: addressId,
-      type: label,
-      addressLine1,
-      addressLine2,
-      isDefault
-    };
+    setIsSaving(true);
+    try {
+      const parts = addressLine2.split(',').map(p => p.trim());
+      const city = parts[0] || '';
+      const province = parts[1] || '';
+      const zip_code = parts[2] || '';
 
-    router.push({
-      pathname: '/manage-addresses',
-      params: { updatedAddress: JSON.stringify(updatedAddress) }
-    });
+      await updateAddress(addressId, {
+        street_address: addressLine1,
+        city,
+        province,
+        zip_code
+      });
+
+      if (router.canGoBack?.()) router.back(); else router.replace('/' as any);
+    } catch (error: any) {
+      Alert.alert('Error', getErrorMessage(error, 'Failed to update address.'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDeleteAddress = () => {
@@ -76,52 +85,32 @@ export default function EditAddressScreen() {
         { 
           text: 'Delete', 
           style: 'destructive',
-          onPress: () => {
-            router.push({
-              pathname: '/manage-addresses',
-              params: { deletedAddressId: addressId }
-            });
+          onPress: async () => {
+            setIsSaving(true);
+            try {
+              await deleteAddress(addressId);
+              if (router.canGoBack?.()) router.back(); else router.replace('/' as any);
+            } catch (error: any) {
+              Alert.alert('Error', getErrorMessage(error, 'Failed to delete address.'));
+            } finally {
+              setIsSaving(false);
+            }
           }
         }
       ]
     );
   };
 
-  const SelectionModal = ({ 
-    visible, 
-    title, 
-    data, 
-    onClose, 
-    renderItem 
-  }: any) => (
-    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
-      <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{title}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.modalCloseButton}>
-              <Ionicons name="close" size={24} color="#0D1B2A" />
-            </TouchableOpacity>
-          </View>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {data.map((item: any, index: number) => renderItem(item, index))}
-            <View style={{ height: 30 }} />
-          </ScrollView>
-        </View>
-      </TouchableOpacity>
-    </Modal>
-  );
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit Address</Text>
-        <TouchableOpacity onPress={handleDeleteAddress} style={styles.deleteButtonHeader}>
-           <Ionicons name="trash-outline" size={24} color="#FF3B30" />
+        <TouchableOpacity onPress={handleDeleteAddress} style={styles.deleteButtonHeader} disabled={isSaving}>
+           <Ionicons name="trash-outline" size={24} color={isSaving ? "#999" : "#FF3B30"} />
         </TouchableOpacity>
       </View>
 
@@ -136,7 +125,7 @@ export default function EditAddressScreen() {
         >
           {/* Form Fields */}
           <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>Full Address / Landmark <Text style={styles.requiredAsterisk}>*</Text></Text>
+            <Text style={styles.fieldLabel}>Street Address / Landmark <Text style={styles.requiredAsterisk}>*</Text></Text>
             <TextInput
               style={styles.textInput}
               placeholder="e.g. 123 Mabini Street"
@@ -147,27 +136,14 @@ export default function EditAddressScreen() {
           </View>
 
           <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>City / Province / ZIP Code <Text style={styles.requiredAsterisk}>*</Text></Text>
+            <Text style={styles.fieldLabel}>City, Province, ZIP Code <Text style={styles.requiredAsterisk}>*</Text></Text>
             <TextInput
               style={styles.textInput}
-              placeholder="e.g. Quezon City, 1100"
+              placeholder="e.g. Quezon City, Metro Manila, 1100"
               placeholderTextColor="#8E8E93"
               value={addressLine2}
               onChangeText={setAddressLine2}
             />
-          </View>
-
-          <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>Label <Text style={styles.requiredAsterisk}>*</Text></Text>
-             <TouchableOpacity 
-              style={styles.dropdownButton} 
-              onPress={() => setLabelModalVisible(true)}
-            >
-              <Text style={[styles.dropdownText, !label && styles.placeholderText]}>
-                {label || 'Select a label'}
-              </Text>
-              <Ionicons name="chevron-down" size={20} color="#8E8E93" />
-            </TouchableOpacity>
           </View>
 
           <View style={{ height: 100 }} />
@@ -175,27 +151,18 @@ export default function EditAddressScreen() {
       </KeyboardAvoidingView>
 
       <View style={styles.bottomContainer}>
-        <TouchableOpacity style={styles.saveButton} onPress={handleSaveAddress}>
-          <Text style={styles.saveButtonText}>Save Changes</Text>
+        <TouchableOpacity 
+          style={[styles.saveButton, isSaving && { opacity: 0.7 }]} 
+          onPress={handleSaveAddress}
+          disabled={isSaving}
+        >
+          {isSaving ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.saveButtonText}>Save Changes</Text>
+          )}
         </TouchableOpacity>
       </View>
-
-      <SelectionModal
-        visible={isLabelModalVisible}
-        title="Select Label"
-        data={LABELS}
-        onClose={() => setLabelModalVisible(false)}
-        renderItem={(item: string, index: number) => (
-          <TouchableOpacity 
-            key={index} 
-            style={[styles.modalOption, label === item && styles.modalOptionSelected]}
-            onPress={() => { setLabel(item); setLabelModalVisible(false); }}
-          >
-            <Text style={[styles.modalOptionText, label === item && styles.modalOptionTextSelected]}>{item}</Text>
-            {label === item && <Ionicons name="checkmark-circle" size={24} color="#00B761" />}
-          </TouchableOpacity>
-        )}
-      />
     </SafeAreaView>
   );
 }
@@ -219,13 +186,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 12,
     paddingHorizontal: 16, height: 52, fontSize: 15, color: '#0D1B2A',
   },
-  dropdownButton: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 12,
-    paddingHorizontal: 16, height: 52,
-  },
-  dropdownText: { fontSize: 15, color: '#0D1B2A' },
-  placeholderText: { color: '#8E8E93' },
   bottomContainer: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: '#FFF', paddingHorizontal: 20, paddingTop: 16,
@@ -240,22 +200,5 @@ const styles = StyleSheet.create({
     elevation: 4, width: '100%',
   },
   saveButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: {
-    backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingHorizontal: 20, paddingBottom: Platform.OS === 'ios' ? 34 : 20, maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: '#F0F0F0', marginBottom: 10,
-  },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#0D1B2A' },
-  modalCloseButton: { padding: 4 },
-  modalOption: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F8F9FA',
-  },
-  modalOptionSelected: { backgroundColor: '#F8FBF9', borderRadius: 12, paddingHorizontal: 12 },
-  modalOptionText: { fontSize: 16, color: '#0D1B2A' },
-  modalOptionTextSelected: { fontWeight: '700', color: '#00B761' },
 });
+

@@ -8,18 +8,28 @@ import {
   TextInput,
   ScrollView,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import { supabase } from '@/lib/supabase';
+import { getErrorMessage } from '@/lib/error-handling';
 
 const { width } = Dimensions.get('window');
+const toSlug = (value: string) =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 
 export default function ProviderSignupScreen() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Dropdown states
   const [showPrimaryDropdown, setShowPrimaryDropdown] = useState(false);
@@ -107,6 +117,37 @@ export default function ProviderSignupScreen() {
   });
 
   const [showIdDropdown, setShowIdDropdown] = useState(false);
+
+  const persistProviderProfile = async (userId: string) => {
+    const { error } = await supabase.from('provider_profiles').upsert({
+      user_id: userId,
+      business_name: formData.fullName.trim(),
+    });
+    if (error) throw error;
+  };
+
+  const persistSignupCategories = async () => {
+    const selected = [formData.primaryCategory, formData.subCategory]
+      .map((v) => v.trim())
+      .filter(Boolean);
+
+    if (selected.length === 0) return;
+
+    for (const name of selected) {
+      const slug = toSlug(name);
+      const { error } = await supabase
+        .from('service_categories')
+        .upsert(
+          {
+            name,
+            slug,
+            is_active: true,
+          },
+          { onConflict: 'slug' }
+        );
+      if (error) throw error;
+    }
+  };
 
   useEffect(() => {
     const { password } = formData;
@@ -597,7 +638,7 @@ export default function ProviderSignupScreen() {
         <TouchableOpacity 
           onPress={() => {
             if (step > 1) setStep(step - 1);
-            else router.back();
+            else if (router.canGoBack?.()) router.back(); else router.replace('/' as any);
           }} 
           style={styles.backButton}
           activeOpacity={0.7}
@@ -629,32 +670,103 @@ export default function ProviderSignupScreen() {
         <TouchableOpacity 
           style={[
             styles.nextButton, 
-            (step === 1 && (!formData.fullName || !formData.email || !formData.password)) || 
+            (step === 1 && (
+              !formData.fullName ||
+              !formData.email ||
+              !formData.phone ||
+              !formData.password ||
+              formData.password !== formData.confirmPassword
+            )) || 
             (step === 2 && (!formData.primaryCategory || !formData.subCategory || !formData.experienceLevel)) ||
             (step === 3 && (!formData.streetAddress || !formData.city || !formData.province || !formData.zipCode)) ||
             (step === 4 && (!formData.idType || !formData.idDocument)) ||
-            (step === 5 && formData.otp.some(d => !d))
+            (step === 5 && formData.otp.some(d => !d)) ||
+            isSubmitting
               ? styles.nextButtonDisabled 
               : null
           ]}
-          onPress={() => {
+          onPress={async () => {
             if (step < 5) {
               // Basic validation before moving to next step
-              if (step === 1 && (!formData.fullName || !formData.email || !formData.password)) return;
+              if (
+                step === 1 &&
+                (
+                  !formData.fullName ||
+                  !formData.email ||
+                  !formData.phone ||
+                  !formData.dob ||
+                  !formData.password ||
+                  formData.password !== formData.confirmPassword ||
+                  !passwordCriteria.length ||
+                  !passwordCriteria.uppercase ||
+                  !passwordCriteria.lowercase ||
+                  !passwordCriteria.number
+                )
+              ) {
+                Alert.alert('Invalid Account Details', 'Please complete all required fields and confirm your password correctly.');
+                return;
+              }
               if (step === 2 && (!formData.primaryCategory || !formData.subCategory || !formData.experienceLevel)) return;
               if (step === 3 && (!formData.streetAddress || !formData.city || !formData.province || !formData.zipCode)) return;
               if (step === 4 && (!formData.idType || !formData.idDocument)) return;
               setStep(step + 1);
             } else {
-              // Complete registration logic
-              console.log("Registration Complete", formData);
-              router.replace("/provider-success" as any);
+              if (formData.otp.some(d => !d)) return;
+              setIsSubmitting(true);
+              try {
+                const { data, error } = await supabase.auth.signUp({
+                  email: formData.email.trim().toLowerCase(),
+                  password: formData.password,
+                  options: {
+                    data: {
+                      role: 'provider',
+                      user_type: 'provider',
+                      full_name: formData.fullName.trim(),
+                      phone: formData.phone.trim(),
+                      primary_category: formData.primaryCategory,
+                      sub_category: formData.subCategory,
+                      experience_level: formData.experienceLevel,
+                    },
+                  },
+                });
+
+                if (error) throw error;
+
+                if (data.user?.id) {
+                  const { error: usersError } = await supabase.from('users').upsert({
+                    id: data.user.id,
+                    email: formData.email.trim().toLowerCase(),
+                    full_name: formData.fullName.trim(),
+                    contact_number: formData.phone.trim(),
+                    role: 'provider',
+                  });
+                  if (usersError) throw usersError;
+
+                  await persistProviderProfile(data.user.id);
+                }
+
+                await persistSignupCategories();
+
+                const needsEmailConfirmation = !data.session;
+                Alert.alert(
+                  'Registration Submitted',
+                  needsEmailConfirmation
+                    ? 'Your provider account was created. Check your email and confirm your account before logging in.'
+                    : 'Your provider account was created. Please log in to continue.',
+                  [{ text: 'OK', onPress: () => router.replace('/provider-login' as any) }]
+                );
+              } catch (err: any) {
+                Alert.alert('Signup Failed', getErrorMessage(err, 'Unable to create provider account.'));
+              } finally {
+                setIsSubmitting(false);
+              }
             }
           }}
           activeOpacity={0.8}
+          disabled={isSubmitting}
         >
           <Text style={styles.nextButtonText}>
-            {step === 5 ? "Complete Registration" : "Next Step"}
+            {isSubmitting ? "Please wait..." : step === 5 ? "Complete Registration" : "Next Step"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -1126,3 +1238,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
