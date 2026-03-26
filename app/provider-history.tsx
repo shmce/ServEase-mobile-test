@@ -3,14 +3,33 @@ import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, FlatList, TextI
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
-import { getProviderBookings } from '@/services/providerBookingService';
+import {
+  getPaymentMethodLabel,
+  getPaymentStatusLabel,
+  getProviderPaymentHistory,
+  type ProviderPaymentHistoryItem,
+} from '@/services/paymentService';
 import { getErrorMessage } from '@/lib/error-handling';
+
+const formatCurrency = (amount: number) => `P${amount.toFixed(2)}`;
+const formatDateTime = (value?: string | null) => {
+  if (!value) return 'Recent activity';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Recent activity';
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+};
 
 export default function ProviderHistoryScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [search, setSearch] = useState('');
-  const [rows, setRows] = useState<any[]>([]);
+  const [rows, setRows] = useState<ProviderPaymentHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -26,7 +45,7 @@ export default function ProviderHistoryScreen() {
         setIsLoading(true);
         setError('');
         try {
-          const data = await getProviderBookings(user.id);
+          const data = await getProviderPaymentHistory(user.id);
           if (mounted) setRows(data);
         } catch (err) {
           if (mounted) setError(getErrorMessage(err, 'Failed to load history.'));
@@ -44,13 +63,14 @@ export default function ProviderHistoryScreen() {
   const history = useMemo(() => {
     return rows
       .filter((r) => {
-        const s = String(r.status).toLowerCase();
-        return s.includes('complete') || s.includes('cancel');
-      })
-      .filter((r) => {
         const q = search.trim().toLowerCase();
         if (!q) return true;
-        return r.booking_reference.toLowerCase().includes(q) || r.customer_name.toLowerCase().includes(q) || r.service_title.toLowerCase().includes(q);
+        return (
+          r.booking_reference.toLowerCase().includes(q) ||
+          r.customer_name.toLowerCase().includes(q) ||
+          r.service_title.toLowerCase().includes(q) ||
+          getPaymentMethodLabel(r.method).toLowerCase().includes(q)
+        );
       });
   }, [rows, search]);
 
@@ -79,8 +99,10 @@ export default function ProviderHistoryScreen() {
             <Text style={styles.ref}>{item.booking_reference}</Text>
             <Text style={styles.title}>{item.service_title}</Text>
             <Text style={styles.sub}>{item.customer_name}</Text>
-            <Text style={styles.sub}>P{Number(item.total_amount || 0).toFixed(2)}</Text>
-            <Text style={styles.sub}>Status: {String(item.status)}</Text>
+            <Text style={styles.sub}>Net earnings: {formatCurrency(item.net_earnings)}</Text>
+            <Text style={styles.sub}>Payment: {getPaymentMethodLabel(item.method)}</Text>
+            <Text style={styles.sub}>Status: {getPaymentStatusLabel(item.status)}</Text>
+            <Text style={styles.sub}>{formatDateTime(item.paid_at || item.created_at)}</Text>
           </View>
         )}
         ListEmptyComponent={!isLoading ? <Text style={styles.empty}>No history found.</Text> : null}

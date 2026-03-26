@@ -1,110 +1,415 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, StatusBar, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, StatusBar, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { openPhoneCall } from '@/lib/communication';
+import { useAuth } from '@/hooks/useAuth';
+import { getErrorMessage } from '@/lib/error-handling';
+import {
+  getProviderBookingActionState,
+  type ProviderBookingActionState,
+  getProviderBookingById,
+} from '@/services/providerBookingService';
+import {
+  getChatThread,
+  markChatThreadRead,
+  retryChatMessage,
+  sendChatMessage,
+  subscribeToChatThread,
+  type ChatDeliveryStatus,
+  type ChatMessage,
+  type ChatThread,
+} from '@/services/chatService';
 
-const MOCK_CONVERSATIONS: any = {
-  john: [
-    { id: '1', text: 'Hi! I need help with cleaning my house.', time: '10:30 AM', sender: 'customer' },
-    { id: '2', text: 'Hello! I\'d be happy to help. When would you like to schedule the service?', time: '10:32 AM', sender: 'provider' },
-    { id: '3', text: 'How about tomorrow at 2 PM?', time: '10:35 AM', sender: 'customer' },
-    { id: '4', text: 'That works perfectly! I\'ve confirmed your booking for tomorrow at 2:00 PM.', time: '10:38 AM', sender: 'provider' },
-    { id: '5', text: 'Great! What should I prepare?', time: '10:40 AM', sender: 'customer' },
-    { id: '6', text: 'Just make sure the area is accessible. I\'ll bring all the cleaning supplies.', time: '10:42 AM', sender: 'provider' },
-  ],
-  sarah: [
-    { id: '1', text: 'I need plumbing service ASAP!', time: '8:00 AM', sender: 'customer' },
-    { id: '2', text: 'I can help you today. What\'s the issue?', time: '8:02 AM', sender: 'provider' },
-    { id: '3', text: 'My kitchen sink is leaking badly.', time: '8:05 AM', sender: 'customer' },
-    { id: '4', text: 'I can come by at 4:30 PM today. Does that work?', time: '8:07 AM', sender: 'provider' },
-    { id: '5', text: 'Yes, perfect! See you then.', time: '8:10 AM', sender: 'customer' },
-    { id: '6', text: 'Thank you for the great service!', time: '8:15 PM', sender: 'customer' },
-  ],
-  mike: [
-    { id: '1', text: 'I need electrical work done tomorrow.', time: 'Yesterday', sender: 'customer' },
-    { id: '2', text: 'Sure! What kind of electrical work?', time: 'Yesterday', sender: 'provider' },
-    { id: '3', text: 'Need to install new outlets in my office.', time: 'Yesterday', sender: 'customer' },
-    { id: '4', text: 'I can do that! I\'ll be there at 10 AM tomorrow.', time: 'Yesterday', sender: 'provider' },
-    { id: '5', text: 'Can you bring extra tools?', time: '8:30 AM', sender: 'customer' },
-  ],
-  anna: [
-    { id: '1', text: 'Hi! Can you do carpentry work?', time: '2 days ago', sender: 'customer' },
-    { id: '2', text: 'Yes, I specialize in carpentry. What do you need?', time: '2 days ago', sender: 'provider' },
-    { id: '3', text: 'I need custom shelves built in my bedroom.', time: '2 days ago', sender: 'customer' },
-    { id: '4', text: 'I can do that! When would you like me to start?', time: '2 days ago', sender: 'provider' },
-    { id: '5', text: 'How about tomorrow at 2 PM?', time: '2 days ago', sender: 'customer' },
-    { id: '6', text: 'Perfect! See you tomorrow.', time: '2 days ago', sender: 'provider' },
-  ],
-  pedro: [
-    { id: '1', text: 'I need my house painted.', time: '3 days ago', sender: 'customer' },
-    { id: '2', text: 'I can help with that! How many rooms?', time: '3 days ago', sender: 'provider' },
-    { id: '3', text: '3 bedrooms and the living room.', time: '3 days ago', sender: 'customer' },
-    { id: '4', text: 'Great! I can start on March 15 at 9 AM.', time: '3 days ago', sender: 'provider' },
-    { id: '5', text: 'How much will the materials cost?', time: '2 days ago', sender: 'customer' },
-  ],
+const formatDeliveryStatus = (status: ChatDeliveryStatus) => {
+  if (status === 'failed') return 'Failed';
+  if (status === 'sent') return 'Sent';
+  return 'Delivered';
 };
 
-const ChatBubble = ({ text, time, sender }: any) => (
+const statusToneStyles: Record<
+  ProviderBookingActionState['normalizedStatus'],
+  { container: object; text: object }
+> = {
+  pending: {
+    container: { backgroundColor: '#FEF3C7' },
+    text: { color: '#B45309' },
+  },
+  confirmed: {
+    container: { backgroundColor: '#DCFCE7' },
+    text: { color: '#15803D' },
+  },
+  in_progress: {
+    container: { backgroundColor: '#DBEAFE' },
+    text: { color: '#1D4ED8' },
+  },
+  completed: {
+    container: { backgroundColor: '#EDE9FE' },
+    text: { color: '#6D28D9' },
+  },
+  cancelled: {
+    container: { backgroundColor: '#FEE2E2' },
+    text: { color: '#B91C1C' },
+  },
+};
+
+const ChatBubble = ({
+  text,
+  time,
+  sender,
+  deliveryStatus,
+  onRetry,
+}: {
+  text: string;
+  time: string;
+  sender: 'customer' | 'provider';
+  deliveryStatus: ChatDeliveryStatus;
+  onRetry?: () => void;
+}) => (
   <View style={[styles.bubbleContainer, sender === 'provider' ? styles.providerBubbleContainer : styles.customerBubbleContainer]}>
-    <View style={[styles.bubble, sender === 'provider' ? styles.providerBubble : styles.customerBubble]}>
+    <TouchableOpacity
+      activeOpacity={sender === 'provider' && deliveryStatus === 'failed' ? 0.75 : 1}
+      disabled={!(sender === 'provider' && deliveryStatus === 'failed')}
+      onPress={onRetry}
+      style={[styles.bubble, sender === 'provider' ? styles.providerBubble : styles.customerBubble]}
+    >
       <Text style={[styles.bubbleText, sender === 'provider' ? styles.providerBubbleText : styles.customerBubbleText]}>
         {text}
       </Text>
       <Text style={[styles.bubbleTime, sender === 'provider' ? styles.providerBubbleTime : styles.customerBubbleTime]}>
         {time}
       </Text>
-    </View>
+      {sender === 'provider' ? (
+        <>
+          <Text
+            style={[
+              styles.bubbleStatus,
+              deliveryStatus === 'failed' ? styles.failedStatus : styles.providerBubbleStatus,
+            ]}
+          >
+            {formatDeliveryStatus(deliveryStatus)}
+          </Text>
+          {deliveryStatus === 'failed' ? (
+            <Text style={styles.retryHint}>Tap to retry</Text>
+          ) : null}
+        </>
+      ) : null}
+    </TouchableOpacity>
   </View>
 );
 
 export default function ProviderChatScreen() {
   const router = useRouter();
-  const { id, name, initials } = useLocalSearchParams();
+  const { user } = useAuth();
+  const { id, name, initials, phone, serviceName } = useLocalSearchParams<{
+    id?: string;
+    name?: string;
+    initials?: string;
+    phone?: string;
+    serviceName?: string;
+  }>();
   const [messageText, setMessageText] = useState('');
+  const lastMarkedIncomingId = useRef('');
+  const [thread, setThread] = useState<ChatThread | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [bookingState, setBookingState] = useState<ProviderBookingActionState | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState('');
   const scrollViewRef = useRef<ScrollView>(null);
 
-  const messages = MOCK_CONVERSATIONS[id as string] || [];
+  const loadThread = React.useCallback(
+    async (silent = false) => {
+      if (!id) {
+        setError('Booking conversation is missing.');
+        setIsLoading(false);
+        return;
+      }
+
+      if (!silent) setIsLoading(true);
+      setError('');
+
+      try {
+        const data = await getChatThread({
+          bookingId: String(id),
+          role: 'provider',
+          otherPartyName: String(name || 'Customer'),
+          otherPartyPhone: String(phone || ''),
+          serviceName: String(serviceName || 'Service Booking'),
+        });
+
+        setThread(data);
+        setMessages(data.messages);
+      } catch (err) {
+        setError(getErrorMessage(err, 'Unable to load chat.'));
+      } finally {
+        if (!silent) setIsLoading(false);
+      }
+    },
+    [id, name, phone, serviceName]
+  );
+
+  useEffect(() => {
+    void loadThread();
+  }, [loadThread]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    return subscribeToChatThread({
+      bookingId: String(id),
+      onChange: () => {
+        void loadThread(true);
+      },
+    });
+  }, [id, loadThread]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    let active = true;
+
+    const loadBookingState = async () => {
+      try {
+        const booking = await getProviderBookingById(String(id));
+        if (!active) return;
+        setBookingState(getProviderBookingActionState(booking?.status));
+      } catch {
+        if (!active) return;
+        setBookingState(getProviderBookingActionState(undefined));
+      }
+    };
+
+    void loadBookingState();
+
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: false });
+    }, 100);
+  }, [messages.length]);
+
+  useEffect(() => {
+    if (!id || !messages.length) return;
+
+    const lastIncomingMessage = [...messages]
+      .reverse()
+      .find((message) => message.sender === 'customer');
+
+    if (!lastIncomingMessage || lastMarkedIncomingId.current === lastIncomingMessage.id) {
+      return;
+    }
+
+    lastMarkedIncomingId.current = lastIncomingMessage.id;
+    void markChatThreadRead({
+      bookingId: String(id),
+      role: 'provider',
+    });
+  }, [id, messages]);
+
+  const handleSend = async () => {
+    if (!user?.id || !id || !messageText.trim()) return;
+
+    setIsSending(true);
+    try {
+      const nextMessage = await sendChatMessage({
+        bookingId: String(id),
+        senderId: user.id,
+        senderRole: 'provider',
+        text: messageText,
+      });
+      setMessages((prev) => [...prev, nextMessage]);
+      setMessageText('');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Unable to send message.'));
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleRetry = async (message: ChatMessage) => {
+    if (!user?.id || !id || message.deliveryStatus !== 'failed') return;
+
+    try {
+      setMessages((prev) =>
+        prev.map((entry) =>
+          entry.id === message.id ? { ...entry, deliveryStatus: 'sent' } : entry
+        )
+      );
+
+      const nextMessage = await retryChatMessage({
+        bookingId: String(id),
+        senderId: user.id,
+        senderRole: 'provider',
+        messageId: message.id,
+      });
+
+      setMessages((prev) =>
+        prev.map((entry) => (entry.id === message.id ? nextMessage : entry))
+      );
+    } catch (err) {
+      setError(getErrorMessage(err, 'Unable to retry message.'));
+      setMessages((prev) =>
+        prev.map((entry) =>
+          entry.id === message.id ? { ...entry, deliveryStatus: 'failed' } : entry
+        )
+      );
+    }
+  };
+
+  const displayThread = thread || {
+    otherPartyName: String(name || 'Customer'),
+    initials: String(initials || 'CU'),
+    otherPartyPhone: String(phone || ''),
+    online: true,
+  };
+  const resolvedBookingState = bookingState || getProviderBookingActionState(undefined);
+  const bookingTone = statusToneStyles[resolvedBookingState.normalizedStatus];
+  const bookingShortcutLabel =
+    resolvedBookingState.canStartService
+      ? 'Start service'
+      : resolvedBookingState.canResumeService
+        ? 'Continue service'
+        : resolvedBookingState.canConfirm
+          ? 'Open booking'
+          : '';
+  const headerStatusText =
+    resolvedBookingState.normalizedStatus === 'in_progress'
+      ? 'Service active'
+      : resolvedBookingState.normalizedStatus === 'confirmed'
+        ? 'Ready to start'
+        : resolvedBookingState.normalizedStatus === 'completed'
+          ? 'Service completed'
+          : resolvedBookingState.normalizedStatus === 'cancelled'
+            ? 'Booking cancelled'
+            : 'Awaiting confirmation';
+
+  const handleViewBooking = () => {
+    if (!id) return;
+
+    router.push({
+      pathname: '/provider-booking-details',
+      params: { id: String(id) },
+    } as any);
+  };
+
+  const handleBookingShortcut = () => {
+    if (!id) return;
+
+    if (resolvedBookingState.canStartService) {
+      router.push({
+        pathname: '/provider-start-service',
+        params: { id: String(id) },
+      } as any);
+      return;
+    }
+
+    if (resolvedBookingState.canResumeService) {
+      router.push({
+        pathname: '/provider-service-in-progress',
+        params: { id: String(id) },
+      } as any);
+      return;
+    }
+
+    handleViewBooking();
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
       <View style={styles.container}>
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
           </TouchableOpacity>
           <View style={styles.headerAvatar}>
-            <Text style={styles.headerAvatarText}>{initials}</Text>
+            <Text style={styles.headerAvatarText}>{displayThread.initials}</Text>
           </View>
           <View style={styles.headerInfo}>
-            <Text style={styles.headerName}>{name}</Text>
-            <Text style={styles.headerStatus}>Online</Text>
+            <Text style={styles.headerName}>{displayThread.otherPartyName}</Text>
+            <View style={styles.headerMetaRow}>
+              <Text style={styles.headerStatus} numberOfLines={1}>
+                {thread?.serviceName || serviceName || 'Service Booking'}
+              </Text>
+              <View style={[styles.headerStatusPill, bookingTone.container]}>
+                <Text style={[styles.headerStatusPillText, bookingTone.text]}>{headerStatusText}</Text>
+              </View>
+            </View>
           </View>
-          <TouchableOpacity style={styles.moreButton}>
-            <Ionicons name="ellipsis-vertical" size={24} color="#AAA" />
+          <TouchableOpacity style={styles.moreButton} onPress={() => openPhoneCall(displayThread.otherPartyPhone, displayThread.otherPartyName)}>
+            <Ionicons name="call-outline" size={24} color="#00B761" />
           </TouchableOpacity>
         </View>
 
-        {/* Chat List */}
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.flex}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          keyboardVerticalOffset={0}
         >
-          <ScrollView 
+          <View style={styles.bookingStrip}>
+            <View style={styles.bookingStripText}>
+              <Text style={styles.bookingStripLabel}>Linked Booking</Text>
+              <Text style={styles.bookingStripTitle} numberOfLines={1}>
+                {thread?.serviceName || serviceName || 'Service Booking'}
+              </Text>
+              <View style={[styles.bookingStatusPill, bookingTone.container]}>
+                <Text style={[styles.bookingStatusText, bookingTone.text]}>
+                  {resolvedBookingState.label}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.bookingStripActions}>
+              {bookingShortcutLabel ? (
+                <TouchableOpacity
+                  style={[styles.bookingStripButton, styles.bookingStripPrimaryButton]}
+                  onPress={handleBookingShortcut}
+                >
+                  <Text style={[styles.bookingStripButtonText, styles.bookingStripPrimaryButtonText]}>
+                    {bookingShortcutLabel}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity style={styles.bookingStripButton} onPress={handleViewBooking}>
+                <Text style={styles.bookingStripButtonText}>View booking</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <ScrollView
             ref={scrollViewRef}
             style={styles.chatScroll}
             contentContainerStyle={styles.chatContent}
             onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
             showsVerticalScrollIndicator={true}
           >
-            {messages.map((msg: any) => (
-              <ChatBubble key={msg.id} {...msg} />
+            {isLoading ? <ActivityIndicator size="small" color="#00B761" style={{ marginTop: 30 }} /> : null}
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            {!isLoading && !error && messages.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="chatbubble-ellipses-outline" size={26} color="#00B761" />
+                <Text style={styles.emptyStateTitle}>No messages yet</Text>
+                <Text style={styles.emptyStateText}>
+                  Start the conversation with {displayThread.otherPartyName} about this booking.
+                </Text>
+              </View>
+            ) : null}
+            {messages.map((msg) => (
+              <ChatBubble
+                key={msg.id}
+                text={msg.text}
+                time={msg.timeLabel}
+                sender={msg.sender}
+                deliveryStatus={msg.deliveryStatus}
+                onRetry={() => handleRetry(msg)}
+              />
             ))}
           </ScrollView>
 
-          {/* Input Area */}
           <View style={styles.inputArea}>
             <TouchableOpacity style={styles.attachButton}>
               <Ionicons name="attach" size={24} color="#777" />
@@ -119,8 +424,8 @@ export default function ProviderChatScreen() {
                 multiline
               />
             </View>
-            <TouchableOpacity style={styles.sendButton} activeOpacity={0.8}>
-              <Ionicons name="send" size={20} color="#00B761" />
+            <TouchableOpacity style={styles.sendButton} activeOpacity={0.8} onPress={handleSend} disabled={!messageText.trim() || isSending}>
+              <Ionicons name="send" size={20} color={messageText.trim() && !isSending ? '#00B761' : '#A3A3A3'} />
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -175,13 +480,88 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0D1B2A',
   },
+  headerMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
   headerStatus: {
     fontSize: 12,
-    color: '#00B761',
+    color: '#64748B',
     fontWeight: '600',
+    flexShrink: 1,
+  },
+  headerStatusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  headerStatusPillText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
   moreButton: {
     padding: 8,
+  },
+  bookingStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#F8FFF9',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5F7EA',
+  },
+  bookingStripText: {
+    flex: 1,
+    marginRight: 12,
+  },
+  bookingStripLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  bookingStripTitle: {
+    marginTop: 2,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0D1B2A',
+  },
+  bookingStatusPill: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  bookingStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  bookingStripActions: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  bookingStripButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#E8FBF2',
+  },
+  bookingStripPrimaryButton: {
+    backgroundColor: '#00B761',
+  },
+  bookingStripButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#00B761',
+  },
+  bookingStripPrimaryButtonText: {
+    color: '#FFF',
   },
   chatScroll: {
     flex: 1,
@@ -190,6 +570,35 @@ const styles = StyleSheet.create({
   chatContent: {
     padding: 20,
     paddingBottom: 30,
+  },
+  errorText: {
+    color: '#B91C1C',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  emptyState: {
+    marginTop: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5F7EA',
+  },
+  emptyStateTitle: {
+    marginTop: 12,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0D1B2A',
+  },
+  emptyStateText: {
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    color: '#6B7280',
   },
   bubbleContainer: {
     marginBottom: 16,
@@ -241,6 +650,25 @@ const styles = StyleSheet.create({
   providerBubbleTime: {
     color: 'rgba(255, 255, 255, 0.7)',
   },
+  bubbleStatus: {
+    fontSize: 10,
+    marginTop: 2,
+    textAlign: 'right',
+    fontWeight: '600',
+  },
+  providerBubbleStatus: {
+    color: 'rgba(255, 255, 255, 0.78)',
+  },
+  failedStatus: {
+    color: '#FECACA',
+  },
+  retryHint: {
+    fontSize: 10,
+    marginTop: 2,
+    textAlign: 'right',
+    color: '#FEE2E2',
+    fontWeight: '700',
+  },
   inputArea: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -275,4 +703,3 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
-

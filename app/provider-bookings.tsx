@@ -4,7 +4,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { getErrorMessage } from '@/lib/error-handling';
-import { getProviderBookings, ProviderBookingView, updateBookingStatus } from '@/services/providerBookingService';
+import {
+  getProviderBookings,
+  getProviderBookingActionState,
+  normalizeProviderBookingStatus,
+  ProviderBookingView,
+  updateBookingStatus,
+} from '@/services/providerBookingService';
+import {
+  getProviderChatSummaries,
+  subscribeToChatSummaries,
+  type ChatSummary,
+} from '@/services/chatService';
 
 const TABS = ['Upcoming', 'In Progress', 'Completed', 'Cancelled'] as const;
 type Tab = typeof TABS[number];
@@ -12,11 +23,10 @@ type Tab = typeof TABS[number];
 export const BOOKINGS_DATA: any[] = [];
 
 function statusToTab(statusRaw: string): Tab {
-  const s = String(statusRaw || '').toLowerCase();
-  if (s.includes('cancel')) return 'Cancelled';
-  if (s.includes('complete') || s === 'done') return 'Completed';
-  if (s.includes('confirm') || s.includes('accept')) return 'In Progress';
-  if (s.includes('progress') || s.includes('ongoing')) return 'In Progress';
+  const status = normalizeProviderBookingStatus(statusRaw);
+  if (status === 'cancelled') return 'Cancelled';
+  if (status === 'completed') return 'Completed';
+  if (status === 'in_progress') return 'In Progress';
   return 'Upcoming';
 }
 
@@ -30,12 +40,54 @@ function formatSchedule(ts?: string) {
   };
 }
 
+function getPrimaryAction(item: ProviderBookingView) {
+  const actionState = getProviderBookingActionState(item.status);
+
+  if (actionState.canConfirm) {
+    return {
+      label: 'Confirm',
+      onPress: 'confirm' as const,
+    };
+  }
+
+  if (actionState.canResumeService) {
+    return {
+      label: 'Continue Service',
+      onPress: 'continue' as const,
+    };
+  }
+
+  if (actionState.canStartService) {
+    return {
+      label: 'Start Service',
+      onPress: 'start' as const,
+    };
+  }
+
+  if (actionState.canNavigate) {
+    return {
+      label: 'Open Navigation',
+      onPress: 'navigate' as const,
+    };
+  }
+
+  if (actionState.normalizedStatus === 'completed') {
+    return {
+      label: 'View Receipt',
+      onPress: 'receipt' as const,
+    };
+  }
+
+  return null;
+}
+
 export default function ProviderBookingsScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('Upcoming');
   const [searchQuery, setSearchQuery] = useState('');
   const [items, setItems] = useState<ProviderBookingView[]>([]);
+  const [chatSummaries, setChatSummaries] = useState<ChatSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
@@ -43,18 +95,37 @@ export default function ProviderBookingsScreen() {
   const load = React.useCallback(async () => {
     if (!user?.id) {
       setItems([]);
+      setChatSummaries([]);
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     setError('');
     try {
-      const rows = await getProviderBookings(user.id);
+      const [rows, summaries] = await Promise.all([
+        getProviderBookings(user.id),
+        getProviderChatSummaries(user.id),
+      ]);
       setItems(rows);
+      setChatSummaries(summaries);
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to load bookings.'));
     } finally {
       setIsLoading(false);
+    }
+  }, [user?.id]);
+
+  const loadChatSummaries = React.useCallback(async () => {
+    if (!user?.id) {
+      setChatSummaries([]);
+      return;
+    }
+
+    try {
+      const rows = await getProviderChatSummaries(user.id);
+      setChatSummaries(rows);
+    } catch {
+      setChatSummaries([]);
     }
   }, [user?.id]);
 
@@ -64,19 +135,45 @@ export default function ProviderBookingsScreen() {
     }, [load])
   );
 
-  const filtered = useMemo(() => {
-    return items.filter((b) => {
-      if (statusToTab(b.status) !== activeTab) return false;
-      const q = searchQuery.trim().toLowerCase();
-      if (!q) return true;
-      return (
-        b.booking_reference.toLowerCase().includes(q) ||
-        b.customer_name.toLowerCase().includes(q) ||
-        b.service_title.toLowerCase().includes(q)
-      );
-    });
-  }, [items, activeTab, searchQuery]);
+  React.useEffect(() => {
+    if (!user?.id) return;
 
+    return subscribeToChatSummaries({
+      role: 'provider',
+      userId: user.id,
+      onChange: () => {
+        void loadChatSummaries();
+      },
+    });
+  }, [loadChatSummaries, user?.id]);
+
+  const chatSummaryMap = useMemo(
+    () => new Map(chatSummaries.map((summary) => [summary.bookingId, summary])),
+    [chatSummaries]
+  );
+  const filtered = useMemo(() => {
+    return [...items]
+      .filter((b) => {
+        if (statusToTab(b.status) !== activeTab) return false;
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return true;
+        return (
+          b.booking_reference.toLowerCase().includes(q) ||
+          b.customer_name.toLowerCase().includes(q) ||
+          b.service_title.toLowerCase().includes(q)
+        );
+      })
+      .sort((left, right) => {
+        const leftUnread = chatSummaryMap.get(String(left.id))?.unreadCount || 0;
+        const rightUnread = chatSummaryMap.get(String(right.id))?.unreadCount || 0;
+
+        if (rightUnread !== leftUnread) {
+          return rightUnread - leftUnread;
+        }
+
+        return 0;
+      });
+  }, [items, activeTab, chatSummaryMap, searchQuery]);
   const counts = useMemo(() => {
     return TABS.reduce((acc, tab) => {
       acc[tab] = items.filter((b) => statusToTab(b.status) === tab).length;
@@ -88,9 +185,9 @@ export default function ProviderBookingsScreen() {
     if (!user?.id) return;
     setBusyId(id);
     try {
-      await updateBookingStatus(id, user.id, 'in_progress');
-      Alert.alert('Booking Confirmed', 'Booking moved to In Progress.');
+      await updateBookingStatus(id, user.id, 'confirmed');
       await load();
+      router.replace({ pathname: '/provider-navigation', params: { id } } as any);
     } catch (err) {
       const message = getErrorMessage(err, 'Failed to confirm booking.');
       setError(message);
@@ -98,6 +195,33 @@ export default function ProviderBookingsScreen() {
     } finally {
       setBusyId('');
     }
+  };
+
+  const onPrimaryAction = (item: ProviderBookingView) => {
+    const primaryAction = getPrimaryAction(item);
+    if (!primaryAction) return;
+
+    if (primaryAction.onPress === 'confirm') {
+      void onConfirm(item.id);
+      return;
+    }
+
+    if (primaryAction.onPress === 'navigate') {
+      router.replace({ pathname: '/provider-navigation', params: { id: item.id } } as any);
+      return;
+    }
+
+    if (primaryAction.onPress === 'start') {
+      router.replace({ pathname: '/provider-start-service', params: { id: item.id } } as any);
+      return;
+    }
+
+    if (primaryAction.onPress === 'continue') {
+      router.replace({ pathname: '/provider-service-in-progress', params: { id: item.id } } as any);
+      return;
+    }
+
+    router.replace({ pathname: '/provider-receipt', params: { id: item.id } } as any);
   };
 
   return (
@@ -132,15 +256,58 @@ export default function ProviderBookingsScreen() {
         contentContainerStyle={{ padding: 14, gap: 10 }}
         renderItem={({ item }) => {
           const sc = formatSchedule(item.scheduled_at);
-          const tab = statusToTab(item.status);
+          const chatSummary = chatSummaryMap.get(String(item.id));
+          const needsReply = Boolean((chatSummary?.unreadCount || 0) > 0);
+          const primaryAction = getPrimaryAction(item);
           return (
-            <View style={styles.card}>
+            <View style={[styles.card, needsReply && styles.cardAttention]}>
               <Text style={styles.bookingRef}>{item.booking_reference}</Text>
-              <Text style={styles.title}>{item.service_title}</Text>
+              <View style={styles.titleRow}>
+                <Text style={styles.title}>{item.service_title}</Text>
+                {needsReply ? (
+                  <View style={styles.attentionChip}>
+                    <Text style={styles.attentionChipText}>Needs reply</Text>
+                  </View>
+                ) : null}
+              </View>
               <Text style={styles.sub}>{item.customer_name}</Text>
               <Text style={styles.sub}>{sc.date} at {sc.time}</Text>
               <Text style={styles.sub}>{item.service_address}</Text>
               <Text style={styles.amount}>P{item.total_amount.toFixed(2)}</Text>
+
+              {chatSummary ? (
+                <TouchableOpacity
+                  style={styles.contactRow}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/provider-chat',
+                      params: {
+                        id: item.id,
+                        name: item.customer_name,
+                        serviceName: item.service_title,
+                      },
+                    } as any)
+                  }
+                >
+                  <View style={styles.contactTextWrap}>
+                    <Text style={styles.contactTitle}>
+                      Last contact {chatSummary.lastMessageTime}
+                    </Text>
+                    <Text style={styles.contactBody} numberOfLines={1}>
+                      {chatSummary.lastMessage}
+                    </Text>
+                  </View>
+                  {chatSummary.unreadCount > 0 ? (
+                    <View style={styles.contactUnreadBadge}>
+                      <Text style={styles.contactUnreadBadgeText}>
+                        {chatSummary.unreadCount > 9 ? '9+' : chatSummary.unreadCount}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" style={{ marginLeft: 8 }} />
+                </TouchableOpacity>
+              ) : null}
 
               <View style={styles.actions}>
                 <TouchableOpacity
@@ -150,13 +317,15 @@ export default function ProviderBookingsScreen() {
                   <Text style={styles.secondaryText}>View Details</Text>
                 </TouchableOpacity>
 
-                {tab === 'Upcoming' ? (
+                {primaryAction ? (
                   <TouchableOpacity
                     style={styles.primaryBtn}
-                    onPress={() => onConfirm(item.id)}
-                    disabled={busyId === item.id}
+                    onPress={() => onPrimaryAction(item)}
+                    disabled={!primaryAction || busyId === item.id}
                   >
-                    <Text style={styles.primaryText}>{busyId === item.id ? 'Please wait...' : 'Confirm'}</Text>
+                    <Text style={styles.primaryText}>
+                      {busyId === item.id ? 'Please wait...' : primaryAction?.label || 'View Details'}
+                    </Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
@@ -182,10 +351,58 @@ const styles = StyleSheet.create({
   searchWrap: { margin: 10, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, height: 42, alignItems: 'center', flexDirection: 'row', gap: 8 },
   searchInput: { flex: 1 },
   card: { backgroundColor: '#fff', borderRadius: 12, padding: 12 },
+  cardAttention: { borderWidth: 1, borderColor: '#BDE4CD', backgroundColor: '#FCFFFD' },
   bookingRef: { fontSize: 12, color: '#778' },
-  title: { fontSize: 15, fontWeight: '700', color: '#0D1B2A', marginTop: 4 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 4 },
+  title: { flex: 1, fontSize: 15, fontWeight: '700', color: '#0D1B2A' },
+  attentionChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#E8FBF2',
+  },
+  attentionChipText: { fontSize: 11, fontWeight: '700', color: '#00B761' },
   sub: { fontSize: 12, color: '#556', marginTop: 2 },
   amount: { marginTop: 8, fontSize: 14, fontWeight: '800', color: '#00B761' },
+  contactRow: {
+    marginTop: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#DCEFE5',
+    backgroundColor: '#F8FFF9',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  contactTextWrap: {
+    flex: 1,
+    marginRight: 10,
+  },
+  contactTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0D1B2A',
+  },
+  contactBody: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#556',
+  },
+  contactUnreadBadge: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#00B761',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  contactUnreadBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+  },
   actions: { marginTop: 10, flexDirection: 'row', gap: 8 },
   primaryBtn: { flex: 1, borderRadius: 8, backgroundColor: '#00B761', height: 38, justifyContent: 'center', alignItems: 'center' },
   primaryText: { color: '#fff', fontWeight: '700' },

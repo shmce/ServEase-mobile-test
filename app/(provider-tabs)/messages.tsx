@@ -1,41 +1,55 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-
-const MessageItem = ({ id, initials, name, message, time, unreadCount, onPress }: any) => (
-  <TouchableOpacity style={styles.messageCard} activeOpacity={0.7} onPress={onPress}>
-    <View style={styles.avatarContainer}>
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{initials}</Text>
-      </View>
-    </View>
-    <View style={styles.messageContent}>
-      <View style={styles.messageHeader}>
-        <Text style={styles.customerName}>{name}</Text>
-        <Text style={styles.timeText}>{time}</Text>
-      </View>
-      <View style={styles.messageFooter}>
-        <Text style={styles.messageSnippet} numberOfLines={1}>{message}</Text>
-        {unreadCount > 0 && (
-          <View style={styles.unreadBadge}>
-            <Text style={styles.unreadCount}>{unreadCount}</Text>
-          </View>
-        )}
-      </View>
-    </View>
-  </TouchableOpacity>
-);
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, StatusBar, ActivityIndicator } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { ChatSummaryCard } from '@/components/ui/chat-summary-card';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  getProviderChatSummaries,
+  subscribeToChatSummaries,
+  type ChatSummary,
+} from '@/services/chatService';
 
 export default function MessagesScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const [items, setItems] = useState<ChatSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const navigateToChat = (id: string, name: string, initials: string) => {
-    router.push({
-      pathname: '/provider-chat',
-      params: { id, name, initials }
-    } as any);
-  };
+  const load = React.useCallback(async () => {
+    if (!user?.id) {
+      setItems([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const rows = await getProviderChatSummaries(user.id);
+      setItems(rows);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.id]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  React.useEffect(() => {
+    if (!user?.id) return;
+
+    return subscribeToChatSummaries({
+      role: 'provider',
+      userId: user.id,
+      onChange: () => {
+        void load();
+      },
+    });
+  }, [load, user?.id]);
+
+  const list = useMemo(() => items, [items]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -45,53 +59,40 @@ export default function MessagesScreen() {
           <Text style={styles.headerTitle}>Messages</Text>
         </View>
 
+        {isLoading ? <ActivityIndicator size="large" color="#00B761" style={{ marginTop: 30 }} /> : null}
+
         <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
           <View style={styles.listContainer}>
-            <MessageItem 
-              id="john"
-              initials="JS" 
-              name="John Smith" 
-              message="Hi! What time will you arrive today?" 
-              time="2 min ago" 
-              unreadCount={2} 
-              onPress={() => navigateToChat('john', 'John Smith', 'JS')}
-            />
-            <MessageItem 
-              id="sarah"
-              initials="SJ" 
-              name="Sarah Johnson" 
-              message="Thank you for the great service!" 
-              time="1 hour ago" 
-              unreadCount={0} 
-              onPress={() => navigateToChat('sarah', 'Sarah Johnson', 'SJ')}
-            />
-            <MessageItem 
-              id="mike"
-              initials="MD" 
-              name="Mike Davis" 
-              message="Can you bring extra tools?" 
-              time="3 hours ago" 
-              unreadCount={1} 
-              onPress={() => navigateToChat('mike', 'Mike Davis', 'MD')}
-            />
-            <MessageItem 
-              id="anna"
-              initials="AR" 
-              name="Anna Reyes" 
-              message="Perfect! See you tomorrow." 
-              time="Yesterday" 
-              unreadCount={0} 
-              onPress={() => navigateToChat('anna', 'Anna Reyes', 'AR')}
-            />
-            <MessageItem 
-              id="pedro"
-              initials="PG" 
-              name="Pedro Garcia" 
-              message="How much will the materials cost?" 
-              time="2 days ago" 
-              unreadCount={0} 
-              onPress={() => navigateToChat('pedro', 'Pedro Garcia', 'PG')}
-            />
+            {list.map((item) => (
+              <ChatSummaryCard
+                key={item.id}
+                item={item}
+                variant="provider"
+                actionLabel="Booking"
+                onActionPress={() =>
+                  router.push({
+                    pathname: '/provider-booking-details',
+                    params: { id: item.bookingId },
+                  } as any)
+                }
+                onPress={() =>
+                  router.push({
+                    pathname: '/provider-chat',
+                    params: {
+                      id: item.bookingId,
+                      name: item.otherPartyName,
+                      initials: item.initials,
+                      phone: item.otherPartyPhone,
+                      serviceName: item.serviceName,
+                    },
+                  } as any)
+                }
+              />
+            ))}
+
+            {!isLoading && !list.length ? (
+              <Text style={styles.emptyText}>No conversations yet.</Text>
+            ) : null}
           </View>
           <View style={styles.footerSpacer} />
         </ScrollView>
@@ -118,7 +119,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
     color: '#0D1B2A',
-    fontFamily: 'Outfit-Bold',
   },
   scrollContainer: {
     flex: 1,
@@ -128,79 +128,12 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     gap: 12,
   },
-  messageCard: {
-    flexDirection: 'row',
-    backgroundColor: '#FFF',
-    borderRadius: 20,
-    padding: 16,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-  },
-  avatarContainer: {
-    marginRight: 16,
-  },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#E8FBF2',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#00B761',
-  },
-  messageContent: {
-    flex: 1,
-  },
-  messageHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  customerName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0D1B2A',
-  },
-  timeText: {
-    fontSize: 12,
-    color: '#AAA',
-  },
-  messageFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  messageSnippet: {
-    fontSize: 14,
-    color: '#555',
-    flex: 1,
-    marginRight: 8,
-  },
-  unreadBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#00B761',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  unreadCount: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
   footerSpacer: {
     height: 40,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#8E8E93',
+    marginTop: 30,
   },
 });

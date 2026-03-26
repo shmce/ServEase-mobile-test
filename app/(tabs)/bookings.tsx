@@ -1,176 +1,70 @@
 import React, { useMemo, useState } from 'react';
 import {
-  StyleSheet,
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  SafeAreaView,
-  Image,
-  StatusBar,
   ActivityIndicator,
+  Image,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { getCustomerBookings } from '@/services/bookingService';
+import { getCustomerBookingPresentation } from '@/lib/booking-status';
+import {
+  getCustomerChatSummaries,
+  subscribeToChatSummaries,
+  type ChatSummary,
+} from '@/services/chatService';
 
-const IN_PROGRESS_BOOKINGS = [
-  {
-    id: '1',
-    service: 'House Cleaning',
-    providerName: 'Maria Santos',
-    providerRating: 4.8,
-    providerAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&auto=format&fit=crop&q=60',
-    price: '₱1,500.00',
-    date: 'March 14, 2026',
-    time: '10:00 AM',
-    status: 'On the Way',
-    statusType: 'warning', // orange
-    actionLabel: 'Track Order',
-    actionIcon: 'location-outline',
-  },
-  {
-    id: '2',
-    service: 'Plumbing Repair',
-    providerName: 'Juan Dela Cruz',
-    providerRating: 4.9,
-    providerAvatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=400&auto=format&fit=crop&q=60',
-    price: '₱2,200.00',
-    date: 'March 17, 2026',
-    time: '2:00 PM',
-    status: 'Confirmed',
-    statusType: 'success', // light green
-    actionLabel: 'View Details',
-    actionIcon: 'calendar-outline',
-  },
-  {
-    id: '3',
-    service: 'Aircon Cleaning',
-    providerName: 'Ricardo Gomez',
-    providerRating: 4.7,
-    providerAvatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&auto=format&fit=crop&q=60',
-    price: '₱1,800.00',
-    date: 'March 20, 2026',
-    time: '9:00 AM',
-    status: 'Confirmed',
-    statusType: 'success',
-    actionLabel: 'View Details',
-    actionIcon: 'calendar-outline',
-  },
-];
+type BookingTab = 'inProgress' | 'completed' | 'cancelled';
 
-const COMPLETED_BOOKINGS = [
-  {
-    id: '4',
-    service: 'Painting Service',
-    providerName: 'Carlos Fernandez',
-    providerRating: 4.7,
-    providerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=60',
-    price: '₱3,500.00',
-    date: 'March 10, 2026',
-    time: '11:00 AM',
-    status: 'Completed',
-    statusType: 'success',
-  },
-  {
-    id: '5',
-    service: 'Plumbing Repair',
-    providerName: 'Lisa Martinez',
-    providerRating: 4.9,
-    providerAvatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&auto=format&fit=crop&q=60',
-    price: '₱1,800.00',
-    date: 'March 8, 2026',
-    time: '8:00 AM',
-    status: 'Completed',
-    statusType: 'success',
-  },
-  {
-    id: '6',
-    service: 'Deep House Cleaning',
-    providerName: 'Maria Santos',
-    providerRating: 4.8,
-    providerAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&auto=format&fit=crop&q=60',
-    price: '₱2,200.00',
-    date: 'March 5, 2026',
-    time: '9:30 AM',
-    status: 'Completed',
-    statusType: 'success',
-  },
-];
+type CustomerBookingCard = {
+  id: string;
+  providerId?: string;
+  service: string;
+  providerName: string;
+  providerRating: string;
+  providerAvatar: string;
+  price: string;
+  date: string;
+  time: string;
+  status: string;
+  address: string;
+};
 
-const CANCELLED_BOOKINGS = [
-  {
-    id: '7',
-    service: 'Sofa Deep Cleaning',
-    providerName: 'Angela Reyes',
-    providerRating: 4.6,
-    providerAvatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&auto=format&fit=crop&q=60',
-    price: '₱1,300.00',
-    date: 'March 6, 2026',
-    time: '1:30 PM',
-    status: 'Cancelled',
-    statusType: 'cancelled',
-    actionLabel: 'View Details',
-    actionIcon: 'document-text-outline',
-  },
-  {
-    id: '8',
-    service: 'Electrical Repair',
-    providerName: 'Mark Villanueva',
-    providerRating: 4.8,
-    providerAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=60',
-    price: '₱2,600.00',
-    date: 'March 2, 2026',
-    time: '4:00 PM',
-    status: 'Cancelled',
-    statusType: 'cancelled',
-    actionLabel: 'View Details',
-    actionIcon: 'document-text-outline',
-  },
-];
+const formatScheduledDate = (value?: string | null) => {
+  if (!value) return { date: 'N/A', time: 'N/A' };
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return { date: 'N/A', time: 'N/A' };
+  return {
+    date: parsed.toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    }),
+    time: parsed.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+    }),
+  };
+};
 
-const TAB_CONFIG = [
-  {
-    key: 'inProgress',
-    label: 'In Progress',
-    icon: 'location-outline',
-    count: IN_PROGRESS_BOOKINGS.length,
-  },
-  {
-    key: 'completed',
-    label: 'Completed',
-    icon: 'checkmark-circle-outline',
-    count: COMPLETED_BOOKINGS.length,
-  },
-  {
-    key: 'cancelled',
-    label: 'Cancelled',
-    icon: 'close-circle-outline',
-    count: CANCELLED_BOOKINGS.length,
-  },
-] as const;
-
-const BOOKINGS_BY_TAB = {
-  inProgress: IN_PROGRESS_BOOKINGS,
-  completed: COMPLETED_BOOKINGS,
-  cancelled: CANCELLED_BOOKINGS,
-} as const;
-
-const buildBookingPayload = (booking: any) => ({
+const buildBookingPayload = (booking: CustomerBookingCard) => ({
   id: booking.id,
+  providerId: booking.providerId || '',
   service: booking.service,
-  address: booking.address || '45 Mabini Ave, Pasig City',
+  address: booking.address,
   date: booking.date,
-  year: booking.year || '2026',
+  year: booking.date.split(', ').at(-1) || '',
   time: booking.time,
   status: booking.status,
-  totalAmount: booking.price?.replace('₱', '').replace(',', '') || '1,500.00',
-  countdown: {
-    days: '3',
-    hours: '4',
-    mins: '19',
-  },
+  totalAmount:
+    booking.price.replace('P', '').replace('₱', '').replaceAll(',', '').trim() || '0.00',
   provider: {
     name: booking.providerName,
     rating: booking.providerRating,
@@ -181,40 +75,51 @@ const buildBookingPayload = (booking: any) => ({
   providerName: booking.providerName,
 });
 
-const formatScheduledDate = (value?: string | null) => {
-  if (!value) return { date: 'N/A', time: 'N/A' };
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return { date: 'N/A', time: 'N/A' };
-  return {
-    date: parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-    time: parsed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-  };
-};
-
-const BookingCard = ({ booking }: { booking: any }) => {
+function BookingCard({
+  booking,
+  chatSummary,
+}: {
+  booking: CustomerBookingCard;
+  chatSummary?: ChatSummary | null;
+}) {
   const router = useRouter();
-  const isCompleted = booking.status === 'Completed';
-  const isCancelled = booking.status === 'Cancelled';
+  const presentation = getCustomerBookingPresentation(booking.status);
   const bookingPayload = buildBookingPayload(booking);
+  const needsReply = Boolean((chatSummary?.unreadCount || 0) > 0);
+  const isCompleted = presentation.normalizedStatus === 'completed';
+  const isCancelled = presentation.normalizedStatus === 'cancelled';
 
   return (
-    <View style={styles.bookingCard}>
+    <View style={[styles.bookingCard, needsReply && styles.bookingCardAttention]}>
       <View style={styles.cardHeader}>
-        <Text style={styles.serviceTitle}>{booking.service}</Text>
-        <View style={[
-          styles.statusBadge, 
-          booking.statusType === 'warning' && styles.statusWarning,
-          booking.statusType === 'success' && styles.statusSuccess,
-          booking.statusType === 'completed' && styles.statusCompleted,
-          booking.statusType === 'cancelled' && styles.statusCancelled,
-        ]}>
-          <Text style={[
-            styles.statusText,
-            booking.statusType === 'warning' && styles.statusTextWarning,
-            booking.statusType === 'success' && styles.statusTextSuccess,
-            booking.statusType === 'completed' && styles.statusTextCompleted,
-            booking.statusType === 'cancelled' && styles.statusTextCancelled,
-          ]}>{booking.status}</Text>
+        <View style={styles.cardHeaderText}>
+          <Text style={styles.serviceTitle}>{booking.service}</Text>
+          {needsReply ? (
+            <View style={styles.attentionChip}>
+              <Text style={styles.attentionChipText}>Needs reply</Text>
+            </View>
+          ) : null}
+        </View>
+        <View
+          style={[
+            styles.statusBadge,
+            presentation.tone === 'warning' && styles.statusWarning,
+            presentation.tone === 'success' && styles.statusSuccess,
+            presentation.tone === 'completed' && styles.statusCompleted,
+            presentation.tone === 'cancelled' && styles.statusCancelled,
+          ]}
+        >
+          <Text
+            style={[
+              styles.statusText,
+              presentation.tone === 'warning' && styles.statusTextWarning,
+              presentation.tone === 'success' && styles.statusTextSuccess,
+              presentation.tone === 'completed' && styles.statusTextCompleted,
+              presentation.tone === 'cancelled' && styles.statusTextCancelled,
+            ]}
+          >
+            {presentation.label}
+          </Text>
         </View>
       </View>
 
@@ -242,6 +147,38 @@ const BookingCard = ({ booking }: { booking: any }) => {
         </View>
       </View>
 
+      {chatSummary ? (
+        <TouchableOpacity
+          style={styles.contactRow}
+          activeOpacity={0.85}
+          onPress={() =>
+            router.push({
+              pathname: '/customer-chat',
+              params: {
+                id: booking.id,
+                providerName: booking.providerName,
+                serviceName: booking.service,
+              },
+            } as any)
+          }
+        >
+          <View style={styles.contactRowText}>
+            <Text style={styles.contactRowTitle}>Last contact {chatSummary.lastMessageTime}</Text>
+            <Text style={styles.contactRowBody} numberOfLines={1}>
+              {chatSummary.lastMessage}
+            </Text>
+          </View>
+          {chatSummary.unreadCount > 0 ? (
+            <View style={styles.contactUnreadBadge}>
+              <Text style={styles.contactUnreadBadgeText}>
+                {chatSummary.unreadCount > 9 ? '9+' : chatSummary.unreadCount}
+              </Text>
+            </View>
+          ) : null}
+          <Ionicons name="chevron-forward" size={16} color="#9CA3AF" style={{ marginLeft: 8 }} />
+        </TouchableOpacity>
+      ) : null}
+
       {isCompleted ? (
         <View style={styles.completedActions}>
           <View style={styles.completedPrimaryActions}>
@@ -250,7 +187,7 @@ const BookingCard = ({ booking }: { booking: any }) => {
               onPress={() =>
                 router.push({
                   pathname: '/customer-booking-details',
-                  params: { booking: JSON.stringify(bookingPayload) },
+                  params: { id: booking.id, booking: JSON.stringify(bookingPayload) },
                 } as any)
               }
             >
@@ -284,12 +221,12 @@ const BookingCard = ({ booking }: { booking: any }) => {
           </TouchableOpacity>
         </View>
       ) : isCancelled ? (
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.cancelledButton}
           onPress={() =>
             router.push({
               pathname: '/customer-booking-details',
-              params: { booking: JSON.stringify(bookingPayload) },
+              params: { id: booking.id, booking: JSON.stringify(bookingPayload) },
             } as any)
           }
         >
@@ -298,118 +235,157 @@ const BookingCard = ({ booking }: { booking: any }) => {
           <Ionicons name="chevron-forward" size={16} color="rgba(198,40,40,0.7)" style={{ marginLeft: 4 }} />
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => {
-            if (booking.actionLabel === 'Track Order') {
-              router.push('/customer-track-order' as any);
-            } else if (booking.actionLabel === 'View Details') {
-              router.push({
-                pathname: '/customer-booking-details',
-                params: { booking: JSON.stringify(bookingPayload) },
-              } as any);
-            }
-          }}
+          onPress={() =>
+            router.push({
+              pathname: presentation.actionLabel === 'Track Order' ? '/customer-track-order' : '/customer-booking-details',
+              params: { id: booking.id, booking: JSON.stringify(bookingPayload) },
+            } as any)
+          }
         >
-          <Ionicons name={booking.actionIcon} size={18} color="#fff" style={{ marginRight: 8 }} />
-          <Text style={styles.actionButtonText}>{booking.actionLabel}</Text>
+          <Ionicons name={presentation.actionIcon} size={18} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={styles.actionButtonText}>{presentation.actionLabel}</Text>
           <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.7)" style={{ marginLeft: 4 }} />
         </TouchableOpacity>
       )}
     </View>
   );
-};
+}
 
 export default function BookingsScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [liveBookings, setLiveBookings] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<(typeof TAB_CONFIG)[number]['key']>('inProgress');
+  const [chatSummaries, setChatSummaries] = useState<ChatSummary[]>([]);
+  const [activeTab, setActiveTab] = useState<BookingTab>('inProgress');
+
+  const loadChatSummaries = React.useCallback(async () => {
+    if (!user?.id) {
+      setChatSummaries([]);
+      return;
+    }
+
+    try {
+      const rows = await getCustomerChatSummaries(user.id);
+      setChatSummaries(rows);
+    } catch {
+      setChatSummaries([]);
+    }
+  }, [user?.id]);
 
   useFocusEffect(
     React.useCallback(() => {
       async function loadBookings() {
-        if (!user) {
+        if (!user?.id) {
           setLiveBookings([]);
+          setChatSummaries([]);
           setIsLoading(false);
           return;
         }
+
         setIsLoading(true);
         try {
-          const data = await getCustomerBookings(user.id);
+          const [data, summaries] = await Promise.all([
+            getCustomerBookings(user.id),
+            getCustomerChatSummaries(user.id),
+          ]);
           setLiveBookings(data || []);
+          setChatSummaries(summaries || []);
         } catch (error) {
           console.error('Failed to load bookings:', error);
           setLiveBookings([]);
+          setChatSummaries([]);
         } finally {
           setIsLoading(false);
         }
       }
-      loadBookings();
-    }, [user])
+
+      void loadBookings();
+    }, [user?.id])
   );
 
-  const mappedLiveBookings = useMemo(() => {
+  React.useEffect(() => {
+    if (!user?.id) return;
+
+    return subscribeToChatSummaries({
+      role: 'customer',
+      userId: user.id,
+      onChange: () => {
+        void loadChatSummaries();
+      },
+    });
+  }, [loadChatSummaries, user?.id]);
+
+  const mappedLiveBookings = useMemo<CustomerBookingCard[]>(() => {
     return liveBookings.map((item: any, idx: number) => {
       const providerName = item?.provider?.full_name || item?.provider_name || 'Service Provider';
-      const providerRating = Number(item?.provider_rating || 4.8);
+      const providerRating = Number(item?.provider_rating || 4.8).toFixed(1);
       const statusRaw = String(item?.status || 'Pending');
-      const statusLower = statusRaw.toLowerCase();
-      const statusType = statusLower.includes('cancel')
-        ? 'cancelled'
-        : statusLower.includes('complete')
-          ? 'completed'
-          : statusLower.includes('way')
-            ? 'warning'
-            : 'success';
-
-      const actionLabel = statusType === 'cancelled'
-        ? 'View Details'
-        : statusType === 'completed'
-          ? 'View Details'
-          : statusLower.includes('way')
-            ? 'Track Order'
-            : 'View Details';
-
-      const actionIcon = actionLabel === 'Track Order' ? 'location-outline' : 'calendar-outline';
       const schedule = formatScheduledDate(item?.scheduled_at);
 
       return {
         id: String(item.id || idx + 1),
+        providerId: String(item?.provider_id || ''),
         service: item?.service?.title || item?.service_name || 'Service Booking',
         providerName,
         providerRating,
-        providerAvatar: item?.provider_avatar || 'https://i.pravatar.cc/100?img=12',
-        price: `P${item?.service?.price || item?.total_amount || '0.00'}`,
+        providerAvatar: item?.provider_avatar || `https://i.pravatar.cc/100?u=${providerName}`,
+        price: `P${Number(item?.service?.price || item?.total_amount || 0).toFixed(2)}`,
         date: schedule.date,
         time: schedule.time,
         status: statusRaw,
-        statusType,
-        actionLabel,
-        actionIcon,
         address: item?.service_address || '',
       };
     });
   }, [liveBookings]);
 
-  const bookingsByTab = useMemo(() => {
-    if (!mappedLiveBookings.length) return BOOKINGS_BY_TAB;
-    return {
-      inProgress: mappedLiveBookings.filter((b) => !['completed', 'cancelled'].includes(String(b.statusType))),
-      completed: mappedLiveBookings.filter((b) => String(b.statusType) === 'completed'),
-      cancelled: mappedLiveBookings.filter((b) => String(b.statusType) === 'cancelled'),
-    };
-  }, [mappedLiveBookings]);
+  const chatSummaryMap = useMemo(
+    () => new Map(chatSummaries.map((summary) => [summary.bookingId, summary])),
+    [chatSummaries]
+  );
 
-  const tabConfig = useMemo(() => {
-    if (!mappedLiveBookings.length) return TAB_CONFIG;
-    return [
-      { key: 'inProgress', label: 'In Progress', icon: 'location-outline', count: bookingsByTab.inProgress.length },
-      { key: 'completed', label: 'Completed', icon: 'checkmark-circle-outline', count: bookingsByTab.completed.length },
-      { key: 'cancelled', label: 'Cancelled', icon: 'close-circle-outline', count: bookingsByTab.cancelled.length },
-    ] as const;
-  }, [bookingsByTab, mappedLiveBookings.length]);
+  const sortBookingsByAttention = React.useCallback(
+    (rows: CustomerBookingCard[]) =>
+      [...rows].sort((left, right) => {
+        const leftUnread = chatSummaryMap.get(String(left.id))?.unreadCount || 0;
+        const rightUnread = chatSummaryMap.get(String(right.id))?.unreadCount || 0;
+        return rightUnread - leftUnread;
+      }),
+    [chatSummaryMap]
+  );
+
+  const bookingsByTab = useMemo(
+    () => ({
+      inProgress: sortBookingsByAttention(
+        mappedLiveBookings.filter(
+          (booking) => getCustomerBookingPresentation(booking.status).tab === 'inProgress'
+        )
+      ),
+      completed: sortBookingsByAttention(
+        mappedLiveBookings.filter(
+          (booking) => getCustomerBookingPresentation(booking.status).tab === 'completed'
+        )
+      ),
+      cancelled: sortBookingsByAttention(
+        mappedLiveBookings.filter(
+          (booking) => getCustomerBookingPresentation(booking.status).tab === 'cancelled'
+        )
+      ),
+    }),
+    [mappedLiveBookings, sortBookingsByAttention]
+  );
+
+  const tabConfig = useMemo(
+    () =>
+      [
+        { key: 'inProgress', label: 'In Progress', icon: 'location-outline', count: bookingsByTab.inProgress.length },
+        { key: 'completed', label: 'Completed', icon: 'checkmark-circle-outline', count: bookingsByTab.completed.length },
+        { key: 'cancelled', label: 'Cancelled', icon: 'close-circle-outline', count: bookingsByTab.cancelled.length },
+      ] as const,
+    [bookingsByTab]
+  );
 
   const bookings = bookingsByTab[activeTab];
 
@@ -424,21 +400,16 @@ export default function BookingsScreen() {
         <View style={{ width: 38 }} />
       </View>
 
-      {/* Custom Tabs */}
       <View style={styles.tabContainer}>
         {tabConfig.map((tab) => {
           const isActive = activeTab === tab.key;
-
           return (
             <TouchableOpacity
               key={tab.key}
               style={[styles.tab, isActive && styles.activeTab]}
               onPress={() => setActiveTab(tab.key)}
             >
-              <Text
-                numberOfLines={1}
-                style={[styles.tabText, isActive && styles.activeTabText]}
-              >
+              <Text numberOfLines={1} style={[styles.tabText, isActive && styles.activeTabText]}>
                 {tab.label}
               </Text>
               <View style={[styles.countBadge, isActive ? styles.activeCountBadge : styles.inactiveCountBadge]}>
@@ -458,12 +429,14 @@ export default function BookingsScreen() {
           <>
             <Text style={styles.bookingCount}>{bookings.length} bookings</Text>
             {bookings.map((booking) => (
-              <BookingCard key={booking.id} booking={booking} />
+              <BookingCard
+                key={booking.id}
+                booking={booking}
+                chatSummary={chatSummaryMap.get(String(booking.id)) || null}
+              />
             ))}
             {!bookings.length ? (
-              <Text style={{ textAlign: 'center', color: '#8E8E93', marginTop: 20 }}>
-                No bookings found for this tab.
-              </Text>
+              <Text style={styles.emptyText}>No bookings found for this tab.</Text>
             ) : null}
           </>
         )}
@@ -582,16 +555,38 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
+  bookingCardAttention: {
+    borderWidth: 1,
+    borderColor: '#BDE4CD',
+    backgroundColor: '#FCFFFD',
+  },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 15,
+  },
+  cardHeaderText: {
+    flex: 1,
+    marginRight: 10,
   },
   serviceTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1A1B1E',
+  },
+  attentionChip: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#E8FBF2',
+  },
+  attentionChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#00B761',
   },
   statusBadge: {
     paddingHorizontal: 12,
@@ -686,6 +681,45 @@ const styles = StyleSheet.create({
     backgroundColor: '#E0E0E0',
     marginHorizontal: 10,
   },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FFF9',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#E5F7EA',
+  },
+  contactRowText: {
+    flex: 1,
+    marginRight: 10,
+  },
+  contactRowTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0D1B2A',
+  },
+  contactRowBody: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  contactUnreadBadge: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#00C853',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  contactUnreadBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFF',
+  },
   actionButton: {
     backgroundColor: '#00C853',
     height: 50,
@@ -771,5 +805,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
   },
+  emptyText: {
+    textAlign: 'center',
+    color: '#8E8E93',
+    marginTop: 20,
+  },
 });
-

@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSyncExternalStore } from 'react';
 import { supabase } from './supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -20,87 +21,73 @@ export type CustomerAddress = {
   isDefault: boolean;
 };
 
-type CustomerAccount = {
+type PendingCustomerDraft = {
   email: string;
-  password: string;
-  signupName: string;
-  signupPhone: string;
-  profile: CustomerProfile | null;
+  profile: CustomerProfile;
   address: CustomerAddress | null;
 };
 
-type CustomerSessionState = {
-  currentCustomerEmail: string | null;
-  pendingOnboardingEmail: string | null;
-  customers: Record<string, CustomerAccount>;
+type CustomerSessionSnapshot = {
+  pendingCustomer: PendingCustomerDraft | null;
 };
 
+const STORAGE_KEY = 'customer-pending-onboarding';
 const listeners = new Set<() => void>();
 
-let state: CustomerSessionState = {
-  currentCustomerEmail: null,
-  pendingOnboardingEmail: null,
-  customers: {
-    'karen.santos@email.com': {
-      email: 'karen.santos@email.com',
-      password: 'Password123',
-      signupName: 'Karen Santos',
-      signupPhone: '9171234567',
-      profile: {
-        fullName: 'Karen Santos',
-        mobileNumber: '9171234567',
-        referralCode: '',
-      },
-      address: {
-        label: 'Home',
-        streetAddress: '123 Bonifacio Street, Unit 5',
-        barangay: 'Bel-Air',
-        province: 'Metro Manila',
-        city: 'Makati City',
-        postalCode: '1209',
-        locationNote: 'Pinned near the main entrance',
-        isDefault: true,
-      },
-    },
-  },
+let snapshot: CustomerSessionSnapshot = {
+  pendingCustomer: null,
 };
+let hasLoadedDraft = false;
 
 function emitChange() {
   listeners.forEach((listener) => listener());
 }
 
-function setState(nextState: CustomerSessionState) {
-  state = nextState;
+function setSnapshot(next: CustomerSessionSnapshot) {
+  snapshot = next;
   emitChange();
 }
 
-function getSnapshot() {
-  return state;
+async function loadPendingDraft() {
+  if (hasLoadedDraft) return;
+  hasLoadedDraft = true;
+
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as PendingCustomerDraft;
+    if (parsed?.email && parsed?.profile) {
+      snapshot = { pendingCustomer: parsed };
+    }
+  } catch {
+    snapshot = { pendingCustomer: null };
+  }
+}
+
+async function persistPendingDraft(nextDraft: PendingCustomerDraft | null) {
+  if (!nextDraft) {
+    await AsyncStorage.removeItem(STORAGE_KEY);
+    setSnapshot({ pendingCustomer: null });
+    return;
+  }
+
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextDraft));
+  setSnapshot({ pendingCustomer: nextDraft });
 }
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
+  void loadPendingDraft().then(() => emitChange());
   return () => listeners.delete(listener);
 }
 
-function getActiveEmail() {
-  return state.pendingOnboardingEmail ?? state.currentCustomerEmail;
+function getSnapshot() {
+  return snapshot;
 }
 
-async function persistCustomerToDatabase(userId: string, email: string, customer: CustomerAccount) {
-  const fullName = customer.profile?.fullName || customer.signupName || email.split('@')[0] || 'Customer';
-  const contactNumber = customer.profile?.mobileNumber || customer.signupPhone || '';
-  const addressText = customer.address
-    ? [
-        customer.address.streetAddress,
-        customer.address.barangay,
-        customer.address.city,
-        customer.address.province,
-        customer.address.postalCode,
-      ]
-        .filter(Boolean)
-        .join(', ')
-    : '';
+async function persistCustomerToDatabase(userId: string, email: string, profile: CustomerProfile) {
+  const fullName = profile.fullName.trim() || email.split('@')[0] || 'Customer';
+  const contactNumber = profile.mobileNumber.trim();
 
   try {
     await supabase.from('users').upsert({
@@ -111,34 +98,35 @@ async function persistCustomerToDatabase(userId: string, email: string, customer
       role: 'customer',
     });
   } catch {}
-
-  if (addressText) {
-    try {
-      await supabase.from('customer_profiles').upsert({
-        user_id: userId,
-        address: addressText,
-      });
-    } catch {}
-  }
 }
 
 export function useCustomerSession() {
-  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const localSnapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const { user } = useAuth();
 
-  const currentCustomer = user?.email
-    ? snapshot.customers[user.email.toLowerCase()] ?? null
-    : null;
-    
-  const pendingCustomer = snapshot.pendingOnboardingEmail
-    ? snapshot.customers[snapshot.pendingOnboardingEmail] ?? null
+  const currentCustomer = user
+    ? {
+        email: String(user.email || '').trim().toLowerCase(),
+        signupName:
+          String(user.user_metadata?.full_name || '').trim() ||
+          String(user.email || '').split('@')[0] ||
+          'Customer',
+        profile: {
+          fullName:
+            String(user.user_metadata?.full_name || '').trim() ||
+            String(user.email || '').split('@')[0] ||
+            'Customer',
+          mobileNumber: String(user.user_metadata?.phone || '').trim(),
+          referralCode: String(user.user_metadata?.referral_code || '').trim(),
+        },
+      }
     : null;
 
   return {
     currentCustomer,
-    pendingCustomer,
+    pendingCustomer: localSnapshot.pendingCustomer,
     isLoggedIn: !!user,
-    isInSignupOnboarding: Boolean(pendingCustomer),
+    isInSignupOnboarding: Boolean(localSnapshot.pendingCustomer),
   };
 }
 
@@ -150,143 +138,84 @@ export async function registerCustomerAccount(input: {
   referralCode: string;
 }) {
   const email = input.email.trim().toLowerCase();
+  const profile: CustomerProfile = {
+    fullName: input.fullName.trim(),
+    mobileNumber: input.phone.trim(),
+    referralCode: input.referralCode.trim(),
+  };
 
-  // 1. Send to Supabase Auth
   const { data, error } = await supabase.auth.signUp({
     email,
     password: input.password,
     options: {
       data: {
         role: 'customer',
-        full_name: input.fullName.trim(),
-        phone: input.phone.trim(),
-        referral_code: input.referralCode.trim(),
-      }
-    }
+        full_name: profile.fullName,
+        phone: profile.mobileNumber,
+        referral_code: profile.referralCode,
+      },
+    },
   });
+
   if (error) {
     throw new Error(getErrorMessage(error, 'Unable to create customer account.'));
   }
 
-  // 2. Fallback to mock state to prevent UI breakage during transition
-  const nextCustomer: CustomerAccount = {
+  await persistPendingDraft({
     email,
-    password: input.password,
-    signupName: input.fullName.trim(),
-    signupPhone: input.phone.trim(),
-    profile: {
-      fullName: input.fullName.trim(),
-      mobileNumber: input.phone.trim(),
-      referralCode: input.referralCode.trim(),
-    },
+    profile,
     address: null,
-  };
-
-  setState({
-    ...state,
-    pendingOnboardingEmail: email,
-    customers: {
-      ...state.customers,
-      [email]: nextCustomer,
-    },
   });
 
   if (data.user?.id) {
-    await persistCustomerToDatabase(data.user.id, email, nextCustomer);
+    await persistCustomerToDatabase(data.user.id, email, profile);
   }
 }
 
-export function savePendingCustomerAddress(address: CustomerAddress) {
-  const activeEmail = getActiveEmail();
-  if (!activeEmail) return;
+export async function savePendingCustomerAddress(address: CustomerAddress) {
+  await loadPendingDraft();
+  const existing = snapshot.pendingCustomer;
+  if (!existing) return;
 
-  const currentCustomer = state.customers[activeEmail];
-  if (!currentCustomer) return;
-
-  setState({
-    ...state,
-    customers: {
-      ...state.customers,
-      [activeEmail]: {
-        ...currentCustomer,
-        address,
-      },
-    },
+  await persistPendingDraft({
+    ...existing,
+    address,
   });
 }
 
-export function finishSignupOnboarding() {
-  if (!state.pendingOnboardingEmail) return;
-
-  setState({
-    ...state,
-    pendingOnboardingEmail: null,
-  });
+export async function finishSignupOnboarding() {
+  await persistPendingDraft(null);
 }
 
 export async function loginCustomer(email: string, password: string) {
   const normalizedEmail = email.trim().toLowerCase();
-  
-  // 1. Supabase Auth Login
+
   const { data, error } = await supabase.auth.signInWithPassword({
     email: normalizedEmail,
     password: password.trim(),
   });
+
   if (error) {
     throw new Error(getErrorMessage(error, 'Unable to log in.'));
   }
 
-  // 2. Fallback to mock state
-  let customer = state.customers[normalizedEmail];
-
-  if (!customer) {
-    customer = {
-      email: normalizedEmail,
-      password: password.trim(),
-      signupName: normalizedEmail.split('@')[0] || 'Customer',
-      signupPhone: '',
-      profile: {
-        fullName: normalizedEmail.split('@')[0] || 'Customer',
-        mobileNumber: '',
-        referralCode: '',
-      },
-      address: null,
-    };
-
-    setState({
-      ...state,
-      currentCustomerEmail: normalizedEmail,
-      pendingOnboardingEmail: null,
-      customers: {
-        ...state.customers,
-        [normalizedEmail]: customer,
-      },
-    });
-
-    if (data.user?.id) {
-      await persistCustomerToDatabase(data.user.id, normalizedEmail, customer);
-    }
-
-    return { ok: true as const };
-  }
-
-  setState({
-    ...state,
-    currentCustomerEmail: normalizedEmail,
-    pendingOnboardingEmail: null,
-  });
-
   if (data.user?.id) {
-    await persistCustomerToDatabase(data.user.id, normalizedEmail, customer);
+    const profile: CustomerProfile = {
+      fullName:
+        String(data.user.user_metadata?.full_name || '').trim() ||
+        normalizedEmail.split('@')[0] ||
+        'Customer',
+      mobileNumber: String(data.user.user_metadata?.phone || '').trim(),
+      referralCode: String(data.user.user_metadata?.referral_code || '').trim(),
+    };
+    await persistCustomerToDatabase(data.user.id, normalizedEmail, profile);
   }
+
+  await finishSignupOnboarding();
 
   return { ok: true as const };
 }
 
 export async function logoutCustomer() {
   await supabase.auth.signOut();
-  setState({
-    ...state,
-    currentCustomerEmail: null,
-  });
 }

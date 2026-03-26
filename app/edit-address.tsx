@@ -62,6 +62,7 @@ export default function EditAddressScreen() {
       const zip_code = parts[2] || '';
 
       await updateAddress(addressId, {
+        user_id: user.id,
         street_address: addressLine1,
         city,
         province,

@@ -1,9 +1,13 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
+import { NotificationBadge } from '@/components/ui/notification-badge';
+import { useUnreadMessages } from '@/hooks/useUnreadMessages';
 
 export default function ProviderTabsLayout() {
+  const unreadMessages = useUnreadMessages('provider');
+
   return (
     <Tabs
       screenOptions={{
@@ -60,14 +64,28 @@ export default function ProviderTabsLayout() {
           ),
         }}
       />
-      {/* Hide legacy tabs from bottom bar but keep them accessible via router if needed */}
       <Tabs.Screen
         name="messages"
         options={{
-          href: null,
           title: 'Messages',
+          tabBarIcon: ({ color, focused }) => (
+            <View>
+              <Ionicons
+                name={focused ? 'chatbubble' : 'chatbubble-outline'}
+                size={22}
+                color={color}
+              />
+              <NotificationBadge
+                count={unreadMessages}
+                top={-5}
+                right={-12}
+                borderColor="#FFF"
+              />
+            </View>
+          ),
         }}
       />
+      {/* Hide secondary routes from bottom bar but keep them accessible via router if needed */}
       <Tabs.Screen
         name="pricing"
         options={{

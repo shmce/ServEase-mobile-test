@@ -1,27 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
-
-const MenuItem = ({ icon, label, onPress, isDestructive }: any) => (
-  <TouchableOpacity 
-    style={styles.menuItem} 
-    onPress={onPress}
-    activeOpacity={0.7}
-  >
-    <View style={[styles.iconContainer, isDestructive && styles.destructiveIconBackground]}>
-      <Ionicons name={icon} size={22} color={isDestructive ? '#FF4D4D' : '#00B761'} />
-    </View>
-    <Text style={[styles.menuLabel, isDestructive && styles.destructiveLabel]}>{label}</Text>
-    {!isDestructive && (
-      <Ionicons name="chevron-forward" size={20} color="#CCC" />
-    )}
-  </TouchableOpacity>
-);
+import { SettingsRow } from '@/components/ui/settings-row';
+import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 
 export default function MoreScreen() {
   const router = useRouter();
+  const unreadNotifications = useUnreadNotifications();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -38,39 +24,65 @@ export default function MoreScreen() {
 
         <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
           <View style={styles.menuList}>
-            <MenuItem 
+            <SettingsRow 
               icon="person-outline" 
               label="My Profile" 
-              onPress={() => console.log('Profile')} 
+              onPress={() => console.log('Profile')}
+              backgroundColor="#F8F9FA"
+              borderBottomColor="#F8F9FA"
+              badgeBorderColor="#F8F9FA"
             />
-            <MenuItem 
+            <SettingsRow 
               icon="settings-outline" 
               label="Settings" 
-              onPress={() => router.push('/provider-settings' as any)} 
+              onPress={() => router.push('/provider-settings' as any)}
+              backgroundColor="#F8F9FA"
+              borderBottomColor="#F8F9FA"
+              badgeBorderColor="#F8F9FA"
             />
-            <MenuItem 
+            <SettingsRow 
+              icon="notifications" 
+              label="Notifications" 
+              badgeCount={unreadNotifications}
+              onPress={() => router.push('/notifications' as any)}
+              backgroundColor="#F8F9FA"
+              borderBottomColor="#F8F9FA"
+              badgeBorderColor="#F8F9FA"
+            />
+            <SettingsRow 
               icon="time-outline" 
               label="View Schedule" 
-              onPress={() => router.push('/provider-availability' as any)} 
+              onPress={() => router.push('/provider-availability' as any)}
+              backgroundColor="#F8F9FA"
+              borderBottomColor="#F8F9FA"
+              badgeBorderColor="#F8F9FA"
             />
-            <MenuItem 
+            <SettingsRow 
               icon="help-circle-outline" 
               label="Help & Support" 
-              onPress={() => router.push('/provider-help' as any)} 
+              onPress={() => router.push('/provider-help' as any)}
+              backgroundColor="#F8F9FA"
+              borderBottomColor="#F8F9FA"
+              badgeBorderColor="#F8F9FA"
             />
-            <MenuItem 
+            <SettingsRow 
               icon="time-outline" 
               label="Service History" 
-              onPress={() => router.push('/provider-history' as any)} 
+              onPress={() => router.push('/provider-history' as any)}
+              backgroundColor="#F8F9FA"
+              borderBottomColor="#F8F9FA"
+              badgeBorderColor="#F8F9FA"
             />
             
             <View style={styles.separator} />
             
-            <MenuItem 
+            <SettingsRow 
               icon="log-out-outline" 
               label="Log Out" 
               onPress={handleLogout}
-              isDestructive={true}
+              isDestructive
+              backgroundColor="#F8F9FA"
+              borderBottomColor="#F8F9FA"
             />
           </View>
         </ScrollView>
@@ -105,34 +117,6 @@ const styles = StyleSheet.create({
   menuList: {
     paddingHorizontal: 24,
     paddingTop: 16,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8F9FA', // Matches mockup background for items
-    paddingVertical: 12,
-    marginBottom: 8,
-  },
-  iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#E8FBF2',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  destructiveIconBackground: {
-    backgroundColor: '#FFE5E5',
-  },
-  menuLabel: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#0D1B2A',
-  },
-  destructiveLabel: {
-    color: '#FF4D4D',
   },
   separator: {
     height: 1,

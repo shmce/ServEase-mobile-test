@@ -20,7 +20,7 @@ import {
   useCustomerSession,
 } from '@/lib/customer-session';
 
-const LABELS: Array<'Home' | 'Work' | 'Other'> = ['Home', 'Work', 'Other'];
+const LABELS: ('Home' | 'Work' | 'Other')[] = ['Home', 'Work', 'Other'];
 const PSGC_BASE_URL = 'https://psgc.cloud';
 const NCR_CODE = 'NCR';
 const NCR_LABEL = 'Metro Manila';
@@ -196,13 +196,13 @@ export default function CustomerOnboardingAddressScreen() {
     };
   }, [selectedProvince]);
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!isReady) {
       Alert.alert('Missing details', 'Please complete the full address before continuing.');
       return;
     }
 
-    savePendingCustomerAddress({
+    await savePendingCustomerAddress({
       label,
       streetAddress: streetAddress.trim(),
       barangay: barangay.trim(),
@@ -377,7 +377,9 @@ export default function CustomerOnboardingAddressScreen() {
           <View style={styles.footer}>
             <TouchableOpacity
               style={[styles.primaryButton, !isReady && styles.primaryButtonDisabled]}
-              onPress={handleContinue}
+              onPress={() => {
+                void handleContinue();
+              }}
               disabled={!isReady}
             >
               <Text style={[styles.primaryButtonText, !isReady && styles.primaryButtonTextDisabled]}>

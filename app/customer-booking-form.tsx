@@ -12,12 +12,20 @@ import {
   Modal,
   Platform,
   KeyboardAvoidingView,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { getUserAddresses } from '@/services/addressService';
+import {
+  saveBookingAttachments,
+  type BookingAttachmentDraft,
+  uploadBookingAttachment,
+} from '@/services/bookingAttachmentService';
 import { createBooking } from '@/services/bookingService';
+import { getPaymentMethodLabel, type PaymentMethod } from '@/services/paymentService';
 import { getErrorMessage } from '@/lib/error-handling';
 import { supabase } from '@/lib/supabase';
 
@@ -90,10 +98,10 @@ function buildBookableDays(monthDate: Date) {
   const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
   const leadingDays = firstDay.getDay();
 
-  const cells: Array<
+  const cells: (
     | { key: string; type: 'empty' }
     | { key: string; type: 'day'; date: Date; isAvailable: boolean }
-  > = [];
+  )[] = [];
 
   for (let index = 0; index < leadingDays; index += 1) {
     cells.push({ key: `empty-${index}`, type: 'empty' });
@@ -132,6 +140,8 @@ export default function CustomerBookingFormScreen() {
   const [time, setTime] = useState(params.time || '');
   const [address, setAddress] = useState<any>(null);
   const [notes, setNotes] = useState('');
+  const [attachments, setAttachments] = useState<BookingAttachmentDraft[]>([]);
+  const paymentMethod: PaymentMethod = 'cash';
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
   const [isServicesLoading, setIsServicesLoading] = useState(false);
   const [servicesLoadError, setServicesLoadError] = useState('');
@@ -296,9 +306,38 @@ export default function CustomerBookingFormScreen() {
         scheduled_time: time,
         service_address: address.fullAddress,
         total_amount: selectedService?.price || 0,
+        payment_method: paymentMethod,
+        customer_notes: notes.trim(),
       };
 
       const created = await createBooking(payload);
+      if (created?.id && attachments.length > 0) {
+        try {
+          const uploaded = [];
+          for (const attachment of attachments) {
+            const upload = await uploadBookingAttachment({
+              bookingId: String(created.id),
+              userId: user.id,
+              uri: attachment.uri,
+              fileName: attachment.label,
+            });
+            uploaded.push({
+              uri: upload.publicUrl,
+              label: attachment.label || upload.fileName,
+              storagePath: upload.storagePath,
+            });
+          }
+          await saveBookingAttachments(String(created.id), uploaded);
+        } catch (attachmentError) {
+          Alert.alert(
+            'Booking Created, Attachment Save Failed',
+            getErrorMessage(
+              attachmentError,
+              'The booking was created, but attachments could not be saved.'
+            )
+          );
+        }
+      }
       router.push({
         pathname: '/customer-booking-details',
         params: { id: created?.id || 'new-booking', addressId: address.id },
@@ -338,6 +377,33 @@ export default function CustomerBookingFormScreen() {
       </TouchableOpacity>
     </Modal>
   );
+
+  const pickAttachments = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission Required', 'Photo library permission is required to attach images.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+      allowsMultipleSelection: true,
+      selectionLimit: 5,
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    setAttachments((prev) => [
+      ...prev,
+      ...result.assets.map((asset, index) => ({
+        uri: asset.uri,
+        label:
+          asset.fileName ||
+          `Photo ${prev.length + index + 1}`,
+      })),
+    ]);
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -519,14 +585,60 @@ export default function CustomerBookingFormScreen() {
             </View>
           </View>
 
+          <View style={styles.fieldContainer}>
+            <Text style={styles.fieldLabel}>Payment Method</Text>
+            <View style={[styles.paymentMethodCard, styles.paymentMethodCardSelected]}>
+              <View style={styles.paymentMethodCopy}>
+                <Text
+                  style={[
+                    styles.paymentMethodLabel,
+                    styles.paymentMethodLabelSelected,
+                  ]}
+                >
+                  {getPaymentMethodLabel(paymentMethod)}
+                </Text>
+                <Text style={styles.paymentMethodHint}>
+                  Cash only for now. The customer pays after service completion.
+                </Text>
+              </View>
+              <Ionicons
+                name="cash-outline"
+                size={22}
+                color="#00B761"
+              />
+            </View>
+          </View>
+
           {/* File Upload */}
           <View style={styles.fieldContainer}>
             <Text style={styles.fieldLabel}>Attachments (Optional)</Text>
-            <TouchableOpacity style={styles.uploadBox}>
+            <TouchableOpacity style={styles.uploadBox} onPress={() => void pickAttachments()}>
               <Ionicons name="cloud-upload-outline" size={32} color="#00B761" />
               <Text style={styles.uploadText}>Upload Photos</Text>
-              <Text style={styles.uploadSubtext}>Show the provider what needs to be fixed</Text>
+              <Text style={styles.uploadSubtext}>Select images from your device for the provider</Text>
             </TouchableOpacity>
+            {attachments.length > 0 ? (
+              <View style={styles.attachmentList}>
+                {attachments.map((attachment, index) => (
+                  <View key={`${attachment.uri}-${index}`} style={styles.attachmentItem}>
+                    <Image source={{ uri: attachment.uri }} style={styles.attachmentPreview} />
+                    <View style={styles.attachmentCopy}>
+                      <Text style={styles.attachmentLabel}>{attachment.label}</Text>
+                      <Text style={styles.attachmentUri} numberOfLines={1}>
+                        {attachment.uri.split('/').pop() || attachment.uri}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() =>
+                        setAttachments((prev) => prev.filter((_, itemIndex) => itemIndex !== index))
+                      }
+                    >
+                      <Ionicons name="close-circle" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </View>
 
           <View style={{ height: 100 }} />
@@ -536,7 +648,7 @@ export default function CustomerBookingFormScreen() {
       {/* Bottom Action */}
       <View style={styles.bottomContainer}>
         <View style={styles.priceContainer}>
-          <Text style={styles.priceLabel}>Estimated Total (Cash Basis)</Text>
+          <Text style={styles.priceLabel}>{getPaymentMethodLabel(paymentMethod)}</Text>
           <Text style={styles.priceValue}>P{Number(selectedService?.price || 0).toFixed(2)}</Text>
         </View>
         <TouchableOpacity
@@ -861,6 +973,76 @@ const styles = StyleSheet.create({
     height: 100,
     fontSize: 15,
     color: '#0D1B2A',
+  },
+  paymentMethodsContainer: {
+    gap: 12,
+  },
+  paymentMethodCard: {
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  paymentMethodCardSelected: {
+    borderColor: '#00B761',
+    backgroundColor: '#F3FDF7',
+  },
+  paymentMethodCopy: {
+    flex: 1,
+    paddingRight: 16,
+  },
+  paymentMethodLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0D1B2A',
+  },
+  paymentMethodLabelSelected: {
+    color: '#00B761',
+  },
+  paymentMethodHint: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
+    lineHeight: 17,
+  },
+  attachmentList: {
+    marginTop: 12,
+    gap: 10,
+  },
+  attachmentItem: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  attachmentPreview: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    marginRight: 12,
+    backgroundColor: '#E2E8F0',
+  },
+  attachmentCopy: {
+    flex: 1,
+    marginRight: 10,
+  },
+  attachmentLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0D1B2A',
+  },
+  attachmentUri: {
+    marginTop: 3,
+    fontSize: 12,
+    color: '#64748B',
   },
   uploadBox: {
     backgroundColor: '#FFF',

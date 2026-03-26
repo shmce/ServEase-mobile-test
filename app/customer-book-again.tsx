@@ -33,6 +33,7 @@ export default function CustomerBookAgainScreen() {
     router.push({
       pathname: '/customer-booking-form',
       params: {
+        providerId: bookingData.providerId || '',
         serviceName: bookingData.service,
         providerName: bookingData.provider?.name || bookingData.providerName,
         date: `${bookingData.date}, ${bookingData.year || '2026'}`,

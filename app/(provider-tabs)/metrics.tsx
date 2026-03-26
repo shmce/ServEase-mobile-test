@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { 
+import {
   View, 
   Text, 
   StyleSheet, 
@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { NotificationBadge } from '@/components/ui/notification-badge';
+import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 
 const { width } = Dimensions.get('window');
 
@@ -61,6 +63,7 @@ const RecommendedAction = ({ icon, title, description, onPress }: any) => (
 
 export default function PerformanceMetricsScreen() {
   const router = useRouter();
+  const unreadNotifications = useUnreadNotifications();
   const [trendsPeriod, setTrendsPeriod] = useState(30);
 
   return (
@@ -75,8 +78,9 @@ export default function PerformanceMetricsScreen() {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Performance Metrics</Text>
         </View>
-        <TouchableOpacity style={styles.notificationBtn}>
+        <TouchableOpacity style={styles.notificationBtn} onPress={() => router.push('/notifications' as any)}>
           <Ionicons name="notifications" size={24} color="#00B761" />
+          <NotificationBadge count={unreadNotifications} top={-4} right={-4} borderColor="#FFF" />
         </TouchableOpacity>
       </View>
 

@@ -4,7 +4,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { getProviderBookingById } from '@/services/providerBookingService';
 import { getErrorMessage } from '@/lib/error-handling';
-import { getPaymentByBookingId } from '@/services/paymentService';
+import {
+  getPaymentByBookingId,
+  getPaymentMethodLabel,
+  getPaymentStatusLabel,
+} from '@/services/paymentService';
 
 export default function ProviderReceiptScreen() {
   const router = useRouter();
@@ -51,13 +55,20 @@ export default function ProviderReceiptScreen() {
   const amount = Number(booking?.total_amount || 0);
   const platformFee = amount * 0.1;
   const earnings = amount - platformFee;
+  const exitReceipt = () => {
+    router.replace('/(provider-tabs)/bookings' as any);
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}><Ionicons name="arrow-back" size={24} color="#0D1B2A" /></TouchableOpacity>
+        <TouchableOpacity onPress={exitReceipt}>
+          <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Service Receipt</Text>
-        <TouchableOpacity onPress={onShare}><Ionicons name="share-outline" size={22} color="#0D1B2A" /></TouchableOpacity>
+        <TouchableOpacity onPress={onShare}>
+          <Ionicons name="share-outline" size={22} color="#0D1B2A" />
+        </TouchableOpacity>
       </View>
 
       {isLoading ? <ActivityIndicator size="large" color="#00B761" style={{ marginTop: 28 }} /> : null}
@@ -69,12 +80,16 @@ export default function ProviderReceiptScreen() {
           <Text style={styles.title}>{booking.service_title}</Text>
           <Text style={styles.sub}>Customer: {booking.customer_name}</Text>
           <Text style={styles.sub}>Address: {booking.service_address}</Text>
-          <Text style={styles.sub}>Payment Status: {String(payment?.status || 'not_recorded')}</Text>
-          <Text style={styles.sub}>Payment Method: {String(payment?.method || 'not_recorded')}</Text>
+          <Text style={styles.sub}>Payment Status: {getPaymentStatusLabel(payment?.status || 'pending')}</Text>
+          <Text style={styles.sub}>Payment Method: {getPaymentMethodLabel(payment?.method || 'cash')}</Text>
           {payment?.transaction_reference ? <Text style={styles.sub}>Transaction Ref: {String(payment.transaction_reference)}</Text> : null}
           <Text style={styles.sub}>Total Charged: P{amount.toFixed(2)}</Text>
           <Text style={styles.sub}>Platform Fee (10%): P{platformFee.toFixed(2)}</Text>
           <Text style={styles.earnings}>Your Earnings: P{earnings.toFixed(2)}</Text>
+
+          <TouchableOpacity style={styles.doneBtn} onPress={exitReceipt}>
+            <Text style={styles.doneBtnText}>Done</Text>
+          </TouchableOpacity>
         </ScrollView>
       ) : null}
     </SafeAreaView>
@@ -90,6 +105,15 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '800', color: '#0D1B2A' },
   sub: { fontSize: 14, color: '#445' },
   earnings: { marginTop: 8, fontSize: 16, fontWeight: '800', color: '#00B761' },
+  doneBtn: {
+    marginTop: 18,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#00B761',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doneBtnText: { color: '#FFF', fontWeight: '700' },
   error: { color: '#C62828', padding: 12 },
 });
 

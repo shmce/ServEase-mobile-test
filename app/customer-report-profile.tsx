@@ -13,6 +13,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
+import { getErrorMessage } from '@/lib/error-handling';
+import { submitProviderProfileReport } from '@/services/customerFeedbackService';
 
 const REPORT_REASONS = [
   'Fake profile',
@@ -24,21 +27,46 @@ const REPORT_REASONS = [
 
 export default function CustomerReportProfileScreen() {
   const router = useRouter();
-  const { providerName = 'Provider' } = useLocalSearchParams<{ providerName?: string }>();
+  const { user } = useAuth();
+  const { providerName = 'Provider', providerId = '', bookingId = '' } = useLocalSearchParams<{
+    providerName?: string;
+    providerId?: string;
+    bookingId?: string;
+  }>();
   const [selectedReason, setSelectedReason] = useState('');
   const [details, setDetails] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const canSubmit = selectedReason.trim().length > 0;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit) {
       Alert.alert('Missing Reason', 'Please select a reason before submitting your report.');
       return;
     }
+    if (!user?.id || !String(providerId).trim()) {
+      Alert.alert('Missing Provider', 'We could not determine which provider you are reporting.');
+      return;
+    }
 
-    Alert.alert('Report Sent', `Your report for ${providerName} has been submitted.`, [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+    setIsSubmitting(true);
+    try {
+      await submitProviderProfileReport({
+        providerId: String(providerId),
+        reporterId: user.id,
+        bookingId: String(bookingId || ''),
+        reason: selectedReason,
+        details,
+      });
+
+      Alert.alert('Report Sent', `Your report for ${providerName} has been submitted.`, [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (error) {
+      Alert.alert('Submit Failed', getErrorMessage(error, 'Could not submit this report.'));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -84,10 +112,10 @@ export default function CustomerReportProfileScreen() {
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.submitButton, !canSubmit && styles.submitButtonDisabled]}
-          onPress={handleSubmit}
-          disabled={!canSubmit}>
-          <Text style={styles.submitButtonText}>Submit Report</Text>
+          style={[styles.submitButton, (!canSubmit || isSubmitting) && styles.submitButtonDisabled]}
+          onPress={() => void handleSubmit()}
+          disabled={!canSubmit || isSubmitting}>
+          <Text style={styles.submitButtonText}>{isSubmitting ? 'Submitting...' : 'Submit Report'}</Text>
         </TouchableOpacity>
       </View>
 

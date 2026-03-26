@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
@@ -11,16 +12,31 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import { supabase } from '@/lib/supabase';
+import { getPasswordResetRedirectUrl } from '@/lib/auth-reset';
+import { getErrorMessage } from '@/lib/error-handling';
 
 export default function CustomerForgotPasswordScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSendResetLink = () => {
-    if (email) {
-      // Logic to send reset link
+  const handleSendResetLink = async () => {
+    if (!email.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+        redirectTo: getPasswordResetRedirectUrl(),
+      });
+
+      if (error) throw error;
       setIsSuccess(true);
+    } catch (error) {
+      Alert.alert('Reset Failed', getErrorMessage(error, 'Could not send reset email.'));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -58,7 +74,7 @@ export default function CustomerForgotPasswordScreen() {
               <Text style={styles.primaryButtonText}>Back to Login</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.textButton}>
+            <TouchableOpacity style={styles.textButton} onPress={() => void handleSendResetLink()}>
               <Text style={styles.textButtonLabel}>Resend email</Text>
             </TouchableOpacity>
           </View>
@@ -107,11 +123,11 @@ export default function CustomerForgotPasswordScreen() {
                 { backgroundColor: email ? '#A5E6BA' : '#E0E0E0' },
                 email && { backgroundColor: '#A5E6BA' }
               ]}
-              onPress={handleSendResetLink}
+              onPress={() => void handleSendResetLink()}
               activeOpacity={0.8}
-              disabled={!email}
+              disabled={!email || isSubmitting}
             >
-              <Text style={styles.primaryButtonText}>Send Reset Link</Text>
+              <Text style={styles.primaryButtonText}>{isSubmitting ? 'Sending...' : 'Send Reset Link'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 

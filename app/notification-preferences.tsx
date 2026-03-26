@@ -11,15 +11,66 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  loadCustomerNotificationPreferences,
+  saveCustomerNotificationPreferences,
+} from '@/lib/notification-preferences';
 
 export default function NotificationPreferencesScreen() {
   const router = useRouter();
+  const { user } = useAuth();
 
-  // Store in simple local state hooks
   const [bookingUpdates, setBookingUpdates] = useState(true);
   const [promotions, setPromotions] = useState(false);
   const [messages, setMessages] = useState(true);
   const [reminders, setReminders] = useState(true);
+
+  React.useEffect(() => {
+    let active = true;
+
+    async function loadPreferences() {
+      if (!user?.id) return;
+      const preferences = await loadCustomerNotificationPreferences(user.id);
+      if (!active) return;
+      setBookingUpdates(preferences.bookingUpdates);
+      setPromotions(preferences.promotions);
+      setMessages(preferences.messages);
+      setReminders(preferences.reminders);
+    }
+
+    void loadPreferences();
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  const updatePreferences = React.useCallback(
+    async (next: {
+      bookingUpdates?: boolean;
+      promotions?: boolean;
+      messages?: boolean;
+      reminders?: boolean;
+    }) => {
+      const nextState = {
+        bookingUpdates,
+        promotions,
+        messages,
+        reminders,
+        ...next,
+      };
+
+      setBookingUpdates(nextState.bookingUpdates);
+      setPromotions(nextState.promotions);
+      setMessages(nextState.messages);
+      setReminders(nextState.reminders);
+
+      if (user?.id) {
+        await saveCustomerNotificationPreferences(user.id, nextState);
+      }
+    },
+    [bookingUpdates, messages, promotions, reminders, user?.id]
+  );
 
   const PreferenceItem = ({ label, description, value, onValueChange, icon }: any) => (
     <View style={styles.preferenceItem}>
@@ -60,7 +111,7 @@ export default function NotificationPreferencesScreen() {
           label="Booking Updates" 
           description="Get notified about the status of your service bookings."
           value={bookingUpdates} 
-          onValueChange={setBookingUpdates} 
+          onValueChange={(value: boolean) => void updatePreferences({ bookingUpdates: value })} 
         />
         
         <PreferenceItem 
@@ -68,7 +119,7 @@ export default function NotificationPreferencesScreen() {
           label="Promotions & Discounts" 
           description="Receive exclusive offers and promo codes."
           value={promotions} 
-          onValueChange={setPromotions} 
+          onValueChange={(value: boolean) => void updatePreferences({ promotions: value })} 
         />
         
         <PreferenceItem 
@@ -76,7 +127,7 @@ export default function NotificationPreferencesScreen() {
           label="Messages" 
           description="Alerts when providers message you."
           value={messages} 
-          onValueChange={setMessages} 
+          onValueChange={(value: boolean) => void updatePreferences({ messages: value })} 
         />
         
         <PreferenceItem 
@@ -84,7 +135,7 @@ export default function NotificationPreferencesScreen() {
           label="Reminders" 
           description="Reminders before your scheduled service."
           value={reminders} 
-          onValueChange={setReminders} 
+          onValueChange={(value: boolean) => void updatePreferences({ reminders: value })} 
         />
 
         <View style={styles.footerSpacer} />

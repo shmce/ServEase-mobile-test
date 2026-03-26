@@ -10,19 +10,66 @@ import {
   Image, 
   Dimensions,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { getErrorMessage } from '@/lib/error-handling';
-import { getPaymentByBookingId } from '@/services/paymentService';
+import { getBookingAttachments, type BookingAttachmentRow } from '@/services/bookingAttachmentService';
+import {
+  getPaymentByBookingId,
+  getPaymentMethodLabel,
+  getPaymentStatusLabel,
+} from '@/services/paymentService';
+import { getCustomerBookingPresentation } from '@/lib/booking-status';
+import { openPhoneCall } from '@/lib/communication';
+import { useAuth } from '@/hooks/useAuth';
+import { ImagePreviewModal } from '@/components/ui/image-preview-modal';
+import {
+  getCustomerChatSummaries,
+  subscribeToChatSummaries,
+  type ChatSummary,
+} from '@/services/chatService';
+import {
+  getProviderAdditionalChargeRequests,
+  getProviderRescheduleRequests,
+  reviewAdditionalChargeRequest,
+  reviewRescheduleRequest,
+  type AdditionalChargeRow,
+  type BookingRescheduleRequestRow,
+} from '@/services/providerBookingActionsService';
 
 const { width } = Dimensions.get('window');
 
+const formatScheduleFromProposal = (dateRaw: string, timeRaw: string) => {
+  const parsed = new Date(`${dateRaw} ${timeRaw}`);
+  if (!Number.isNaN(parsed.getTime())) {
+    return {
+      date: parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }),
+      year: String(parsed.getFullYear()),
+      time: parsed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+    };
+  }
+
+  return {
+    date: dateRaw,
+    year: '',
+    time: timeRaw,
+  };
+};
+
 const BookingDetailsScreen = () => {
   const router = useRouter();
+  const { user } = useAuth();
   const params = useLocalSearchParams<{ booking?: string; id?: string }>();
   const [isLoading, setIsLoading] = useState(false);
+  const [chatSummary, setChatSummary] = useState<ChatSummary | null>(null);
+  const [attachments, setAttachments] = useState<BookingAttachmentRow[]>([]);
+  const [previewAttachment, setPreviewAttachment] = useState<BookingAttachmentRow | null>(null);
+  const [rescheduleRequests, setRescheduleRequests] = useState<BookingRescheduleRequestRow[]>([]);
+  const [additionalChargeRequests, setAdditionalChargeRequests] = useState<AdditionalChargeRow[]>([]);
+  const [requestAction, setRequestAction] = useState<'reschedule' | 'charges' | null>(null);
 
   const initialBooking = useMemo(() => {
     if (params.booking) {
@@ -30,34 +77,40 @@ const BookingDetailsScreen = () => {
         return JSON.parse(params.booking);
       } catch {}
     }
-
-    return {
-      id: 'BK-2026-03-011',
-      service: 'Plumbing Repair',
-      address: '45 Mabini Ave, Pasig City',
-      date: 'March 17',
-      year: '2026',
-      time: '2:00 PM',
-      status: 'Confirmed',
-      provider: {
-        name: 'Juan Dela Cruz',
-        rating: 4.9,
-        specialty: 'Plumbing Repair',
-        avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=400&auto=format&fit=crop&q=60',
-        isVerified: true,
-      },
-      totalAmount: '2,200.00',
-      countdown: {
-        days: '3',
-        hours: '4',
-        mins: '19',
-      },
-    };
+    return null;
   }, [params.booking]);
 
   const [booking, setBooking] = useState<any>(initialBooking);
   const provider = booking?.provider || {};
   const [payment, setPayment] = useState<any>(null);
+  const bookingIdForChat = String(booking?.rawId || params.id || '').trim();
+  const bookingId = String(booking?.rawId || params.id || '').trim();
+  const countdown = booking?.countdown || {};
+  const safeBooking = {
+    id: booking?.id || 'Booking',
+    rawId: booking?.rawId || '',
+    service: booking?.service || 'Service Booking',
+    address: booking?.address || 'No address provided.',
+    date: booking?.date || 'N/A',
+    year: booking?.year || '',
+    time: booking?.time || 'N/A',
+    totalAmount: booking?.totalAmount || '0.00',
+    notes: booking?.notes || '',
+  };
+
+  const loadChatSummary = React.useCallback(async () => {
+    if (!user?.id || !bookingIdForChat) {
+      setChatSummary(null);
+      return;
+    }
+
+    try {
+      const summaries = await getCustomerChatSummaries(user.id);
+      setChatSummary(summaries.find((entry) => entry.bookingId === bookingIdForChat) || null);
+    } catch {
+      setChatSummary(null);
+    }
+  }, [bookingIdForChat, user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -70,7 +123,7 @@ const BookingDetailsScreen = () => {
       try {
         const { data: bookingRow, error: bookingError } = await supabase
           .from('bookings')
-          .select('id,booking_reference,status,service_address,scheduled_at,total_amount,provider_id,service_id')
+          .select('id,booking_reference,status,service_address,scheduled_at,total_amount,provider_id,service_id,customer_notes')
           .eq('id', bookingId)
           .maybeSingle();
         if (bookingError) throw bookingError;
@@ -116,13 +169,16 @@ const BookingDetailsScreen = () => {
             : initialBooking?.time || 'N/A',
           status: statusRaw,
           totalAmount: Number(bookingRow.total_amount || 0).toFixed(2),
+          notes: String(bookingRow.customer_notes || '').trim(),
           countdown: {
             days: String(days),
             hours: String(hours),
             mins: String(mins),
           },
           provider: {
+            id: bookingRow.provider_id,
             name: providerName,
+            phone: providerRes.data?.contact_number || '',
             rating: Number(profileRes.data?.average_rating || 0).toFixed(1),
             specialty: businessName || serviceTitle,
             avatar: `https://i.pravatar.cc/150?u=${bookingRow.provider_id}`,
@@ -137,6 +193,12 @@ const BookingDetailsScreen = () => {
             if (active) setPayment(pay);
           } catch {
             if (active) setPayment(null);
+          }
+          try {
+            const files = await getBookingAttachments(String(bookingRow.id));
+            if (active) setAttachments(files);
+          } catch {
+            if (active) setAttachments([]);
           }
         }
       } catch (error) {
@@ -156,13 +218,198 @@ const BookingDetailsScreen = () => {
     return () => {
       active = false;
     };
-  }, [initialBooking?.id, initialBooking?.service, initialBooking?.time, initialBooking?.year, params.id]);
+  }, [initialBooking?.date, initialBooking?.id, initialBooking?.service, initialBooking?.time, initialBooking?.year, params.id]);
 
-  const statusLower = String(booking?.status || '').toLowerCase();
-  const isCompleted = statusLower.includes('complete') || statusLower === 'done';
-  const isCancelled = statusLower.includes('cancel');
-  const isUpcoming = !isCompleted && !isCancelled;
+  useEffect(() => {
+    void loadChatSummary();
+  }, [loadChatSummary]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    return subscribeToChatSummaries({
+      role: 'customer',
+      userId: user.id,
+      onChange: () => {
+        void loadChatSummary();
+      },
+    });
+  }, [loadChatSummary, user?.id]);
+
+  const bookingState = getCustomerBookingPresentation(booking?.status);
+  const isCompleted = bookingState.normalizedStatus === 'completed';
+  const isCancelled = bookingState.normalizedStatus === 'cancelled';
+  const isUpcoming = bookingState.tab === 'inProgress';
   const canReviewBooking = isCompleted;
+  const canTrackBooking = bookingState.canTrack && Boolean(booking?.rawId || params.id);
+  const canCancelBooking = bookingState.canCancel && Boolean(booking?.rawId || params.id);
+  const pendingRescheduleRequest = rescheduleRequests.find(
+    (entry) => String(entry.status || '').toLowerCase() === 'pending'
+  ) || null;
+  const pendingAdditionalCharges = additionalChargeRequests.filter(
+    (entry) => String(entry.status || '').toLowerCase() === 'pending'
+  );
+  const pendingAdditionalChargeTotal = pendingAdditionalCharges.reduce(
+    (sum, entry) => sum + Number(entry.amount || 0),
+    0
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadRequestState() {
+      if (!bookingId) {
+        if (active) {
+          setRescheduleRequests([]);
+          setAdditionalChargeRequests([]);
+        }
+        return;
+      }
+
+      try {
+        const [reschedules, charges] = await Promise.all([
+          getProviderRescheduleRequests(bookingId),
+          getProviderAdditionalChargeRequests(bookingId),
+        ]);
+
+        if (!active) return;
+        setRescheduleRequests(reschedules);
+        setAdditionalChargeRequests(charges);
+      } catch (error) {
+        console.warn('Failed to load booking requests:', error);
+        if (!active) return;
+        setRescheduleRequests([]);
+        setAdditionalChargeRequests([]);
+      }
+    }
+
+    void loadRequestState();
+    return () => {
+      active = false;
+    };
+  }, [bookingId]);
+
+  const refreshPayment = React.useCallback(async () => {
+    if (!bookingId) {
+      setPayment(null);
+      return;
+    }
+
+    try {
+      const pay = await getPaymentByBookingId(bookingId);
+      setPayment(pay);
+    } catch {
+      setPayment(null);
+    }
+  }, [bookingId]);
+
+  const refreshRequests = React.useCallback(async () => {
+    if (!bookingId) {
+      setRescheduleRequests([]);
+      setAdditionalChargeRequests([]);
+      return;
+    }
+
+    try {
+      const [reschedules, charges] = await Promise.all([
+        getProviderRescheduleRequests(bookingId),
+        getProviderAdditionalChargeRequests(bookingId),
+      ]);
+      setRescheduleRequests(reschedules);
+      setAdditionalChargeRequests(charges);
+    } catch {
+      setRescheduleRequests([]);
+      setAdditionalChargeRequests([]);
+    }
+  }, [bookingId]);
+
+  const handleReviewReschedule = React.useCallback(
+    async (decision: 'approved' | 'declined') => {
+      if (!pendingRescheduleRequest || !bookingId || !user?.id) return;
+
+      setRequestAction('reschedule');
+      try {
+        const updated = await reviewRescheduleRequest({
+          requestId: pendingRescheduleRequest.id,
+          bookingId,
+          customerId: user.id,
+          decision,
+        });
+
+        if (decision === 'approved') {
+          const nextSchedule = formatScheduleFromProposal(
+            updated.proposed_date,
+            updated.proposed_time
+          );
+
+          setBooking((prev: any) => ({
+            ...prev,
+            date: nextSchedule.date,
+            year: nextSchedule.year,
+            time: nextSchedule.time,
+          }));
+        }
+
+        await refreshRequests();
+        Alert.alert(
+          decision === 'approved' ? 'Reschedule Approved' : 'Reschedule Declined',
+          decision === 'approved'
+            ? 'The provider will now see the updated service schedule.'
+            : 'The provider has been notified that the reschedule was declined.'
+        );
+      } catch (error) {
+        Alert.alert(
+          'Review Failed',
+          getErrorMessage(error, 'Could not review this reschedule request.')
+        );
+      } finally {
+        setRequestAction(null);
+      }
+    },
+    [bookingId, pendingRescheduleRequest, refreshRequests, user?.id]
+  );
+
+  const handleReviewAdditionalCharges = React.useCallback(
+    async (decision: 'approved' | 'declined') => {
+      if (!pendingAdditionalCharges.length || !bookingId || !user?.id) return;
+
+      setRequestAction('charges');
+      try {
+        await reviewAdditionalChargeRequest({
+          bookingId,
+          customerId: user.id,
+          chargeIds: pendingAdditionalCharges.map((entry) => entry.id),
+          decision,
+        });
+
+        if (decision === 'approved') {
+          setBooking((prev: any) => ({
+            ...prev,
+            totalAmount: (
+              Number(prev?.totalAmount || 0) + pendingAdditionalChargeTotal
+            ).toFixed(2),
+          }));
+          await refreshPayment();
+        }
+
+        await refreshRequests();
+        Alert.alert(
+          decision === 'approved' ? 'Charges Approved' : 'Charges Declined',
+          decision === 'approved'
+            ? 'The booking total was updated with the approved charges.'
+            : 'The provider has been notified that the extra charges were declined.'
+        );
+      } catch (error) {
+        Alert.alert(
+          'Review Failed',
+          getErrorMessage(error, 'Could not review these additional charges.')
+        );
+      } finally {
+        setRequestAction(null);
+      }
+    },
+    [bookingId, pendingAdditionalChargeTotal, pendingAdditionalCharges, refreshPayment, refreshRequests, user?.id]
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -179,7 +426,7 @@ const BookingDetailsScreen = () => {
         </TouchableOpacity>
         <View style={styles.headerTextContainer}>
           <Text style={styles.headerTitle}>Booking Details</Text>
-          <Text style={styles.bookingId}>{booking.id}</Text>
+          <Text style={styles.bookingId}>{safeBooking.id}</Text>
         </View>
         <View style={{ width: 40 }} /> {/* Spacer */}
       </View>
@@ -202,7 +449,7 @@ const BookingDetailsScreen = () => {
               isCancelled && styles.statusBadgeCancelled,
             ]}
           >
-            <View
+              <View
               style={[
                 styles.statusDot,
                 isCompleted && styles.statusDotCompleted,
@@ -216,23 +463,23 @@ const BookingDetailsScreen = () => {
                 isCancelled && styles.statusTextCancelled,
               ]}
             >
-              {booking.status}
+              {bookingState.label}
             </Text>
           </View>
-          <Text style={styles.serviceTitle}>{booking.service}</Text>
-          <Text style={styles.serviceAddress}>{booking.address}</Text>
+          <Text style={styles.serviceTitle}>{safeBooking.service}</Text>
+          <Text style={styles.serviceAddress}>{safeBooking.address}</Text>
         </View>
 
         {/* Schedule Cards */}
         <View style={styles.scheduleContainer}>
           <View style={styles.scheduleCard}>
             <Ionicons name="calendar" size={24} color="#00C853" />
-            <Text style={styles.scheduleDate}>{booking.date}</Text>
-            <Text style={styles.scheduleYear}>{booking.year}</Text>
+            <Text style={styles.scheduleDate}>{safeBooking.date}</Text>
+            <Text style={styles.scheduleYear}>{safeBooking.year}</Text>
           </View>
           <View style={styles.scheduleCard}>
             <Ionicons name="time" size={24} color="#00C853" />
-            <Text style={styles.scheduleTime}>{booking.time}</Text>
+            <Text style={styles.scheduleTime}>{safeBooking.time}</Text>
             <Text style={styles.scheduleSub}>Scheduled</Text>
           </View>
         </View>
@@ -243,29 +490,25 @@ const BookingDetailsScreen = () => {
             <Text style={styles.countdownLabel}>SERVICE STARTS IN</Text>
             <View style={styles.timerRow}>
               <View style={styles.timerItem}>
-                <View style={styles.timerBox}><Text style={styles.timerNumber}>{booking.countdown.days}</Text></View>
+                <View style={styles.timerBox}><Text style={styles.timerNumber}>{String(countdown.days || '0')}</Text></View>
                 <Text style={styles.timerLabel}>DAYS</Text>
               </View>
               <Text style={styles.timerSeparator}>:</Text>
               <View style={styles.timerItem}>
-                <View style={styles.timerBox}><Text style={styles.timerNumber}>{booking.countdown.hours}</Text></View>
+                <View style={styles.timerBox}><Text style={styles.timerNumber}>{String(countdown.hours || '0')}</Text></View>
                 <Text style={styles.timerLabel}>HRS</Text>
               </View>
               <Text style={styles.timerSeparator}>:</Text>
               <View style={styles.timerItem}>
-                <View style={styles.timerBox}><Text style={styles.timerNumber}>{booking.countdown.mins}</Text></View>
+                <View style={styles.timerBox}><Text style={styles.timerNumber}>{String(countdown.mins || '0')}</Text></View>
                 <Text style={styles.timerLabel}>MINS</Text>
               </View>
             </View>
           </View>
         ) : (
           <View style={[styles.countdownSection, isCancelled && styles.countdownSectionCancelled]}>
-            <Text style={styles.summaryTitle}>{isCompleted ? 'SERVICE COMPLETED' : 'BOOKING CANCELLED'}</Text>
-            <Text style={styles.summaryText}>
-              {isCompleted
-                ? 'This booking has been completed successfully. You can review the provider or book the service again.'
-                : 'This booking was cancelled. You can still review the details for your records.'}
-            </Text>
+            <Text style={styles.summaryTitle}>{bookingState.summaryTitle}</Text>
+            <Text style={styles.summaryText}>{bookingState.summaryText}</Text>
           </View>
         )}
 
@@ -277,9 +520,11 @@ const BookingDetailsScreen = () => {
           <View style={styles.providerHeader}>
             <View>
               <Image source={{ uri: provider.avatar || 'https://i.pravatar.cc/150?u=provider' }} style={styles.providerAvatar} />
-              <View style={styles.verifiedBadge}>
-                <Ionicons name="checkmark-sharp" size={10} color="#fff" />
-              </View>
+              {provider.isVerified ? (
+                <View style={styles.verifiedBadge}>
+                  <Ionicons name="checkmark-sharp" size={10} color="#fff" />
+                </View>
+              ) : null}
             </View>
             <View style={styles.providerMainInfo}>
               <View style={styles.providerNameRow}>
@@ -294,17 +539,33 @@ const BookingDetailsScreen = () => {
               <View style={styles.providerRatingRow}>
                 <Ionicons name="star" size={14} color="#FFA000" />
                 <Text style={styles.providerRating}>{provider.rating ?? '0.0'}</Text>
-                <Text style={styles.providerSpecialty}> • {provider.specialty || booking.service}</Text>
+                <Text style={styles.providerSpecialty}> • {provider.specialty || safeBooking.service}</Text>
               </View>
             </View>
           </View>
 
           <View style={styles.providerActions}>
-            <TouchableOpacity style={styles.actionButton}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => openPhoneCall(provider.phone, provider.name)}
+            >
               <Ionicons name="call" size={18} color="#0D1B2A" />
               <Text style={styles.actionButtonText}>Call</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionButton}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() =>
+                router.push({
+                  pathname: '/customer-chat',
+                  params: {
+                    id: String(booking.rawId || params.id || ''),
+                    providerName: provider.name || 'Service Provider',
+                    serviceName: provider.specialty || safeBooking.service,
+                    phone: provider.phone || '',
+                  },
+                } as any)
+              }
+            >
               <Ionicons name="chatbubble-ellipses" size={18} color="#0D1B2A" />
               <Text style={styles.actionButtonText}>Message</Text>
             </TouchableOpacity>
@@ -322,7 +583,7 @@ const BookingDetailsScreen = () => {
             </View>
             <View>
               <Text style={styles.detailLabel}>Service Address</Text>
-              <Text style={styles.detailValue}>{booking.address}</Text>
+              <Text style={styles.detailValue}>{safeBooking.address}</Text>
             </View>
           </View>
 
@@ -332,7 +593,9 @@ const BookingDetailsScreen = () => {
             </View>
             <View>
               <Text style={styles.detailLabel}>Payment Method</Text>
-              <Text style={styles.detailValue}>{String(payment?.method || 'Cash (Pay after service)')}</Text>
+              <Text style={styles.detailValue}>
+                {getPaymentMethodLabel(payment?.method || 'cash')}
+              </Text>
             </View>
           </View>
           <View style={styles.detailItem}>
@@ -341,15 +604,193 @@ const BookingDetailsScreen = () => {
             </View>
             <View>
               <Text style={styles.detailLabel}>Payment Status</Text>
-              <Text style={styles.detailValue}>{String(payment?.status || 'not_recorded')}</Text>
+              <Text style={styles.detailValue}>
+                {getPaymentStatusLabel(payment?.status || 'pending')}
+              </Text>
             </View>
           </View>
+          {safeBooking.notes ? (
+            <View style={styles.detailItem}>
+              <View style={styles.detailIconContainer}>
+                <Ionicons name="document-text-outline" size={20} color="#666" />
+              </View>
+              <View>
+                <Text style={styles.detailLabel}>Customer Notes</Text>
+                <Text style={styles.detailValue}>{safeBooking.notes}</Text>
+              </View>
+            </View>
+          ) : null}
           
           <View style={styles.priceContainer}>
-            <Text style={styles.totalLabel}>Total Amount (Cash)</Text>
-            <Text style={styles.totalValue}>P{booking.totalAmount}</Text>
+            <Text style={styles.totalLabel}>Total Amount ({getPaymentMethodLabel(payment?.method || 'cash')})</Text>
+            <Text style={styles.totalValue}>P{safeBooking.totalAmount}</Text>
           </View>
         </View>
+
+        {attachments.length > 0 ? (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>ATTACHMENTS</Text>
+            </View>
+            <View style={styles.detailsCard}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.attachmentGallery}>
+                {attachments.map((attachment) => (
+                  <TouchableOpacity
+                    key={attachment.id}
+                    style={styles.attachmentCard}
+                    activeOpacity={0.9}
+                    onPress={() => setPreviewAttachment(attachment)}
+                  >
+                    <Image source={{ uri: attachment.file_url }} style={styles.attachmentPreview} />
+                    <Text style={styles.attachmentTitle} numberOfLines={1}>
+                      {attachment.file_name || 'Attachment'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </>
+        ) : null}
+
+        {pendingRescheduleRequest ? (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>PENDING RESCHEDULE REQUEST</Text>
+            </View>
+            <View style={styles.requestCard}>
+              <View style={styles.requestHeaderRow}>
+                <View style={styles.requestIconWrap}>
+                  <Ionicons name="calendar-outline" size={18} color="#00C853" />
+                </View>
+                <View style={styles.requestContent}>
+                  <Text style={styles.requestTitle}>Provider requested a new schedule</Text>
+                  <Text style={styles.requestSubtitle}>
+                    {pendingRescheduleRequest.proposed_date} at {pendingRescheduleRequest.proposed_time}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.requestBody}>{pendingRescheduleRequest.reason}</Text>
+              <Text style={styles.requestExplanation}>{pendingRescheduleRequest.explanation}</Text>
+              <View style={styles.requestActions}>
+                <TouchableOpacity
+                  style={styles.requestDeclineButton}
+                  disabled={requestAction === 'reschedule'}
+                  onPress={() => void handleReviewReschedule('declined')}
+                >
+                  <Text style={styles.requestDeclineText}>
+                    {requestAction === 'reschedule' ? 'Saving...' : 'Decline'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.requestApproveButton}
+                  disabled={requestAction === 'reschedule'}
+                  onPress={() => void handleReviewReschedule('approved')}
+                >
+                  <Text style={styles.requestApproveText}>
+                    {requestAction === 'reschedule' ? 'Saving...' : 'Approve'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
+        ) : null}
+
+        {pendingAdditionalCharges.length > 0 ? (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>PENDING ADDITIONAL CHARGES</Text>
+            </View>
+            <View style={styles.requestCard}>
+              <View style={styles.requestHeaderRow}>
+                <View style={[styles.requestIconWrap, styles.requestIconWrapWarn]}>
+                  <Ionicons name="cash-outline" size={18} color="#C77800" />
+                </View>
+                <View style={styles.requestContent}>
+                  <Text style={styles.requestTitle}>Provider requested extra charges</Text>
+                  <Text style={styles.requestSubtitle}>
+                    +P{pendingAdditionalChargeTotal.toFixed(2)} across {pendingAdditionalCharges.length}{' '}
+                    {pendingAdditionalCharges.length === 1 ? 'item' : 'items'}
+                  </Text>
+                </View>
+              </View>
+              {pendingAdditionalCharges.map((charge) => (
+                <View key={charge.id} style={styles.chargeItemRow}>
+                  <View style={styles.chargeItemTextWrap}>
+                    <Text style={styles.chargeItemTitle}>{charge.description}</Text>
+                    {charge.justification ? (
+                      <Text style={styles.chargeItemBody}>{charge.justification}</Text>
+                    ) : null}
+                  </View>
+                  <Text style={styles.chargeAmount}>P{Number(charge.amount || 0).toFixed(2)}</Text>
+                </View>
+              ))}
+              <View style={styles.requestActions}>
+                <TouchableOpacity
+                  style={styles.requestDeclineButton}
+                  disabled={requestAction === 'charges'}
+                  onPress={() => void handleReviewAdditionalCharges('declined')}
+                >
+                  <Text style={styles.requestDeclineText}>
+                    {requestAction === 'charges' ? 'Saving...' : 'Decline'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.requestApproveButton}
+                  disabled={requestAction === 'charges'}
+                  onPress={() => void handleReviewAdditionalCharges('approved')}
+                >
+                  <Text style={styles.requestApproveText}>
+                    {requestAction === 'charges' ? 'Saving...' : 'Approve'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
+        ) : null}
+
+        {chatSummary ? (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>RECENT CONTACT</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.contactCard}
+              onPress={() =>
+                router.push({
+                  pathname: '/customer-chat',
+                  params: {
+                    id: String(booking.rawId || params.id || ''),
+                    providerName: provider.name || 'Service Provider',
+                    serviceName: provider.specialty || safeBooking.service,
+                    phone: provider.phone || '',
+                  },
+                } as any)
+              }
+            >
+              <View style={styles.contactIconWrap}>
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color="#00C853" />
+              </View>
+              <View style={styles.contactContent}>
+                <View style={styles.contactTitleRow}>
+                  <Text style={styles.contactTitle}>Last message {chatSummary.lastMessageTime}</Text>
+                  {chatSummary.unreadCount > 0 ? (
+                    <View style={styles.contactUnreadPill}>
+                      <Text style={styles.contactUnreadText}>
+                        {chatSummary.unreadCount > 1
+                          ? `${chatSummary.unreadCount} new messages`
+                          : 'New message'}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text style={styles.contactBody} numberOfLines={2}>
+                  {chatSummary.lastMessage}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+          </>
+        ) : null}
 
         {/* Bottom Actions */}
         <View style={styles.bottomActions}>
@@ -359,7 +800,16 @@ const BookingDetailsScreen = () => {
                 style={[styles.cancelBookingButton, { borderColor: '#00C853', backgroundColor: '#E8FBF2', marginBottom: 15 }]}
                 onPress={() => router.push({
                   pathname: '/customer-review',
-                  params: { booking: JSON.stringify(booking) }
+                  params: {
+                    booking: JSON.stringify({
+                      ...booking,
+                      providerId: booking?.providerId || booking?.provider?.id || '',
+                      provider: {
+                        ...(booking?.provider || {}),
+                        id: booking?.provider?.id || booking?.providerId || '',
+                      },
+                    }),
+                  }
                 })}
               >
                 <Ionicons name="star" size={20} color="#00C853" />
@@ -380,6 +830,25 @@ const BookingDetailsScreen = () => {
 
           {isUpcoming ? (
             <>
+              {canTrackBooking ? (
+                <TouchableOpacity
+                  style={styles.trackBookingButton}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/customer-track-order',
+                      params: {
+                        id: String(booking.rawId || params.id || ''),
+                        booking: JSON.stringify(booking),
+                      },
+                    } as any)
+                  }
+                >
+                  <Ionicons name="location-outline" size={20} color="#fff" />
+                  <Text style={styles.trackBookingText}>Track Booking</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {canCancelBooking ? (
               <TouchableOpacity 
                 style={styles.cancelBookingButton}
                 onPress={() =>
@@ -395,6 +864,7 @@ const BookingDetailsScreen = () => {
                 <Ionicons name="close" size={20} color="#FF5252" />
                 <Text style={styles.cancelBookingText}>Cancel Booking</Text>
               </TouchableOpacity>
+              ) : null}
               <Text style={styles.policyFootnote}>Free cancellation up to 24 hours before the service</Text>
             </>
           ) : null}
@@ -402,6 +872,13 @@ const BookingDetailsScreen = () => {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      <ImagePreviewModal
+        visible={Boolean(previewAttachment)}
+        imageUrl={previewAttachment?.file_url || ''}
+        title={previewAttachment?.file_name || 'Attachment Preview'}
+        onClose={() => setPreviewAttachment(null)}
+      />
     </SafeAreaView>
   );
 };
@@ -791,11 +1268,183 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#00C853',
   },
+  requestCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#F0F0F5',
+    padding: 16,
+    marginBottom: 28,
+  },
+  requestHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    gap: 12,
+  },
+  requestIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#E8FBF2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestIconWrapWarn: {
+    backgroundColor: '#FFF4E5',
+  },
+  requestContent: {
+    flex: 1,
+  },
+  requestTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0D1B2A',
+  },
+  requestSubtitle: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  requestBody: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0D1B2A',
+    marginBottom: 6,
+  },
+  requestExplanation: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#6B7280',
+  },
+  requestActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  requestDeclineButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FFDADA',
+    backgroundColor: '#FFF8F8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestDeclineText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FF5252',
+  },
+  requestApproveButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: '#00C853',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestApproveText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  chargeItemRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  chargeItemTextWrap: {
+    flex: 1,
+  },
+  chargeItemTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0D1B2A',
+  },
+  chargeItemBody: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  chargeAmount: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#C77800',
+  },
+  contactCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#F0F0F5',
+    padding: 16,
+    marginBottom: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  contactIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#E8FBF2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  contactContent: {
+    flex: 1,
+    marginRight: 12,
+  },
+  contactTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 4,
+  },
+  contactTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0D1B2A',
+    flex: 1,
+  },
+  contactUnreadPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#E8FBF2',
+  },
+  contactUnreadText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#00B761',
+  },
+  contactBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#6B7280',
+  },
   bottomActions: {
     alignItems: 'center',
     gap: 15,
   },
   rebookButton: {
+    width: '100%',
+    height: 56,
+    borderRadius: 20,
+    backgroundColor: '#00C853',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  trackBookingButton: {
     width: '100%',
     height: 56,
     borderRadius: 20,
@@ -821,6 +1470,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FF5252',
+  },
+  trackBookingText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
   },
   rebookButtonText: {
     fontSize: 16,

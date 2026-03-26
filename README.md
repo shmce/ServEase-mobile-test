@@ -1,54 +1,75 @@
-# Welcome to your Expo app 👋
+# ServEase Mobile Test
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+ServEase is a mobile marketplace app for on-demand services in the Philippines. This repository is an Expo + React Native codebase that currently includes customer and provider flows, Supabase integration, booking-related services, and route-based mobile screens.
 
-## Get started
+## Stack
 
-1. Install dependencies
+- Expo Router
+- React Native + TypeScript
+- Supabase
+- AsyncStorage
 
-   ```bash
-   npm install
-   ```
+## Current App Structure
 
-2. Start the app
+The app already contains route files for customer and provider experiences under [`app`](C:/Users/Personal/Desktop/ServEase/tite/ServEase-mobile-test/app), reusable UI in [`components`](C:/Users/Personal/Desktop/ServEase/tite/ServEase-mobile-test/components), shared app state in [`context`](C:/Users/Personal/Desktop/ServEase/tite/ServEase-mobile-test/context), and API/service helpers in [`services`](C:/Users/Personal/Desktop/ServEase/tite/ServEase-mobile-test/services) and [`lib`](C:/Users/Personal/Desktop/ServEase/tite/ServEase-mobile-test/lib).
 
-   ```bash
-   npx expo start
+Notable existing screens include:
 
-   (if di gumana npx expo start, try npx expo start --tunnel )
+- Customer auth, booking, chat, review, tracking, address, and profile flows
+- Provider login, signup, navigation, service start/in-progress/complete, earnings, bookings, and settings flows
+- Tab layouts for both customer and provider experiences
 
-   
-   ```
+## Getting Started
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+1. Install dependencies:
 
 ```bash
-npm run reset-project
+npm install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+2. Start the Expo development server:
 
-## Learn more
+```bash
+npm run start
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+If local networking fails, try:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+npx expo start --tunnel
+```
 
-## Join the community
+Useful commands:
 
-Join our community of developers creating universal apps.
+```bash
+npm run android
+npm run ios
+npm run web
+npm run lint
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Prompt Package
+
+The ServEase project prompt has been implemented as a repository-specific document here:
+
+- [`docs/SERVEASE_PROMPT.md`](C:/Users/Personal/Desktop/ServEase/tite/ServEase-mobile-test/docs/SERVEASE_PROMPT.md)
+
+Use that file when you want ChatGPT or another coding assistant to work from the actual state of this repo instead of a generic marketplace brief.
+
+## Recommended Workflow With AI
+
+1. Paste the prompt from [`docs/SERVEASE_PROMPT.md`](C:/Users/Personal/Desktop/ServEase/tite/ServEase-mobile-test/docs/SERVEASE_PROMPT.md).
+2. Fill in the `Specific request`, `Project phase`, and `Priority features` sections.
+3. Ask for one concrete deliverable at a time.
+
+Good examples:
+
+- Implement the provider navigation flow using the existing route files and services in this repo.
+- Build Supabase-backed booking status updates for the customer and provider booking detail screens.
+- Refactor the payment service to support GCash, card, and cash-on-service placeholders.
+- Add validation and test coverage for customer booking form submission.
+
+## Notes
+
+- This repo is mobile-first and currently focused on the Expo app, not the full web/admin platform described in the broader ServEase vision.
+- If you want generated code to fit this repo cleanly, ask for React Native + Expo Router + TypeScript solutions unless you explicitly want architecture-only output.

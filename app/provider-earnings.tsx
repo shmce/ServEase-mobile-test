@@ -1,54 +1,130 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Dimensions, Image } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
+import { NotificationBadge } from '@/components/ui/notification-badge';
+import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
+import {
+  getPaymentMethodLabel,
+  getPaymentStatusLabel,
+  getProviderEarningsSummary,
+  type ProviderPaymentHistoryItem,
+} from '@/services/paymentService';
+import { getErrorMessage } from '@/lib/error-handling';
 
-const { width } = Dimensions.get('window');
+const formatCurrency = (amount: number) => `P${amount.toFixed(2)}`;
 
-const HistoryItem = ({ icon, category, date, duration, amount, status, iconBg }: any) => (
-  <View style={styles.historyItem}>
-    <View style={[styles.historyIconContainer, { backgroundColor: iconBg }]}>
-      <Ionicons name={icon} size={20} color="#FFF" />
-    </View>
-    <View style={styles.historyInfo}>
-      <Text style={styles.historyTitle}>{category}</Text>
-      <Text style={styles.historySubtitle}>{date} • {duration}</Text>
-    </View>
-    <View style={styles.historyRight}>
-      <Text style={styles.historyAmount}>+₱{amount}</Text>
-      <View style={[styles.statusPill, status === 'COMPLETED' ? styles.statusCompleted : styles.statusPending]}>
-        <Text style={[styles.statusText, status === 'COMPLETED' ? styles.textCompleted : styles.textPending]}>{status}</Text>
+const formatDate = (value?: string | null) => {
+  if (!value) return 'Recent';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Recent';
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
+const getChartBuckets = (payments: ProviderPaymentHistoryItem[], period: 'Weekly' | 'Monthly') => {
+  if (period === 'Weekly') {
+    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const start = new Date();
+    const day = start.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() + diff);
+
+    return labels.map((label, index) => {
+      const bucketStart = new Date(start);
+      bucketStart.setDate(start.getDate() + index);
+      const bucketEnd = new Date(bucketStart);
+      bucketEnd.setDate(bucketStart.getDate() + 1);
+
+      const value = payments.reduce((sum, payment) => {
+        const paidAt = new Date(payment.paid_at || payment.created_at || '');
+        if (Number.isNaN(paidAt.getTime())) return sum;
+        if (paidAt >= bucketStart && paidAt < bucketEnd) {
+          return sum + payment.net_earnings;
+        }
+        return sum;
+      }, 0);
+
+      return { label, value };
+    });
+  }
+
+  const now = new Date();
+  return Array.from({ length: 4 }, (_, reverseIndex) => {
+    const index = 3 - reverseIndex;
+    const monthDate = new Date(now.getFullYear(), now.getMonth() - index, 1);
+    const nextMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1);
+    const label = monthDate.toLocaleDateString('en-US', { month: 'short' });
+
+    const value = payments.reduce((sum, payment) => {
+      const paidAt = new Date(payment.paid_at || payment.created_at || '');
+      if (Number.isNaN(paidAt.getTime())) return sum;
+      if (paidAt >= monthDate && paidAt < nextMonth) {
+        return sum + payment.net_earnings;
+      }
+      return sum;
+    }, 0);
+
+    return { label, value };
+  });
+};
+
+const HistoryItem = ({ item }: { item: ProviderPaymentHistoryItem }) => {
+  const isPaid = String(item.status).toLowerCase() === 'paid';
+  const iconName =
+    String(item.method).toLowerCase() === 'cash'
+      ? 'cash-outline'
+      : String(item.method).toLowerCase() === 'card'
+        ? 'card-outline'
+        : 'wallet-outline';
+
+  return (
+    <View style={styles.historyItem}>
+      <View style={[styles.historyIconContainer, isPaid ? styles.historyIconPaid : styles.historyIconPending]}>
+        <Ionicons name={iconName} size={20} color={isPaid ? '#00B761' : '#64748B'} />
+      </View>
+      <View style={styles.historyInfo}>
+        <Text style={styles.historyTitle}>{item.service_title}</Text>
+        <Text style={styles.historySubtitle}>
+          {formatDate(item.paid_at || item.created_at)} | {getPaymentMethodLabel(item.method)}
+        </Text>
+        <Text style={styles.historyMeta}>{item.customer_name}</Text>
+      </View>
+      <View style={styles.historyRight}>
+        <Text style={styles.historyAmount}>{formatCurrency(item.net_earnings)}</Text>
+        <View style={[styles.statusPill, isPaid ? styles.statusCompleted : styles.statusPending]}>
+          <Text style={[styles.statusText, isPaid ? styles.textCompleted : styles.textPending]}>
+            {getPaymentStatusLabel(item.status).toUpperCase()}
+          </Text>
+        </View>
       </View>
     </View>
-  </View>
-);
+  );
+};
 
-const BarChart = () => {
-  const data = [
-    { day: 'MON', value: 0.4 },
-    { day: 'TUE', value: 0.6 },
-    { day: 'WED', value: 0.5 },
-    { day: 'THU', value: 0.85, highlighted: true },
-    { day: 'FRI', value: 0.45 },
-    { day: 'SAT', value: 0.65 },
-    { day: 'SUN', value: 0.55 },
-  ];
+const BarChart = ({ data }: { data: { label: string; value: number }[] }) => {
+  const max = Math.max(...data.map((item) => item.value), 0);
 
   return (
     <View style={styles.chartContainer}>
       <View style={styles.barsRow}>
-        {data.map((item, index) => (
-          <View key={index} style={styles.barColumn}>
+        {data.map((item) => (
+          <View key={item.label} style={styles.barColumn}>
             <View style={styles.barTrack}>
-              <View 
+              <View
                 style={[
-                  styles.barFill, 
-                  { height: `${item.value * 100}%` },
-                  item.highlighted ? styles.barHighlight : styles.barRegular
-                ]} 
+                  styles.barFill,
+                  { height: `${max > 0 ? Math.max((item.value / max) * 100, item.value > 0 ? 12 : 0) : 0}%` },
+                  item.value === max && max > 0 ? styles.barHighlight : styles.barRegular,
+                ]}
               />
             </View>
-            <Text style={styles.dayText}>{item.day}</Text>
+            <Text style={styles.dayText}>{item.label}</Text>
           </View>
         ))}
       </View>
@@ -58,46 +134,106 @@ const BarChart = () => {
 
 export default function ProviderEarningsScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const unreadNotifications = useUnreadNotifications();
   const [performanceTab, setPerformanceTab] = useState<'Weekly' | 'Monthly'>('Weekly');
+  const [history, setHistory] = useState<ProviderPaymentHistoryItem[]>([]);
+  const [totalRevenue, setTotalRevenue] = useState(0);
+  const [pendingRevenue, setPendingRevenue] = useState(0);
+  const [cashOnHand, setCashOnHand] = useState(0);
+  const [averagePerService, setAveragePerService] = useState(0);
+  const [paidCount, setPaidCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useFocusEffect(
+    React.useCallback(() => {
+      let mounted = true;
+
+      async function load() {
+        if (!user?.id) {
+          setHistory([]);
+          setIsLoading(false);
+          return;
+        }
+
+        setIsLoading(true);
+        setError('');
+        try {
+          const summary = await getProviderEarningsSummary(user.id);
+          if (!mounted) return;
+          setHistory(summary.payments);
+          setTotalRevenue(summary.totalNetEarnings);
+          setPendingRevenue(summary.pendingRevenue);
+          setCashOnHand(summary.cashOnHand);
+          setAveragePerService(summary.averagePerService);
+          setPaidCount(summary.paidCount);
+        } catch (loadError) {
+          if (mounted) {
+            setError(getErrorMessage(loadError, 'Failed to load earnings.'));
+            setHistory([]);
+          }
+        } finally {
+          if (mounted) setIsLoading(false);
+        }
+      }
+
+      void load();
+      return () => {
+        mounted = false;
+      };
+    }, [user?.id])
+  );
+
+  const chartData = useMemo(
+    () => getChartBuckets(history.filter((item) => String(item.status).toLowerCase() === 'paid'), performanceTab),
+    [history, performanceTab]
+  );
+
+  const recentHistory = history.slice(0, 5);
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      
-      {/* Header */}
+
       <View style={styles.header}>
         <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>The Ledger</Text>
-        <TouchableOpacity style={styles.notificationButton}>
+        <TouchableOpacity style={styles.notificationButton} onPress={() => router.push('/notifications' as any)}>
           <Ionicons name="notifications-outline" size={24} color="#0D1B2A" />
+          <NotificationBadge count={unreadNotifications} top={-4} right={-4} borderColor="#FFF" />
         </TouchableOpacity>
-      </View>      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        {/* Total Revenue */}
+      </View>
+
+      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.revenueSection}>
-          <Text style={styles.revenueLabel}>TOTAL REVENUE</Text>
+          <Text style={styles.revenueLabel}>NET EARNINGS</Text>
           <View style={styles.revenueRow}>
-            <Text style={styles.revenueAmount}>₱12,840.00</Text>
+            <Text style={styles.revenueAmount}>{formatCurrency(totalRevenue)}</Text>
             <View style={styles.growthPill}>
-              <Text style={styles.growthText}>+12%</Text>
+              <Text style={styles.growthText}>{paidCount} paid</Text>
             </View>
           </View>
+          <Text style={styles.revenueHint}>Based on completed payments after platform fees.</Text>
         </View>
 
-        {/* Earnings Performance */}
+        {isLoading ? <ActivityIndicator size="large" color="#00B761" style={{ marginTop: 16 }} /> : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
         <View style={styles.performanceCard}>
           <View style={styles.performanceHeader}>
             <Text style={styles.performanceTitle}>Earnings Performance</Text>
             <View style={styles.performanceTabs}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 activeOpacity={0.8}
                 style={[styles.tabButton, performanceTab === 'Weekly' && styles.tabButtonActive]}
                 onPress={() => setPerformanceTab('Weekly')}
               >
                 <Text style={[styles.tabText, performanceTab === 'Weekly' && styles.tabTextActive]}>Weekly</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 activeOpacity={0.8}
                 style={[styles.tabButton, performanceTab === 'Monthly' && styles.tabButtonActive]}
                 onPress={() => setPerformanceTab('Monthly')}
@@ -106,75 +242,56 @@ export default function ProviderEarningsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-          <BarChart />
+          <BarChart data={chartData} />
         </View>
 
-        {/* Info Cards */}
         <View style={styles.infoCardsRow}>
           <View style={[styles.infoCard, { backgroundColor: '#E8FBF2' }]}>
             <View style={styles.infoIconBox}>
-              <Ionicons name="time-outline" size={24} color="#00B761" />
+              <Ionicons name="trending-up-outline" size={24} color="#00B761" />
             </View>
-            <Text style={styles.infoLabel}>AVERAGE / SERVICE</Text>
-            <Text style={styles.infoValue}>₱145.20</Text>
+            <Text style={styles.infoLabel}>AVERAGE / PAID SERVICE</Text>
+            <Text style={styles.infoValue}>{formatCurrency(averagePerService)}</Text>
           </View>
         </View>
 
         <View style={styles.infoCardsRow}>
-          <View style={[styles.infoCard, { backgroundColor: '#F0FFF7', marginBottom: 24 }]}>
+          <View style={[styles.infoCard, { backgroundColor: '#F0FFF7', marginBottom: 12 }]}>
             <View style={styles.infoIconBox}>
               <Ionicons name="wallet-outline" size={24} color="#00B761" />
             </View>
             <Text style={styles.infoLabel}>CASH ON HAND</Text>
-            <Text style={styles.infoValue}>₱2,410.00</Text>
+            <Text style={styles.infoValue}>{formatCurrency(cashOnHand)}</Text>
           </View>
         </View>
 
-        {/* Recent History */}
+        <View style={styles.infoCardsRow}>
+          <View style={[styles.infoCard, { backgroundColor: '#FFF7E8', marginBottom: 24 }]}>
+            <View style={styles.infoIconBox}>
+              <Ionicons name="time-outline" size={24} color="#F59E0B" />
+            </View>
+            <Text style={styles.infoLabel}>PENDING TO COLLECT</Text>
+            <Text style={styles.infoValue}>{formatCurrency(pendingRevenue)}</Text>
+          </View>
+        </View>
+
         <View style={styles.historySection}>
           <View style={styles.historyHeader}>
-            <Text style={styles.historySectionTitle}>Recent History</Text>
+            <Text style={styles.historySectionTitle}>Recent Payment Activity</Text>
             <TouchableOpacity onPress={() => router.push('/provider-history' as any)}>
               <Text style={styles.viewAllText}>View All</Text>
             </TouchableOpacity>
           </View>
 
-          <HistoryItem 
-            icon="brush-outline"
-            category="Deep Home Clean"
-            date="Oct 24, 2023"
-            duration="4.5 Hours"
-            amount="180.00"
-            status="COMPLETED"
-            iconBg="#3B82F6"
-          />
-          <HistoryItem 
-            icon="hammer-outline"
-            category="Garden Maintenance"
-            date="Oct 22, 2023"
-            duration="2 Hours"
-            amount="95.00"
-            status="PENDING"
-            iconBg="#8B5CF6"
-          />
-          <HistoryItem 
-            icon="water-outline"
-            category="Emergency Plumbing"
-            date="Oct 21, 2023"
-            duration="1.5 Hours"
-            amount="320.00"
-            status="COMPLETED"
-            iconBg="#00B761"
-          />
-          <HistoryItem 
-            icon="flash-outline"
-            category="Outlet Installation"
-            date="Oct 19, 2023"
-            duration="1 Hour"
-            amount="75.00"
-            status="COMPLETED"
-            iconBg="#F59E0B"
-          />
+          {!isLoading && recentHistory.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>No payment activity yet.</Text>
+            </View>
+          ) : null}
+
+          {recentHistory.map((item) => (
+            <HistoryItem key={item.id} item={item} />
+          ))}
         </View>
         <View style={styles.footerSpacer} />
       </ScrollView>
@@ -212,7 +329,7 @@ const styles = StyleSheet.create({
   revenueSection: {
     paddingHorizontal: 24,
     paddingTop: 20,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   revenueLabel: {
     fontSize: 14,
@@ -224,9 +341,10 @@ const styles = StyleSheet.create({
   revenueRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
   },
   revenueAmount: {
-    fontSize: 48,
+    fontSize: 42,
     fontWeight: '800',
     color: '#0D1B2A',
     fontFamily: 'Outfit-Bold',
@@ -242,6 +360,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#00B761',
+  },
+  revenueHint: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 8,
   },
   performanceCard: {
     backgroundColor: '#FFF',
@@ -288,11 +411,6 @@ const styles = StyleSheet.create({
   },
   tabButtonActive: {
     backgroundColor: '#00B761',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
   tabText: {
     fontSize: 13,
@@ -328,7 +446,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   barRegular: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#CFEFDC',
   },
   barHighlight: {
     backgroundColor: '#00B761',
@@ -365,7 +483,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   infoValue: {
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: '800',
     color: '#0D1B2A',
     fontFamily: 'Outfit-Bold',
@@ -385,6 +503,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0D1B2A',
     fontFamily: 'Outfit-Bold',
+    flex: 1,
+    paddingRight: 12,
   },
   viewAllText: {
     fontSize: 16,
@@ -406,6 +526,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  historyIconPaid: {
+    backgroundColor: '#E8FBF2',
+  },
+  historyIconPending: {
+    backgroundColor: '#F3F4F6',
+  },
   historyInfo: {
     flex: 1,
     marginLeft: 16,
@@ -420,8 +546,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
   },
+  historyMeta: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 4,
+  },
   historyRight: {
     alignItems: 'flex-end',
+    marginLeft: 12,
   },
   historyAmount: {
     fontSize: 18,
@@ -451,8 +583,20 @@ const styles = StyleSheet.create({
   textPending: {
     color: '#6B7280',
   },
+  emptyCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 24,
+    padding: 18,
+  },
+  emptyText: {
+    color: '#64748B',
+  },
+  error: {
+    color: '#C62828',
+    paddingHorizontal: 24,
+    marginBottom: 12,
+  },
   footerSpacer: {
     height: 40,
   },
 });
-

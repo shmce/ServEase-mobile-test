@@ -4,33 +4,17 @@ import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   SafeAreaView,
   StatusBar,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { logoutCustomer } from '@/lib/customer-session';
-
-const MenuItem = ({ icon, label, sublabel, onPress, isDestructive }: any) => (
-  <TouchableOpacity 
-    style={styles.menuItem} 
-    onPress={onPress}
-    activeOpacity={0.7}
-  >
-    <View style={[styles.iconContainer, isDestructive && styles.destructiveIconBox]}>
-      <Ionicons name={icon} size={22} color={isDestructive ? '#FF5252' : '#00C853'} />
-    </View>
-    <View style={styles.menuLabelContainer}>
-      <Text style={[styles.menuLabel, isDestructive && styles.destructiveLabel]}>{label}</Text>
-      {sublabel && <Text style={styles.menuSublabel}>{sublabel}</Text>}
-    </View>
-    <Ionicons name="chevron-forward" size={20} color="#CCC" />
-  </TouchableOpacity>
-);
+import { SettingsRow } from '@/components/ui/settings-row';
+import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 
 export default function MoreScreen() {
   const router = useRouter();
+  const unreadNotifications = useUnreadNotifications();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -42,20 +26,27 @@ export default function MoreScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>ACCOUNT</Text>
-          <MenuItem icon="person-outline" label="Edit Profile" onPress={() => router.push('/customer-edit-profile' as any)} />
-          <MenuItem icon="location-outline" label="Manage Addresses" onPress={() => router.push('/manage-addresses' as any)} />
-          <MenuItem icon="notifications-outline" label="Notification Preferences" onPress={() => router.push('/notification-preferences' as any)} />
+          <SettingsRow icon="person-outline" label="Edit Profile" onPress={() => router.push('/customer-edit-profile' as any)} />
+          <SettingsRow icon="location-outline" label="Manage Addresses" onPress={() => router.push('/manage-addresses' as any)} />
+          <SettingsRow
+            icon="notifications"
+            label="Notifications"
+            sublabel="Messages, updates, and reminders"
+            badgeCount={unreadNotifications}
+            onPress={() => router.push('/notifications' as any)}
+          />
+          <SettingsRow icon="notifications-outline" label="Notification Preferences" onPress={() => router.push('/notification-preferences' as any)} />
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>SUPPORT</Text>
-          <MenuItem icon="help-circle-outline" label="Help Center" onPress={() => router.push('/help-center' as any)} />
-          <MenuItem icon="chatbubble-outline" label="Report an Issue" onPress={() => router.push('/provider-report-issue' as any)} />
+          <SettingsRow icon="help-circle-outline" label="Help Center" onPress={() => router.push('/help-center' as any)} />
+          <SettingsRow icon="chatbubble-outline" label="Report an Issue" onPress={() => router.push('/provider-report-issue' as any)} />
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>PARTNERSHIP</Text>
-          <MenuItem 
+          <SettingsRow 
             icon="briefcase-outline" 
             label="Join the ServEase Team" 
             sublabel="Be your own boss and earn more"
@@ -65,19 +56,19 @@ export default function MoreScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>LEGAL</Text>
-          <MenuItem icon="document-text-outline" label="Terms & Conditions" onPress={() => router.push('/terms' as any)} />
-          <MenuItem icon="lock-closed-outline" label="Privacy Policy" onPress={() => router.push('/privacy' as any)} />
+          <SettingsRow icon="document-text-outline" label="Terms & Conditions" onPress={() => router.push('/terms' as any)} />
+          <SettingsRow icon="lock-closed-outline" label="Privacy Policy" onPress={() => router.push('/privacy' as any)} />
         </View>
 
         <View style={styles.section}>
-          <MenuItem 
+          <SettingsRow 
             icon="log-out-outline" 
             label="Log Out" 
             onPress={() => {
               logoutCustomer();
               router.replace('/login' as any);
             }}
-            isDestructive={true}
+            isDestructive
           />
         </View>
 
@@ -118,42 +109,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 10,
     marginLeft: 5,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F8F9FA',
-  },
-  iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#E8FBF2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 15,
-  },
-  destructiveIconBox: {
-    backgroundColor: '#FFEAEA',
-  },
-  menuLabelContainer: {
-    flex: 1,
-  },
-  menuLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1A1B1E',
-  },
-  menuSublabel: {
-    fontSize: 12,
-    color: '#999',
-    marginTop: 2,
-  },
-  destructiveLabel: {
-    color: '#FF5252',
   },
   footer: {
     alignItems: 'center',

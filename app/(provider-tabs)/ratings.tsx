@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Image, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-
-const { width } = Dimensions.get('window');
+import { NotificationBadge } from '@/components/ui/notification-badge';
+import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 
 const RatingDistribution = () => {
   const distribution = [
@@ -62,6 +62,7 @@ const ReviewItem = ({ avatar, name, date, rating, comment, tags }: any) => (
 
 export default function RatingsScreen() {
   const router = useRouter();
+  const unreadNotifications = useUnreadNotifications();
   const [activeTab, setActiveTab] = useState('All Reviews');
 
   const reviews = [
@@ -101,8 +102,9 @@ export default function RatingsScreen() {
           <Ionicons name="arrow-back" size={24} color="#00B761" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>The Ledger</Text>
-        <TouchableOpacity style={styles.notificationButton}>
+        <TouchableOpacity style={styles.notificationButton} onPress={() => router.push('/notifications' as any)}>
           <Ionicons name="notifications" size={24} color="#00B761" />
+          <NotificationBadge count={unreadNotifications} top={-4} right={-4} borderColor="#F8F9FE" />
         </TouchableOpacity>
       </View>
 

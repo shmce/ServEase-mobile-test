@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -11,22 +11,62 @@ import {
   Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
+import { getErrorMessage } from '@/lib/error-handling';
+import { submitCustomerReview } from '@/services/customerFeedbackService';
 
 export default function CustomerReviewScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const params = useLocalSearchParams<{ booking?: string; id?: string }>();
   
   const [rating, setRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmitReview = () => {
+  const booking = useMemo(() => {
+    if (!params.booking) return null;
+    try {
+      return JSON.parse(params.booking);
+    } catch {
+      return null;
+    }
+  }, [params.booking]);
+
+  const bookingId = String(booking?.rawId || params.id || '').trim();
+  const providerId = String(booking?.providerId || booking?.provider?.id || '').trim();
+  const providerName = String(booking?.provider?.name || booking?.providerName || 'your provider');
+  const serviceName = String(booking?.service || 'service');
+
+  const handleSubmitReview = async () => {
     if (rating === 0) {
       Alert.alert('Missing Rating', 'Please select a star rating before submitting.');
       return;
     }
-    Alert.alert('Success', 'Thank you for your review!', [
-      { text: 'OK', onPress: () => router.back() }
-    ]);
+    if (!user?.id || !bookingId || !providerId) {
+      Alert.alert('Missing Booking', 'We could not find the completed booking for this review.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await submitCustomerReview({
+        bookingId,
+        reviewerId: user.id,
+        providerId,
+        rating,
+        reviewText,
+      });
+
+      Alert.alert('Review Submitted', `Thanks for reviewing ${providerName} for ${serviceName}.`, [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
+    } catch (error) {
+      Alert.alert('Submit Failed', getErrorMessage(error, 'Could not submit your review.'));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -72,10 +112,10 @@ export default function CustomerReviewScreen() {
             />
           </View>
 
-          <TouchableOpacity style={styles.uploadBox}>
+          <View style={styles.uploadBox}>
             <Ionicons name="camera-outline" size={28} color="#00C853" />
-            <Text style={styles.uploadText}>Add Photos</Text>
-          </TouchableOpacity>
+            <Text style={styles.uploadText}>Photo reviews coming soon</Text>
+          </View>
         </View>
 
         <View style={styles.footerSpacer} />
@@ -83,8 +123,8 @@ export default function CustomerReviewScreen() {
 
       {/* Submit Action */}
       <View style={styles.bottomContainer}>
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmitReview}>
-          <Text style={styles.submitButtonText}>Submit Review</Text>
+        <TouchableOpacity style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]} onPress={() => void handleSubmitReview()} disabled={isSubmitting}>
+          <Text style={styles.submitButtonText}>{isSubmitting ? 'Submitting...' : 'Submit Review'}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -133,6 +173,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4,
   },
   submitButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  submitButtonDisabled: { opacity: 0.7 },
   footerSpacer: { height: 100 },
 });
 

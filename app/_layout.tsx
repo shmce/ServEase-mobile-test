@@ -66,6 +66,7 @@ function AuthGate() {
       'customer-signup',
       'provider-signup',
       'customer-onboarding-address',
+      'reset-password',
       'customer-forgot-password',
       'provider-forgot-password',
       'terms',
@@ -97,7 +98,8 @@ function AuthGate() {
       return;
     }
 
-    const allowAuthedPublicRoute = firstSegment === 'customer-onboarding-address';
+    const allowAuthedPublicRoute =
+      firstSegment === 'customer-onboarding-address' || firstSegment === 'reset-password';
 
     if (user && isPublicRoute && !allowAuthedPublicRoute) {
       router.replace(isProvider ? '/(provider-tabs)' : '/(tabs)');

@@ -1,11 +1,18 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { HapticTab } from '@/components/haptic-tab';
+import { NotificationBadge } from '@/components/ui/notification-badge';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { useUnreadMessages } from '@/hooks/useUnreadMessages';
+import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 
 export default function TabLayout() {
+  const unreadMessages = useUnreadMessages('customer');
+  const unreadNotifications = useUnreadNotifications();
+
   return (
     <Tabs
       screenOptions={{
@@ -37,14 +44,24 @@ export default function TabLayout() {
         name="messages"
         options={{
           title: 'Messages',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="bubble.left.fill" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <View>
+              <IconSymbol size={24} name="bubble.left.fill" color={color} />
+              <NotificationBadge count={unreadMessages} top={-5} right={-12} borderColor="#FFF" />
+            </View>
+          ),
         }}
       />
       <Tabs.Screen
         name="more"
         options={{
           title: 'More',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="ellipsis" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <View>
+              <IconSymbol size={24} name="ellipsis" color={color} />
+              <NotificationBadge count={unreadNotifications} top={-5} right={-12} borderColor="#FFF" />
+            </View>
+          ),
         }}
       />
     </Tabs>

@@ -1,5 +1,8 @@
 import { supabase } from '../lib/supabase';
 import { getErrorMessage } from '../lib/error-handling';
+import { createBookingStatusNotification } from './notificationService';
+import { cancelBookingPayment, markBookingPaymentPaid } from './paymentService';
+
 const formatDbError = (error: any, fallback: string) => {
   const base = getErrorMessage(error, fallback);
   const code = error?.code ? ` [${error.code}]` : '';
@@ -13,6 +16,84 @@ const createUuid = () =>
     const v = c === 'x' ? r : ((r & 0x3) | 0x8);
     return v.toString(16);
   });
+
+export type ProviderBookingStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled';
+
+export type ProviderBookingActionState = {
+  normalizedStatus: ProviderBookingStatus;
+  label: string;
+  canConfirm: boolean;
+  canNavigate: boolean;
+  canStartService: boolean;
+  canResumeService: boolean;
+  canComplete: boolean;
+  canCancel: boolean;
+};
+
+const STATUS_VARIANTS: Record<ProviderBookingStatus, string[]> = {
+  pending: ['pending', 'Pending', 'requested', 'Requested'],
+  confirmed: ['confirmed', 'Confirmed', 'accepted', 'Accepted', 'assigned', 'Assigned'],
+  in_progress: ['in_progress', 'In Progress', 'in-progress', 'ongoing', 'started', 'on_the_way', 'On the Way', 'arrived', 'Arrived'],
+  completed: ['completed', 'Completed', 'done'],
+  cancelled: ['cancelled', 'Cancelled', 'canceled', 'Canceled'],
+};
+
+const STATUS_LABELS: Record<ProviderBookingStatus, string> = {
+  pending: 'Pending',
+  confirmed: 'Confirmed',
+  in_progress: 'In Progress',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+};
+
+const buildProviderStatusNotificationTarget = (bookingId: string, target: ProviderBookingStatus) => {
+  if (target === 'in_progress') {
+    return {
+      screen: '/customer-track-order',
+      params: { id: bookingId },
+    };
+  }
+
+  return {
+    screen: '/customer-booking-details',
+    params: { id: bookingId },
+  };
+};
+
+export const normalizeProviderBookingStatus = (statusRaw?: string | null): ProviderBookingStatus => {
+  const status = String(statusRaw || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+
+  if (!status) return 'pending';
+  if (status.includes('cancel')) return 'cancelled';
+  if (status.includes('complete') || status === 'done') return 'completed';
+  if (status.includes('progress') || status.includes('ongoing') || status.includes('start') || status.includes('arrived') || status.includes('on_the_way')) {
+    return 'in_progress';
+  }
+  if (status.includes('confirm') || status.includes('accept') || status.includes('assign')) {
+    return 'confirmed';
+  }
+  return 'pending';
+};
+
+export const getProviderBookingActionState = (statusRaw?: string | null): ProviderBookingActionState => {
+  const normalizedStatus = normalizeProviderBookingStatus(statusRaw);
+
+  return {
+    normalizedStatus,
+    label: STATUS_LABELS[normalizedStatus],
+    canConfirm: normalizedStatus === 'pending',
+    canNavigate: normalizedStatus === 'confirmed',
+    canStartService: normalizedStatus === 'confirmed',
+    canResumeService: normalizedStatus === 'in_progress',
+    canComplete: normalizedStatus === 'in_progress',
+    canCancel: normalizedStatus === 'pending' || normalizedStatus === 'confirmed',
+  };
+};
 
 export type ProviderBookingView = {
   id: string;
@@ -91,15 +172,8 @@ export const getProviderBookingById = async (bookingId: string) => {
 };
 
 export const updateBookingStatus = async (bookingId: string, providerId: string, target: 'confirmed' | 'in_progress' | 'completed' | 'cancelled') => {
-  const variants: Record<string, string[]> = {
-    confirmed: ['confirmed', 'Confirmed', 'accepted', 'Accepted'],
-    in_progress: ['in_progress', 'In Progress', 'in-progress', 'ongoing', 'started', 'on_the_way', 'On the Way'],
-    completed: ['completed', 'Completed', 'done'],
-    cancelled: ['cancelled', 'Cancelled', 'canceled', 'Canceled'],
-  };
-
   let lastError: any = null;
-  for (const statusValue of variants[target]) {
+  for (const statusValue of STATUS_VARIANTS[target]) {
     const strict = await supabase
       .from('bookings')
       .update({ status: statusValue })
@@ -108,7 +182,11 @@ export const updateBookingStatus = async (bookingId: string, providerId: string,
       .select('*')
       .maybeSingle();
 
-    if (!strict.error && strict.data) return strict.data;
+    if (!strict.error && strict.data) {
+      await syncPaymentWithBookingStatus(strict.data, target);
+      await maybeNotifyCustomerOnProviderStatusChange(strict.data, providerId, target);
+      return strict.data;
+    }
     lastError = strict.error || new Error('No booking row matched this provider.');
 
     // Fallback: some projects store provider linkage differently; let RLS enforce ownership.
@@ -119,11 +197,113 @@ export const updateBookingStatus = async (bookingId: string, providerId: string,
       .select('*')
       .maybeSingle();
 
-    if (!relaxed.error && relaxed.data) return relaxed.data;
+    if (!relaxed.error && relaxed.data) {
+      await syncPaymentWithBookingStatus(relaxed.data, target);
+      await maybeNotifyCustomerOnProviderStatusChange(relaxed.data, providerId, target);
+      return relaxed.data;
+    }
     lastError = relaxed.error || lastError;
   }
 
   throw new Error(formatDbError(lastError, 'Failed to update booking status.'));
+};
+
+const syncPaymentWithBookingStatus = async (
+  booking: any,
+  target: 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
+) => {
+  const bookingId = String(booking?.id || '').trim();
+  if (!bookingId) return;
+
+  try {
+    if (target === 'completed') {
+      await markBookingPaymentPaid({
+        bookingId,
+        amount: Number(booking?.total_amount || 0),
+        customerId: String(booking?.customer_id || ''),
+        providerId: String(booking?.provider_id || ''),
+      });
+      return;
+    }
+
+    if (target === 'cancelled') {
+      await cancelBookingPayment(bookingId);
+    }
+  } catch (error) {
+    console.warn(getErrorMessage(error, 'Failed to sync payment with booking status.'));
+  }
+};
+
+const maybeNotifyCustomerOnProviderStatusChange = async (
+  booking: any,
+  providerId: string,
+  target: 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
+) => {
+  const bookingId = String(booking?.id || '').trim();
+  const customerId = String(booking?.customer_id || '').trim();
+  if (!bookingId || !customerId) return;
+
+  try {
+    const [{ data: provider }, { data: service }] = await Promise.all([
+      supabase.from('users').select('full_name,contact_number').eq('id', providerId).maybeSingle(),
+      booking?.service_id
+        ? supabase.from('provider_services').select('title').eq('id', booking.service_id).maybeSingle()
+        : Promise.resolve({ data: null } as any),
+    ]);
+
+    const providerName = String(provider?.full_name || 'Service Provider');
+    const serviceName = String(service?.title || 'Service Booking');
+    const targetConfig = buildProviderStatusNotificationTarget(bookingId, target);
+
+    const notificationMap = {
+      confirmed: {
+        type: 'booking_confirmed' as const,
+        title: `${providerName} confirmed your booking`,
+        body: `${serviceName} is confirmed and ready for tracking.`,
+      },
+      in_progress: {
+        type: 'booking_in_progress' as const,
+        title: `${providerName} started your service`,
+        body: `${serviceName} is now in progress.`,
+      },
+      completed: {
+        type: 'booking_completed' as const,
+        title: `${serviceName} is complete`,
+        body: `Your provider marked this service as completed.`,
+      },
+      cancelled: {
+        type: 'booking_cancelled' as const,
+        title: `${serviceName} was cancelled`,
+        body: `This booking was cancelled by the provider.`,
+      },
+    }[target];
+
+    await createBookingStatusNotification({
+      recipientUserId: customerId,
+      recipientRole: 'customer',
+      actorId: providerId,
+      bookingId,
+      type: notificationMap.type,
+      title: notificationMap.title,
+      body: notificationMap.body,
+      senderName: providerName,
+      senderPhone: String(provider?.contact_number || ''),
+      serviceName,
+      bookingStatus: String(booking?.status || target),
+      target: targetConfig,
+      fallbackTarget: {
+        screen: '/customer-chat',
+        params: {
+          id: bookingId,
+          providerName,
+          phone: String(provider?.contact_number || ''),
+          serviceName,
+        },
+      },
+    });
+  } catch (error) {
+    console.warn(getErrorMessage(error, 'Failed to create customer booking notification.'));
+  }
 };
 
 export const createProviderSupportTicket = async (providerId: string, subject: string, message: string) => {

@@ -110,7 +110,7 @@ export const getProvidersByServiceName = async (serviceName: string) => {
 
 export const getProviderProfileData = async (providerId: string) => {
   const [{ data: user, error: userError }, { data: profile, error: profileError }, { data: services, error: servicesError }, { data: reviews, error: reviewsError }] = await Promise.all([
-    supabase.from('users').select('id,full_name,email,contact_number').eq('id', providerId).maybeSingle(),
+    supabase.from('users').select('id,full_name,email,contact_number,created_at').eq('id', providerId).maybeSingle(),
     supabase.from('provider_profiles').select('*').eq('user_id', providerId).maybeSingle(),
     supabase.from('provider_services').select('*').eq('provider_id', providerId).order('created_at', { ascending: false }),
     supabase.from('reviews').select('*').eq('reviewee_id', providerId).order('created_at', { ascending: false }),

@@ -2,6 +2,11 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Switch, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  loadProviderNotificationPreferences,
+  saveProviderNotificationPreferences,
+} from '@/lib/notification-preferences';
 
 const PreferenceItem = ({ label, value, onValueChange }: { label: string; value: boolean; onValueChange: (val: boolean) => void }) => (
   <View style={styles.preferenceItem}>
@@ -26,6 +31,7 @@ const SectionHeader = ({ icon, title, color = '#E8FBF2', iconColor = '#00B761' }
 
 export default function ProviderNotificationPreferencesScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   
   // Booking Notifications
   const [newBooking, setNewBooking] = useState(true);
@@ -42,6 +48,88 @@ export default function ProviderNotificationPreferencesScreen() {
   const [promotionalOffers, setPromotionalOffers] = useState(false);
   const [platformUpdates, setPlatformUpdates] = useState(true);
   const [dailySummary, setDailySummary] = useState(true);
+
+  React.useEffect(() => {
+    let active = true;
+
+    async function loadPreferences() {
+      if (!user?.id) return;
+      const preferences = await loadProviderNotificationPreferences(user.id);
+      if (!active) return;
+      setNewBooking(preferences.newBooking);
+      setBookingConfirmation(preferences.bookingConfirmation);
+      setBookingCancellation(preferences.bookingCancellation);
+      setBookingModification(preferences.bookingModification);
+      setCustomerMessages(preferences.customerMessages);
+      setPaymentReceived(preferences.paymentReceived);
+      setPayoutProcessed(preferences.payoutProcessed);
+      setPromotionalOffers(preferences.promotionalOffers);
+      setPlatformUpdates(preferences.platformUpdates);
+      setDailySummary(preferences.dailySummary);
+    }
+
+    void loadPreferences();
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  const updatePreferences = React.useCallback(
+    async (next: Partial<{
+      newBooking: boolean;
+      bookingConfirmation: boolean;
+      bookingCancellation: boolean;
+      bookingModification: boolean;
+      customerMessages: boolean;
+      paymentReceived: boolean;
+      payoutProcessed: boolean;
+      promotionalOffers: boolean;
+      platformUpdates: boolean;
+      dailySummary: boolean;
+    }>) => {
+      const nextState = {
+        newBooking,
+        bookingConfirmation,
+        bookingCancellation,
+        bookingModification,
+        customerMessages,
+        paymentReceived,
+        payoutProcessed,
+        promotionalOffers,
+        platformUpdates,
+        dailySummary,
+        ...next,
+      };
+
+      setNewBooking(nextState.newBooking);
+      setBookingConfirmation(nextState.bookingConfirmation);
+      setBookingCancellation(nextState.bookingCancellation);
+      setBookingModification(nextState.bookingModification);
+      setCustomerMessages(nextState.customerMessages);
+      setPaymentReceived(nextState.paymentReceived);
+      setPayoutProcessed(nextState.payoutProcessed);
+      setPromotionalOffers(nextState.promotionalOffers);
+      setPlatformUpdates(nextState.platformUpdates);
+      setDailySummary(nextState.dailySummary);
+
+      if (user?.id) {
+        await saveProviderNotificationPreferences(user.id, nextState);
+      }
+    },
+    [
+      bookingCancellation,
+      bookingConfirmation,
+      bookingModification,
+      customerMessages,
+      dailySummary,
+      newBooking,
+      paymentReceived,
+      payoutProcessed,
+      platformUpdates,
+      promotionalOffers,
+      user?.id,
+    ]
+  );
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -60,33 +148,33 @@ export default function ProviderNotificationPreferencesScreen() {
         {/* Booking Notifications */}
         <SectionHeader icon="notifications-outline" title="Booking Notifications" />
         <View style={styles.section}>
-          <PreferenceItem label="New Booking Requests" value={newBooking} onValueChange={setNewBooking} />
+          <PreferenceItem label="New Booking Requests" value={newBooking} onValueChange={(value) => void updatePreferences({ newBooking: value })} />
           <View style={styles.separator} />
-          <PreferenceItem label="Booking Confirmations" value={bookingConfirmation} onValueChange={setBookingConfirmation} />
+          <PreferenceItem label="Booking Confirmations" value={bookingConfirmation} onValueChange={(value) => void updatePreferences({ bookingConfirmation: value })} />
           <View style={styles.separator} />
-          <PreferenceItem label="Booking Cancellations" value={bookingCancellation} onValueChange={setBookingCancellation} />
+          <PreferenceItem label="Booking Cancellations" value={bookingCancellation} onValueChange={(value) => void updatePreferences({ bookingCancellation: value })} />
           <View style={styles.separator} />
-          <PreferenceItem label="Booking Modifications" value={bookingModification} onValueChange={setBookingModification} />
+          <PreferenceItem label="Booking Modifications" value={bookingModification} onValueChange={(value) => void updatePreferences({ bookingModification: value })} />
           <View style={styles.separator} />
-          <PreferenceItem label="Customer Messages" value={customerMessages} onValueChange={setCustomerMessages} />
+          <PreferenceItem label="Customer Messages" value={customerMessages} onValueChange={(value) => void updatePreferences({ customerMessages: value })} />
         </View>
 
         {/* Payment Notifications */}
         <SectionHeader icon="cash-outline" title="Payment Notifications" />
         <View style={styles.section}>
-          <PreferenceItem label="Payment Received" value={paymentReceived} onValueChange={setPaymentReceived} />
+          <PreferenceItem label="Payment Received" value={paymentReceived} onValueChange={(value) => void updatePreferences({ paymentReceived: value })} />
           <View style={styles.separator} />
-          <PreferenceItem label="Payout Processed" value={payoutProcessed} onValueChange={setPayoutProcessed} />
+          <PreferenceItem label="Payout Processed" value={payoutProcessed} onValueChange={(value) => void updatePreferences({ payoutProcessed: value })} />
         </View>
 
         {/* Other Alerts */}
         <SectionHeader icon="information-circle-outline" title="Other Alerts" />
         <View style={styles.section}>
-          <PreferenceItem label="Promotional Offers" value={promotionalOffers} onValueChange={setPromotionalOffers} />
+          <PreferenceItem label="Promotional Offers" value={promotionalOffers} onValueChange={(value) => void updatePreferences({ promotionalOffers: value })} />
           <View style={styles.separator} />
-          <PreferenceItem label="Platform Updates" value={platformUpdates} onValueChange={setPlatformUpdates} />
+          <PreferenceItem label="Platform Updates" value={platformUpdates} onValueChange={(value) => void updatePreferences({ platformUpdates: value })} />
           <View style={styles.separator} />
-          <PreferenceItem label="Daily Summary" value={dailySummary} onValueChange={setDailySummary} />
+          <PreferenceItem label="Daily Summary" value={dailySummary} onValueChange={(value) => void updatePreferences({ dailySummary: value })} />
         </View>
 
         {/* Notification Timing */}

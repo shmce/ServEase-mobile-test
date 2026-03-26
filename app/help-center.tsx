@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Alert,
+  Linking,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -11,6 +13,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
+import { getErrorMessage } from '@/lib/error-handling';
+import { createCustomerSupportTicket } from '@/services/supportService';
 
 const FAQ_CATEGORIES = ['All', 'Payments', 'Bookings', 'Safety', 'Account', 'Other'];
 
@@ -175,9 +180,13 @@ function FAQCard({
 
 export default function HelpCenterScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [supportSubject, setSupportSubject] = useState('');
+  const [supportMessage, setSupportMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const filteredFaqs = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -192,6 +201,53 @@ export default function HelpCenterScreen() {
       return matchesCategory && matchesQuery;
     });
   }, [activeCategory, searchQuery]);
+
+  const handleSupportCardPress = async (optionId: string) => {
+    const url =
+      optionId === 'email'
+        ? 'mailto:support@servease.ph?subject=ServEase%20Support'
+        : 'https://facebook.com/';
+
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Unavailable', 'Could not open that support channel on this device.');
+    }
+  };
+
+  const handleSubmitSupportTicket = async () => {
+    if (!user?.id) {
+      Alert.alert('Login Required', 'Please sign in first before submitting a support request.');
+      return;
+    }
+    if (!supportSubject.trim() || !supportMessage.trim()) {
+      Alert.alert('Missing Details', 'Please add both a subject and message for support.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await createCustomerSupportTicket(
+        user.id,
+        supportSubject.trim(),
+        supportMessage.trim(),
+        activeCategory === 'All' ? 'General' : activeCategory
+      );
+      Alert.alert('Support Request Sent', 'Our team will review your request and get back to you.', [
+        {
+          text: 'OK',
+          onPress: () => {
+            setSupportSubject('');
+            setSupportMessage('');
+          },
+        },
+      ]);
+    } catch (error) {
+      Alert.alert('Submit Failed', getErrorMessage(error, 'Could not submit your support request.'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -253,7 +309,12 @@ export default function HelpCenterScreen() {
         <Text style={styles.supportSubtitle}>Our team typically responds within 24 hours</Text>
 
         {SUPPORT_OPTIONS.map((option) => (
-          <TouchableOpacity key={option.id} style={styles.supportCard} activeOpacity={0.8}>
+          <TouchableOpacity
+            key={option.id}
+            style={styles.supportCard}
+            activeOpacity={0.8}
+            onPress={() => void handleSupportCardPress(option.id)}
+          >
             <View style={[styles.supportIconWrap, { backgroundColor: option.iconBg }]}>
               <Ionicons name={option.icon as any} size={24} color={option.iconColor} />
             </View>
@@ -270,6 +331,40 @@ export default function HelpCenterScreen() {
             <Ionicons name="open-outline" size={20} color="#B0B7C3" />
           </TouchableOpacity>
         ))}
+
+        <View style={styles.ticketCard}>
+          <Text style={styles.ticketTitle}>Send a support request</Text>
+          <Text style={styles.ticketSubtitle}>
+            Share your concern here and we will respond through the support queue.
+          </Text>
+
+          <TextInput
+            style={styles.ticketInput}
+            placeholder="Subject"
+            placeholderTextColor="#98A2B3"
+            value={supportSubject}
+            onChangeText={setSupportSubject}
+          />
+          <TextInput
+            style={styles.ticketMessageInput}
+            placeholder="Describe your concern"
+            placeholderTextColor="#98A2B3"
+            multiline
+            textAlignVertical="top"
+            value={supportMessage}
+            onChangeText={setSupportMessage}
+          />
+
+          <TouchableOpacity
+            style={[styles.ticketButton, isSubmitting && styles.ticketButtonDisabled]}
+            onPress={() => void handleSubmitSupportTicket()}
+            disabled={isSubmitting}
+          >
+            <Text style={styles.ticketButtonText}>
+              {isSubmitting ? 'Sending...' : 'Submit Support Ticket'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -455,6 +550,64 @@ const styles = StyleSheet.create({
   },
   supportCardSubtitleAccent: {
     color: '#00B761',
+  },
+  ticketCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#EAECEF',
+    marginTop: 8,
+  },
+  ticketTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0D1B2A',
+  },
+  ticketSubtitle: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#667085',
+    marginTop: 6,
+    marginBottom: 14,
+  },
+  ticketInput: {
+    height: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
+    fontSize: 15,
+    color: '#0D1B2A',
+    backgroundColor: '#FFF',
+    marginBottom: 12,
+  },
+  ticketMessageInput: {
+    minHeight: 120,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    fontSize: 15,
+    color: '#0D1B2A',
+    backgroundColor: '#FFF',
+    marginBottom: 14,
+  },
+  ticketButton: {
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#00B761',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ticketButtonDisabled: {
+    opacity: 0.7,
+  },
+  ticketButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFF',
   },
 });
 

@@ -1,18 +1,34 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, TextInput, Image, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
+import React from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
+import { getErrorMessage } from '@/lib/error-handling';
+import {
+  getDefaultProviderProfileDraft,
+  getProviderProfileDraft,
+  saveProviderProfileDraft,
+} from '@/services/providerProfileService';
 
-const { width } = Dimensions.get('window');
+const parseTagInput = (value: string) =>
+  value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
 
-const Chip = ({ label, onRemove }: { label: string; onRemove: () => void }) => (
-  <View style={styles.chip}>
-    <Text style={styles.chipText}>{label}</Text>
-    <TouchableOpacity onPress={onRemove} style={styles.chipRemove}>
-      <Ionicons name="close" size={14} color="#00B761" />
-    </TouchableOpacity>
-  </View>
-);
+const formatTagInput = (values: string[]) => values.join(', ');
 
 const SectionHeader = ({ title }: { title: string }) => (
   <View style={styles.sectionHeader}>
@@ -20,255 +36,269 @@ const SectionHeader = ({ title }: { title: string }) => (
   </View>
 );
 
-const CredentialItem = ({ title, subtitle, date, onEdit, onDelete }: any) => (
-  <View style={styles.credentialCard}>
-    <View style={styles.credentialInfo}>
-      <Text style={styles.credentialTitle}>{title}</Text>
-      <Text style={styles.credentialSubtitle}>{subtitle}</Text>
-      <Text style={styles.credentialDate}>{date}</Text>
-    </View>
-    <View style={styles.credentialActions}>
-      <TouchableOpacity onPress={onEdit} style={styles.credentialActionButton}>
-        <Ionicons name="pencil-outline" size={18} color="#8E8E93" />
-      </TouchableOpacity>
-      <TouchableOpacity onPress={onDelete} style={[styles.credentialActionButton, styles.credentialDeleteButton]}>
-        <Ionicons name="trash-outline" size={18} color="#FF6F61" />
-      </TouchableOpacity>
-    </View>
+const ReadonlyChip = ({ label }: { label: string }) => (
+  <View style={styles.readonlyChip}>
+    <Text style={styles.readonlyChipText}>{label}</Text>
   </View>
 );
 
 export default function ProviderEditProfileScreen() {
   const router = useRouter();
-  
-  // State for form fields
-  const [businessName, setBusinessName] = useState("Juan's Home Services");
-  const [bio, setBio] = useState("Professional home service provider with extensive experience in repairs, maintenance, and improvements. Committed to quality workmanship and customer satisfaction.");
-  
-  const [categories, setCategories] = useState(['Plumbing', 'Electrical', 'Carpentry']);
-  const [areas, setAreas] = useState(['Makati City', 'Quezon City', 'Pasig City']);
-  const [languages, setLanguages] = useState(['English', 'Tagalog']);
-  
-  const [experience, setExperience] = useState('5-10 years');
-  
-  const [facebook, setFacebook] = useState('facebook.com/juanservices');
-  const [instagram, setInstagram] = useState('@juanservices');
-  const [website, setWebsite] = useState('www.juanservices.com');
+  const { user } = useAuth();
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const [fullName, setFullName] = React.useState('');
+  const [businessName, setBusinessName] = React.useState('');
+  const [bio, setBio] = React.useState('');
+  const [serviceAreasText, setServiceAreasText] = React.useState('');
+  const [languagesText, setLanguagesText] = React.useState('');
+  const [yearsExperience, setYearsExperience] = React.useState('');
+  const [facebookUrl, setFacebookUrl] = React.useState('');
+  const [instagramHandle, setInstagramHandle] = React.useState('');
+  const [websiteUrl, setWebsiteUrl] = React.useState('');
+  const [serviceCategories, setServiceCategories] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    async function load() {
+      if (!user?.id) {
+        setIsLoading(false);
+        setError('You must be logged in to edit your profile.');
+        return;
+      }
+
+      setIsLoading(true);
+      setError('');
+
+      try {
+        const draft = await getProviderProfileDraft(user.id);
+        const normalized = {
+          ...getDefaultProviderProfileDraft(),
+          ...draft,
+        };
+
+        if (!mounted) return;
+
+        setFullName(normalized.fullName);
+        setBusinessName(normalized.businessName);
+        setBio(normalized.bio);
+        setServiceAreasText(formatTagInput(normalized.serviceAreas));
+        setLanguagesText(formatTagInput(normalized.languages));
+        setYearsExperience(normalized.yearsExperience);
+        setFacebookUrl(normalized.facebookUrl);
+        setInstagramHandle(normalized.instagramHandle);
+        setWebsiteUrl(normalized.websiteUrl);
+        setServiceCategories(normalized.serviceCategories);
+      } catch (err) {
+        if (mounted) {
+          setError(getErrorMessage(err, 'Failed to load provider profile.'));
+        }
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
+
+  const onSave = async () => {
+    if (!user?.id) {
+      Alert.alert('Login Required', 'Please log in again before saving your profile.');
+      return;
+    }
+
+    if (!fullName.trim() || !businessName.trim()) {
+      Alert.alert('Missing Details', 'Full name and business name are required.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await saveProviderProfileDraft(user.id, {
+        fullName: fullName.trim(),
+        businessName: businessName.trim(),
+        bio: bio.trim(),
+        serviceAreas: parseTagInput(serviceAreasText),
+        languages: parseTagInput(languagesText),
+        yearsExperience: yearsExperience.trim(),
+        facebookUrl: facebookUrl.trim(),
+        instagramHandle: instagramHandle.trim(),
+        websiteUrl: websiteUrl.trim(),
+        serviceCategories,
+      });
+
+      router.back();
+    } catch (err) {
+      Alert.alert('Save Failed', getErrorMessage(err, 'Could not save provider profile.'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" />
-      
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/(provider-tabs)/more' as any))}>
           <Text style={styles.headerButtonText}>Cancel</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit Profile</Text>
-        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}>
-          <Text style={[styles.headerButtonText, styles.saveButtonText]}>Save</Text>
+        <TouchableOpacity onPress={() => void onSave()} disabled={isSaving || isLoading}>
+          <Text style={[styles.headerButtonText, styles.saveButtonText, (isSaving || isLoading) && styles.disabledText]}>
+            Save
+          </Text>
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-      >
-        <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-          
-          {/* Profile Images Section */}
-          <View style={styles.imageSection}>
-            <View style={styles.coverImageContainer}>
-              <View style={styles.coverPlaceholder} />
-              <TouchableOpacity style={styles.changeCoverButton}>
-                <Ionicons name="camera-outline" size={16} color="#FFF" style={{ marginRight: 6 }} />
-                <Text style={styles.changeCoverText}>Change Cover</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.profileImageWrapper}>
-              <View style={styles.profileImageContainer}>
-                <Text style={styles.profileInitials}>JD</Text>
-                <TouchableOpacity style={styles.profileCameraIcon}>
-                  <Ionicons name="camera" size={16} color="#FFF" />
-                </TouchableOpacity>
-              </View>
-              <TouchableOpacity style={styles.changeProfileTextButton}>
-                <Text style={styles.changeProfileText}>Change Profile Photo</Text>
-              </TouchableOpacity>
-            </View>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        {isLoading ? (
+          <View style={styles.stateWrap}>
+            <ActivityIndicator size="small" color="#00B761" />
+            <Text style={styles.stateText}>Loading provider profile...</Text>
           </View>
+        ) : null}
 
-          <View style={styles.formContent}>
-            {/* Basic Information */}
-            <SectionHeader title="Basic Information" />
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Business Name <Text style={styles.required}>*</Text></Text>
-              <TextInput
-                style={styles.input}
-                value={businessName}
-                onChangeText={setBusinessName}
-                placeholder="Enter business name"
-              />
-            </View>
-            
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Bio/Description</Text>
-              <View style={styles.textAreaContainer}>
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+        {!isLoading ? (
+          <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+            <View style={styles.formContent}>
+              <SectionHeader title="Basic Information" />
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Full Name</Text>
+                <TextInput style={styles.input} value={fullName} onChangeText={setFullName} placeholder="Enter full name" />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Business Name</Text>
+                <TextInput style={styles.input} value={businessName} onChangeText={setBusinessName} placeholder="Enter business name" />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Bio / Description</Text>
+                <View style={styles.textAreaContainer}>
+                  <TextInput
+                    style={styles.textArea}
+                    multiline
+                    numberOfLines={5}
+                    value={bio}
+                    onChangeText={setBio}
+                    maxLength={500}
+                    placeholder="Tell customers about your experience, quality, and service style."
+                  />
+                  <Text style={styles.charCount}>{bio.length}/500</Text>
+                </View>
+              </View>
+
+              <SectionHeader title="Coverage & Languages" />
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Service Areas</Text>
                 <TextInput
-                  style={styles.textArea}
-                  multiline
-                  numberOfLines={4}
-                  value={bio}
-                  onChangeText={setBio}
-                  maxLength={500}
+                  style={styles.input}
+                  value={serviceAreasText}
+                  onChangeText={setServiceAreasText}
+                  placeholder="Makati, Pasig, Quezon City"
                 />
-                <Text style={styles.charCount}>{bio.length}/500</Text>
+                <Text style={styles.helperText}>Separate multiple areas with commas.</Text>
               </View>
-            </View>
 
-            {/* Skills & Location */}
-            <SectionHeader title="Skills & Location" />
-            
-            <View style={styles.tagSection}>
-              <Text style={styles.tagLabel}>Service Categories</Text>
-              <View style={styles.chipContainer}>
-                {categories.map(cat => (
-                  <Chip key={cat} label={cat} onRemove={() => setCategories(categories.filter(c => c !== cat))} />
-                ))}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Languages Spoken</Text>
+                <TextInput
+                  style={styles.input}
+                  value={languagesText}
+                  onChangeText={setLanguagesText}
+                  placeholder="English, Tagalog"
+                />
+                <Text style={styles.helperText}>Separate multiple languages with commas.</Text>
               </View>
-              <TouchableOpacity style={styles.addTagButton}>
-                <Ionicons name="add" size={18} color="#00B761" />
-                <Text style={styles.addTagText}>Add Category</Text>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Years of Experience</Text>
+                <TextInput
+                  style={styles.input}
+                  value={yearsExperience}
+                  onChangeText={setYearsExperience}
+                  placeholder="5-10 years"
+                />
+              </View>
+
+              <SectionHeader title="Services" />
+
+              <Text style={styles.label}>Current Service Categories</Text>
+              <View style={styles.chipRow}>
+                {serviceCategories.length > 0 ? (
+                  serviceCategories.map((category) => <ReadonlyChip key={category} label={category} />)
+                ) : (
+                  <Text style={styles.helperText}>No service categories found yet. Add services in Services & Pricing.</Text>
+                )}
+              </View>
+              <TouchableOpacity style={styles.linkRow} onPress={() => router.push('/(provider-tabs)/pricing' as any)}>
+                <Ionicons name="cash-outline" size={18} color="#00B761" />
+                <Text style={styles.linkText}>Manage Services & Pricing</Text>
               </TouchableOpacity>
-            </View>
 
-            <View style={styles.tagSection}>
-              <Text style={styles.tagLabel}>Service Areas</Text>
-              <View style={styles.chipContainer}>
-                {areas.map(area => (
-                  <Chip key={area} label={area} onRemove={() => setAreas(areas.filter(a => a !== area))} />
-                ))}
+              <SectionHeader title="Social Media & Links" />
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Facebook</Text>
+                <TextInput
+                  style={styles.input}
+                  value={facebookUrl}
+                  onChangeText={setFacebookUrl}
+                  placeholder="facebook.com/yourbusiness"
+                  autoCapitalize="none"
+                />
               </View>
-              <TouchableOpacity style={styles.addTagButton}>
-                <Ionicons name="add" size={18} color="#00B761" />
-                <Text style={styles.addTagText}>Add Service Area</Text>
-              </TouchableOpacity>
-            </View>
 
-            <View style={styles.tagSection}>
-              <Text style={styles.tagLabel}>Languages Spoken</Text>
-              <View style={styles.chipContainer}>
-                {languages.map(lang => (
-                  <Chip key={lang} label={lang} onRemove={() => setLanguages(languages.filter(l => l !== lang))} />
-                ))}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Instagram</Text>
+                <TextInput
+                  style={styles.input}
+                  value={instagramHandle}
+                  onChangeText={setInstagramHandle}
+                  placeholder="@yourbusiness"
+                  autoCapitalize="none"
+                />
               </View>
-              <TouchableOpacity style={styles.addTagButton}>
-                <Ionicons name="add" size={18} color="#00B761" />
-                <Text style={styles.addTagText}>Add Language</Text>
-              </TouchableOpacity>
-            </View>
 
-            {/* Professional Credentials */}
-            <SectionHeader title="Professional Credentials" />
-            
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Years of Experience</Text>
-              <TouchableOpacity style={styles.pickerButton}>
-                <Text style={styles.pickerText}>{experience}</Text>
-                <Ionicons name="chevron-down" size={20} color="#8E8E93" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.listHeader}>
-              <Text style={styles.tagLabel}>Professional Licenses</Text>
-              <TouchableOpacity style={styles.addSmallButton}>
-                <Ionicons name="add" size={16} color="#00B761" />
-                <Text style={styles.addSmallText}>Add</Text>
-              </TouchableOpacity>
-            </View>
-            <CredentialItem 
-              title="Electrical License" 
-              subtitle="License #: EL-2021-12345" 
-              date="Expires: 2026-12-31" 
-            />
-            <CredentialItem 
-              title="Plumbing License" 
-              subtitle="License #: PL-2020-67890" 
-              date="Expires: 2025-08-15" 
-            />
-
-            <View style={[styles.listHeader, { marginTop: 12 }]}>
-              <Text style={styles.tagLabel}>Certifications</Text>
-              <TouchableOpacity style={styles.addSmallButton}>
-                <Ionicons name="add" size={16} color="#00B761" />
-                <Text style={styles.addSmallText}>Add</Text>
-              </TouchableOpacity>
-            </View>
-            <CredentialItem 
-              title="HVAC Certification" 
-              subtitle="Year: 2022" 
-            />
-            <CredentialItem 
-              title="Safety Training Certificate" 
-              subtitle="Year: 2023" 
-            />
-
-            {/* Social Media & Links */}
-            <SectionHeader title="Social Media & Links" />
-            
-            <View style={styles.inputGroup}>
-              <View style={styles.labelRow}>
-                <Ionicons name="logo-facebook" size={18} color="#1877F2" />
-                <Text style={[styles.label, { marginLeft: 8, marginBottom: 0 }]}>Facebook</Text>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Website</Text>
+                <TextInput
+                  style={styles.input}
+                  value={websiteUrl}
+                  onChangeText={setWebsiteUrl}
+                  placeholder="www.yourbusiness.com"
+                  autoCapitalize="none"
+                />
               </View>
-              <TextInput
-                style={styles.input}
-                value={facebook}
-                onChangeText={setFacebook}
-                placeholder="facebook.com/yourbusiness"
-              />
-            </View>
 
-            <View style={styles.inputGroup}>
-              <View style={styles.labelRow}>
-                <Ionicons name="logo-instagram" size={18} color="#E4405F" />
-                <Text style={[styles.label, { marginLeft: 8, marginBottom: 0 }]}>Instagram</Text>
-              </View>
-              <TextInput
-                style={styles.input}
-                value={instagram}
-                onChangeText={setInstagram}
-                placeholder="@yourbusiness"
-              />
-            </View>
+              <TouchableOpacity
+                style={[styles.saveActionButton, isSaving && styles.saveActionButtonDisabled]}
+                onPress={() => void onSave()}
+                disabled={isSaving}
+              >
+                <Text style={styles.saveActionButtonText}>{isSaving ? 'Saving...' : 'Save Profile'}</Text>
+              </TouchableOpacity>
 
-            <View style={styles.inputGroup}>
-              <View style={styles.labelRow}>
-                <Ionicons name="globe-outline" size={18} color="#555" />
-                <Text style={[styles.label, { marginLeft: 8, marginBottom: 0 }]}>Website</Text>
-              </View>
-              <TextInput
-                style={styles.input}
-                value={website}
-                onChangeText={setWebsite}
-                placeholder="www.yourbusiness.com"
-              />
+              <View style={styles.footerSpacer} />
             </View>
-
-            <View style={styles.footerSpacer} />
-          </View>
-        </ScrollView>
+          </ScrollView>
+        ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FFF',
-  },
+  safeArea: { flex: 1, backgroundColor: '#FFF' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -278,128 +308,30 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0D1B2A',
-  },
-  headerButtonText: {
-    fontSize: 15,
-    color: '#8E8E93',
-    fontWeight: '500',
-  },
-  saveButtonText: {
-    color: '#00B761',
-    fontWeight: '700',
-  },
-  scrollContainer: {
-    flex: 1,
-  },
-  imageSection: {
-    marginBottom: 20,
-  },
-  coverImageContainer: {
-    height: 140,
-    backgroundColor: '#00703C', // Dark green matching mockup
-    position: 'relative',
-  },
-  coverPlaceholder: {
-    flex: 1,
-  },
-  changeCoverButton: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  changeCoverText: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  profileImageWrapper: {
-    alignItems: 'center',
-    marginTop: -55,
-  },
-  profileImageContainer: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    backgroundColor: '#00B761',
-    borderWidth: 4,
-    borderColor: '#FFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  profileInitials: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: '#FFF',
-  },
-  profileCameraIcon: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    backgroundColor: '#00703C',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFF',
-  },
-  changeProfileTextButton: {
-    marginTop: 12,
-  },
-  changeProfileText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#00B761',
-  },
-  formContent: {
-    paddingHorizontal: 20,
-  },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#0D1B2A' },
+  headerButtonText: { fontSize: 15, color: '#8E8E93', fontWeight: '500' },
+  saveButtonText: { color: '#00B761', fontWeight: '700' },
+  disabledText: { opacity: 0.5 },
+  stateWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingTop: 20 },
+  stateText: { color: '#64748B' },
+  errorText: { color: '#C62828', paddingHorizontal: 20, paddingTop: 16 },
+  scrollContainer: { flex: 1 },
+  formContent: { paddingHorizontal: 20 },
   sectionHeader: {
-    marginTop: 30,
-    marginBottom: 20,
+    marginTop: 28,
+    marginBottom: 18,
     paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#F8F9FA',
+    borderBottomColor: '#F4F4F4',
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0D1B2A',
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#444',
-    marginBottom: 8,
-  },
-  required: {
-    color: '#FF6F61',
-  },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#0D1B2A' },
+  inputGroup: { marginBottom: 18 },
+  label: { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 8 },
   input: {
     backgroundColor: '#F8F9FA',
     borderRadius: 12,
     paddingHorizontal: 16,
-    height: 52,
+    minHeight: 52,
     fontSize: 15,
     color: '#0D1B2A',
     borderWidth: 1,
@@ -412,141 +344,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F0F0F0',
   },
-  textArea: {
-    fontSize: 15,
-    color: '#0D1B2A',
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  charCount: {
-    alignSelf: 'flex-end',
-    fontSize: 12,
-    color: '#8E8E93',
-    marginTop: 8,
-  },
-  tagSection: {
-    marginBottom: 24,
-  },
-  tagLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#444',
-    marginBottom: 12,
-  },
-  chipContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E8FBF2',
+  textArea: { fontSize: 15, color: '#0D1B2A', minHeight: 110, textAlignVertical: 'top' },
+  charCount: { alignSelf: 'flex-end', marginTop: 8, fontSize: 12, color: '#8E8E93' },
+  helperText: { marginTop: 8, fontSize: 12, color: '#8E8E93' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  readonlyChip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 999,
+    backgroundColor: '#E8FBF2',
   },
-  chipText: {
-    fontSize: 14,
-    color: '#00703C',
-    fontWeight: '500',
-  },
-  chipRemove: {
-    marginLeft: 8,
-  },
-  addTagButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  addTagText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#00B761',
-    marginLeft: 4,
-  },
-  pickerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F8F9FA',
+  readonlyChipText: { color: '#00B761', fontWeight: '600', fontSize: 13 },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  linkText: { color: '#00B761', fontWeight: '700' },
+  saveActionButton: {
+    marginTop: 20,
+    height: 50,
     borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 52,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-  },
-  pickerText: {
-    fontSize: 15,
-    color: '#0D1B2A',
-  },
-  listHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    backgroundColor: '#00B761',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  addSmallButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  addSmallText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#00B761',
-    marginLeft: 2,
-  },
-  credentialCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  credentialInfo: {
-    flex: 1,
-  },
-  credentialTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0D1B2A',
-    marginBottom: 4,
-  },
-  credentialSubtitle: {
-    fontSize: 13,
-    color: '#555',
-    marginBottom: 2,
-  },
-  credentialDate: {
-    fontSize: 12,
-    color: '#8E8E93',
-  },
-  credentialActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  credentialActionButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: '#F8F9FA',
     justifyContent: 'center',
-    alignItems: 'center',
   },
-  credentialDeleteButton: {
-    backgroundColor: '#FFF1F0',
-  },
-  labelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  footerSpacer: {
-    height: 60,
-  },
+  saveActionButtonDisabled: { opacity: 0.6 },
+  saveActionButtonText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
+  footerSpacer: { height: 28 },
 });
-

@@ -4,6 +4,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { TimePickerModal } from '../components/TimePickerModal';
 import { DatePickerModal } from '../components/DatePickerModal';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  getDefaultProviderAvailabilityState,
+  getProviderAvailability,
+  saveProviderAvailability,
+} from '@/services/providerAvailabilityService';
+import { getErrorMessage } from '@/lib/error-handling';
 
 const DayScheduleItem = ({ day, active, onToggle, breakTime, onAddBreak, onRemoveBreak, onTimeChange, onBreakChange, startTime, endTime }: any) => (
   <View style={styles.dayCard}>
@@ -79,15 +86,10 @@ const DayScheduleItem = ({ day, active, onToggle, breakTime, onAddBreak, onRemov
 
 export default function ProviderAvailabilityScreen() {
   const router = useRouter();
-  const [schedule, setSchedule] = useState<any>({
-    Monday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
-    Tuesday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
-    Wednesday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
-    Thursday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
-    Friday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
-    Saturday: { active: false, start: '08:00 AM', end: '05:00 PM', break: null },
-    Sunday: { active: false, start: '08:00 AM', end: '05:00 PM', break: null },
-  });
+  const { user } = useAuth();
+  const [schedule, setSchedule] = useState<any>(getDefaultProviderAvailabilityState().weeklySchedule);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [isPickerVisible, setPickerVisible] = useState(false);
   const [isDatePickerVisible, setDatePickerVisible] = useState(false);
@@ -142,14 +144,40 @@ export default function ProviderAvailabilityScreen() {
     }));
   };
 
-  const [daysOff, setDaysOff] = useState<any[]>([
-    { id: '1', day: 'Tuesday', reason: '' },
-    { id: '2', day: 'Saturday', reason: 'Family Day' },
-    { id: '3', day: 'Sunday', reason: 'Personal Day' },
-  ]);
+  const [daysOff, setDaysOff] = useState<any[]>([]);
 
   const [newDayOffReason, setNewDayOffReason] = useState('');
   const [newDayOffDate, setNewDayOffDate] = useState('');
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    async function loadAvailability() {
+      if (!user?.id) {
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const data = await getProviderAvailability(user.id);
+        if (!mounted) return;
+        setSchedule(data.weeklySchedule);
+        setDaysOff(data.daysOff);
+      } catch (error) {
+        if (mounted) {
+          Alert.alert('Load Failed', getErrorMessage(error, 'Could not load provider availability.'));
+        }
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    }
+
+    void loadAvailability();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
 
   const addDayOff = () => {
     if (!newDayOffDate) return;
@@ -175,6 +203,31 @@ export default function ProviderAvailabilityScreen() {
     setDaysOff(daysOff.filter(d => d.id !== id));
   };
 
+  const handleSave = async () => {
+    if (!user?.id) {
+      Alert.alert('Login Required', 'Please sign in again before saving availability.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await saveProviderAvailability(user.id, {
+        weeklySchedule: schedule,
+        daysOff,
+      });
+      Alert.alert('Saved', 'Availability updated successfully.', [
+        {
+          text: 'OK',
+          onPress: () => (router.canGoBack?.() ? router.back() : router.replace('/' as any)),
+        },
+      ]);
+    } catch (error) {
+      Alert.alert('Save Failed', getErrorMessage(error, 'Could not save provider availability.'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
@@ -189,6 +242,9 @@ export default function ProviderAvailabilityScreen() {
 
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
+          {isLoading ? (
+            <Text style={styles.loadingText}>Loading saved availability...</Text>
+          ) : null}
           <Text style={styles.sectionTitle}>Weekly Schedule</Text>
           
           {Object.keys(schedule).map((day) => (
@@ -214,7 +270,7 @@ export default function ProviderAvailabilityScreen() {
             <TouchableOpacity style={styles.checkbox}>
               <View style={styles.checkboxTick} />
             </TouchableOpacity>
-            <Text style={styles.copyText}>Copy Monday's schedule to all days</Text>
+            <Text style={styles.copyText}>Copy Monday&apos;s schedule to all days</Text>
           </View>
 
           <Text style={styles.sectionTitle}>Recurring Days Off</Text>
@@ -276,8 +332,8 @@ export default function ProviderAvailabilityScreen() {
 
       {/* Save Button */}
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.saveButton} activeOpacity={0.8} onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}>
-          <Text style={styles.saveButtonText}>Save Changes</Text>
+        <TouchableOpacity style={[styles.saveButton, isSaving && styles.saveButtonDisabled]} activeOpacity={0.8} onPress={handleSave} disabled={isSaving}>
+          <Text style={styles.saveButtonText}>{isSaving ? 'Saving...' : 'Save Changes'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -576,6 +632,13 @@ const styles = StyleSheet.create({
   },
   footerSpacer: {
     height: 40,
+  },
+  loadingText: {
+    color: '#64748B',
+    marginBottom: 12,
+  },
+  saveButtonDisabled: {
+    opacity: 0.7,
   },
 });
 

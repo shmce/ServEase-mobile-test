@@ -1,129 +1,131 @@
-import React from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  FlatList, 
-  TouchableOpacity, 
-  Image, 
-  TextInput, 
-  SafeAreaView, 
-  StatusBar 
+import React, { useMemo, useState } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  FlatList,
+  TextInput,
+  SafeAreaView,
+  StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-
-const MESSAGES_DATA = [
-  {
-    id: '1',
-    name: 'Maria Santos',
-    message: "I'll be there at 2:00 PM today. Se...",
-    time: '10:30 AM',
-    unread: 2,
-    online: true,
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&auto=format&fit=crop&q=60',
-  },
-  {
-    id: '2',
-    name: 'Juan Dela Cruz',
-    message: 'The plumbing work is complete. Tha...',
-    time: 'Yesterday',
-    unread: 0,
-    online: false,
-    avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=400&auto=format&fit=crop&q=60',
-  },
-  {
-    id: '3',
-    name: 'Ana Reyes',
-    message: 'Can we reschedule to tomorrow?',
-    time: 'Yesterday',
-    unread: 1,
-    online: true,
-    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&auto=format&fit=crop&q=60',
-  },
-  {
-    id: '4',
-    name: 'Carlos Mendoza',
-    message: 'Your aircon is now working perfectly!',
-    time: 'Mar 10',
-    unread: 0,
-    online: false,
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=60',
-  },
-  {
-    id: '5',
-    name: 'Sofia Garcia',
-    message: "I'm on my way to your location.",
-    time: 'Mar 9',
-    unread: 0,
-    online: false,
-    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&auto=format&fit=crop&q=60',
-  },
-];
-
-const MessageItem = ({ item }: { item: any }) => {
-  const router = useRouter();
-  
-  return (
-    <TouchableOpacity 
-      style={styles.messageItem} 
-      activeOpacity={0.7}
-      onPress={() => router.push({ pathname: '/customer-chat', params: { id: item.id } } as any)}
-    >
-      <View style={styles.avatarContainer}>
-        <Image source={{ uri: item.avatar }} style={styles.avatar} />
-        {item.online && <View style={styles.onlineDot} />}
-      </View>
-      <View style={styles.messageContent}>
-        <View style={styles.messageHeader}>
-          <Text style={styles.name}>{item.name}</Text>
-          <Text style={styles.time}>{item.time}</Text>
-        </View>
-        <View style={styles.messageRow}>
-          <Text style={[styles.messagePreview, item.unread >0 && styles.unreadMessage]} numberOfLines={1}>
-            {item.message}
-          </Text>
-          {item.unread > 0 && (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadCount}>{item.unread}</Text>
-            </View>
-          )}
-        </View>
-      </View>
-      <Ionicons name="chevron-forward" size={18} color="#CCC" style={styles.chevron} />
-    </TouchableOpacity>
-  );
-};
+import { useFocusEffect, useRouter } from 'expo-router';
+import { ChatSummaryCard } from '@/components/ui/chat-summary-card';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  getCustomerChatSummaries,
+  subscribeToChatSummaries,
+  type ChatSummary,
+} from '@/services/chatService';
 
 export default function MessagesScreen() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [items, setItems] = useState<ChatSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const load = React.useCallback(async () => {
+    if (!user?.id) {
+      setItems([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const rows = await getCustomerChatSummaries(user.id);
+      setItems(rows);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.id]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  React.useEffect(() => {
+    if (!user?.id) return;
+
+    return subscribeToChatSummaries({
+      role: 'customer',
+      userId: user.id,
+      onChange: () => {
+        void load();
+      },
+    });
+  }, [load, user?.id]);
+
+  const filteredItems = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return items;
+
+    return items.filter((item) =>
+      [item.otherPartyName, item.serviceName, item.lastMessage].some((value) =>
+        value.toLowerCase().includes(query)
+      )
+    );
+  }, [items, searchQuery]);
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      
-      {/* Header */}
+
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Messages</Text>
       </View>
 
-      {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
           <Ionicons name="search-outline" size={20} color="#999" style={styles.searchIcon} />
-          <TextInput 
-            placeholder="Search conversations..." 
+          <TextInput
+            placeholder="Search conversations..."
             style={styles.searchInput}
             placeholderTextColor="#999"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
           />
         </View>
       </View>
 
-      {/* Message List */}
+      {isLoading ? <ActivityIndicator size="large" color="#00B761" style={{ marginTop: 30 }} /> : null}
+
       <FlatList
-        data={MESSAGES_DATA}
+        data={filteredItems}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <MessageItem item={item} />}
+        renderItem={({ item }) => (
+          <ChatSummaryCard
+            item={item}
+            variant="customer"
+            actionLabel="Booking"
+            onActionPress={() =>
+              router.push({
+                pathname: '/customer-booking-details',
+                params: { id: item.bookingId },
+              } as any)
+            }
+            onPress={() =>
+              router.push({
+                pathname: '/customer-chat',
+                params: {
+                  id: item.bookingId,
+                  providerName: item.otherPartyName,
+                  serviceName: item.serviceName,
+                  phone: item.otherPartyPhone,
+                },
+              } as any)
+            }
+          />
+        )}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          !isLoading ? <Text style={styles.emptyText}>No conversations yet.</Text> : null
+        }
       />
     </SafeAreaView>
   );
@@ -169,82 +171,9 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 20,
   },
-  messageItem: {
-    flexDirection: 'row',
-    paddingHorizontal: 25,
-    paddingVertical: 18,
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F8F9FA',
-  },
-  avatarContainer: {
-    position: 'relative',
-  },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-  },
-  onlineDot: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#00C853',
-    borderWidth: 2,
-    borderColor: '#FFF',
-  },
-  messageContent: {
-    flex: 1,
-    marginLeft: 15,
-  },
-  messageHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  name: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1A1B1E',
-  },
-  time: {
-    fontSize: 12,
-    color: '#999',
-  },
-  messageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  messagePreview: {
-    fontSize: 14,
-    color: '#666',
-    flex: 1,
-    marginRight: 10,
-  },
-  unreadMessage: {
-    color: '#1A1B1E',
-    fontWeight: '600',
-  },
-  unreadBadge: {
-    backgroundColor: '#00C853',
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
-  unreadCount: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  chevron: {
-    marginLeft: 5,
+  emptyText: {
+    textAlign: 'center',
+    color: '#8E8E93',
+    marginTop: 30,
   },
 });

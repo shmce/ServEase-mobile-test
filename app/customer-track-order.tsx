@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,33 +7,146 @@ import {
   SafeAreaView,
   Image,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { supabase } from '@/lib/supabase';
+import { getErrorMessage } from '@/lib/error-handling';
+import { getCustomerTrackingSteps, getCustomerBookingPresentation } from '@/lib/booking-status';
+import { openPhoneCall } from '@/lib/communication';
 
 const { width, height } = Dimensions.get('window');
 
 export default function CustomerTrackOrderScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ id?: string; booking?: string }>();
+  const [booking, setBooking] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadBooking() {
+      const fallbackBooking = (() => {
+        if (!params.booking) return null;
+        try {
+          return JSON.parse(params.booking);
+        } catch {
+          return null;
+        }
+      })();
+
+      const bookingId = String(params.id || fallbackBooking?.rawId || '').trim();
+      if (!bookingId) {
+        setBooking(fallbackBooking);
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      setError('');
+
+      try {
+        const { data: bookingRow, error: bookingError } = await supabase
+          .from('bookings')
+          .select('id,booking_reference,status,service_address,scheduled_at,total_amount,provider_id,service_id')
+          .eq('id', bookingId)
+          .maybeSingle();
+        if (bookingError) throw bookingError;
+
+        if (!bookingRow) {
+          if (active) setBooking(fallbackBooking);
+          return;
+        }
+
+        const [providerRes, profileRes, serviceRes] = await Promise.all([
+          supabase.from('users').select('id,full_name,contact_number').eq('id', bookingRow.provider_id).maybeSingle(),
+          supabase
+            .from('provider_profiles')
+            .select('user_id,business_name,average_rating,verification_status')
+            .eq('user_id', bookingRow.provider_id)
+            .maybeSingle(),
+          supabase.from('provider_services').select('id,title').eq('id', bookingRow.service_id).maybeSingle(),
+        ]);
+
+        if (providerRes.error) throw providerRes.error;
+        if (profileRes.error) throw profileRes.error;
+        if (serviceRes.error) throw serviceRes.error;
+
+        const scheduled = bookingRow.scheduled_at ? new Date(bookingRow.scheduled_at) : null;
+
+        const normalized = {
+          id: bookingRow.booking_reference || bookingRow.id,
+          rawId: bookingRow.id,
+          status: String(bookingRow.status || 'Pending'),
+          address: bookingRow.service_address || fallbackBooking?.address || 'No address provided.',
+          totalAmount: Number(bookingRow.total_amount || 0).toFixed(2),
+          date: scheduled
+            ? scheduled.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+            : fallbackBooking?.date || 'N/A',
+          time: scheduled
+            ? scheduled.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+            : fallbackBooking?.time || 'N/A',
+          service: serviceRes.data?.title || fallbackBooking?.service || 'Service Booking',
+          provider: {
+            name: providerRes.data?.full_name || fallbackBooking?.provider?.name || 'Service Provider',
+            phone: providerRes.data?.contact_number || '',
+            rating: Number(profileRes.data?.average_rating || fallbackBooking?.provider?.rating || 0).toFixed(1),
+            specialty:
+              String(profileRes.data?.business_name || '').trim() ||
+              serviceRes.data?.title ||
+              fallbackBooking?.provider?.specialty ||
+              'Service',
+            avatar:
+              fallbackBooking?.provider?.avatar ||
+              `https://i.pravatar.cc/150?u=${bookingRow.provider_id}`,
+          },
+        };
+
+        if (active) setBooking(normalized);
+      } catch (err) {
+        if (active) {
+          setError(getErrorMessage(err, 'Failed to load booking tracking details.'));
+          setBooking(fallbackBooking);
+        }
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    }
+
+    loadBooking();
+    return () => {
+      active = false;
+    };
+  }, [params.booking, params.id]);
+
+  const bookingState = getCustomerBookingPresentation(booking?.status);
+  const steps = getCustomerTrackingSteps(booking?.status);
+  const etaText = useMemo(() => {
+    if (bookingState.normalizedStatus === 'completed') return 'Arrived';
+    if (bookingState.normalizedStatus === 'in_progress') return 'Service active';
+    if (bookingState.normalizedStatus === 'confirmed') return 'Preparing';
+    if (bookingState.normalizedStatus === 'cancelled') return 'Cancelled';
+    return 'Pending';
+  }, [bookingState.normalizedStatus]);
 
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
-      
-      {/* Map View Mockup */}
+
       <View style={styles.mapContainer}>
-        {/* Simple grid lines to simulate a map */}
         <View style={styles.mapGridHorizontal} />
         <View style={[styles.mapGridHorizontal, { top: height * 0.2 }]} />
         <View style={[styles.mapGridHorizontal, { top: height * 0.4 }]} />
         <View style={styles.mapGridVertical} />
         <View style={[styles.mapGridVertical, { left: width * 0.5 }]} />
-        
-        {/* Map Objects */}
+
         <View style={styles.etaBubble}>
           <Ionicons name="navigate-outline" size={16} color="#00C853" style={{ marginRight: 8 }} />
-          <Text style={styles.etaBubbleText}>Estimated arrival: 12 mins</Text>
+          <Text style={styles.etaBubbleText}>{bookingState.summaryTitle}</Text>
         </View>
 
         <View style={styles.providerMarker}>
@@ -41,119 +154,177 @@ export default function CustomerTrackOrderScreen() {
             <MaterialCommunityIcons name="motorbike" size={24} color="#fff" />
           </View>
           <View style={styles.markerLabel}>
-            <Text style={styles.markerText}>Maria</Text>
+            <Text style={styles.markerText}>{booking?.provider?.name || 'Provider'}</Text>
           </View>
         </View>
 
-        {/* Path Line Mockup */}
         <View style={styles.pathLine} />
       </View>
 
-      {/* Header Overlay */}
       <SafeAreaView style={styles.headerOverlay}>
         <View style={styles.headerContent}>
-          <TouchableOpacity 
-            onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} 
+          <TouchableOpacity
+            onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}
             style={styles.closeButton}
             hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
             <Ionicons name="close" size={24} color="#333" />
           </TouchableOpacity>
-          <View style={styles.headerTitleContainer}>
+        <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle}>Live Tracking</Text>
-            <Text style={styles.headerSubtitle}>BK-2026-03-012</Text>
+            <Text style={styles.headerSubtitle}>{booking?.id || 'Booking'}</Text>
           </View>
           <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.actionIconBtn}>
+            <TouchableOpacity
+              style={styles.actionIconBtn}
+              onPress={() => openPhoneCall(booking?.provider?.phone, booking?.provider?.name)}
+            >
               <Ionicons name="call" size={20} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.actionIconBtn, { backgroundColor: '#F8F9FA', marginLeft: 10 }]}>
+            <TouchableOpacity
+              style={[styles.actionIconBtn, { backgroundColor: '#F8F9FA', marginLeft: 10 }]}
+              onPress={() =>
+                booking?.rawId
+                  ? router.push({
+                      pathname: '/customer-chat',
+                      params: {
+                        id: booking.rawId,
+                        providerName: booking?.provider?.name || 'Service Provider',
+                        serviceName: booking?.provider?.specialty || booking?.service || 'Service',
+                        phone: booking?.provider?.phone || '',
+                      },
+                    } as any)
+                  : undefined
+              }
+            >
               <Ionicons name="chatbubble-outline" size={20} color="#333" />
             </TouchableOpacity>
           </View>
         </View>
       </SafeAreaView>
 
-      {/* Bottom Sheet */}
       <View style={styles.bottomSheet}>
         <View style={styles.sheetHandle} />
-        
-        {/* Progress Stepper */}
+
+        {isLoading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="small" color="#00C853" />
+            <Text style={styles.loadingText}>Loading live booking status...</Text>
+          </View>
+        ) : null}
+
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
         <View style={styles.stepperContainer}>
-          <View style={styles.stepItem}>
-            <View style={[styles.stepCircle, styles.stepCompleted]}>
-              <Ionicons name="checkmark" size={16} color="#fff" />
-            </View>
-            <Text style={[styles.stepLabel, styles.stepLabelCompleted]}>Booked</Text>
-          </View>
-          <View style={[styles.stepLine, styles.stepLineCompleted]} />
-          <View style={styles.stepItem}>
-            <View style={[styles.stepCircle, styles.stepActive]}>
-              <View style={styles.activeDot} />
-            </View>
-            <Text style={[styles.stepLabel, styles.stepLabelActive]}>On the Way</Text>
-          </View>
-          <View style={styles.stepLine} />
-          <View style={styles.stepItem}>
-            <View style={styles.stepCircle}>
-              <View style={styles.inactiveDot} />
-            </View>
-            <Text style={styles.stepLabel}>Arrived</Text>
-          </View>
-          <View style={styles.stepLine} />
-          <View style={styles.stepItem}>
-            <View style={styles.stepCircle}>
-              <View style={styles.inactiveDot} />
-            </View>
-            <Text style={styles.stepLabel}>In Progress</Text>
-          </View>
+          {steps.map((step, index) => {
+            const isComplete = step.state === 'complete';
+            const isActive = step.state === 'active';
+
+            return (
+              <React.Fragment key={step.key}>
+                <View style={styles.stepItem}>
+                  <View
+                    style={[
+                      styles.stepCircle,
+                      isComplete && styles.stepCompleted,
+                      isActive && styles.stepActive,
+                    ]}
+                  >
+                    {isComplete ? (
+                      <Ionicons name="checkmark" size={16} color="#fff" />
+                    ) : isActive ? (
+                      <View style={styles.activeDot} />
+                    ) : (
+                      <View style={styles.inactiveDot} />
+                    )}
+                  </View>
+                  <Text
+                    style={[
+                      styles.stepLabel,
+                      isComplete && styles.stepLabelCompleted,
+                      isActive && styles.stepLabelActive,
+                    ]}
+                  >
+                    {step.label}
+                  </Text>
+                </View>
+                {index < steps.length - 1 ? (
+                  <View
+                    style={[
+                      styles.stepLine,
+                      (isComplete || (isActive && index === 0)) && styles.stepLineCompleted,
+                    ]}
+                  />
+                ) : null}
+              </React.Fragment>
+            );
+          })}
         </View>
 
-        {/* Provider Card */}
         <View style={styles.providerCard}>
-          <Image 
-            source={{ uri: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&auto=format&fit=crop&q=60' }} 
-            style={styles.providerAvatar} 
+          <Image
+            source={{ uri: booking?.provider?.avatar || 'https://i.pravatar.cc/150?u=provider' }}
+            style={styles.providerAvatar}
           />
           <View style={styles.providerInfo}>
-            <Text style={styles.providerName}>Maria Santos</Text>
+            <Text style={styles.providerName}>{booking?.provider?.name || 'Service Provider'}</Text>
             <View style={styles.ratingRow}>
               <Ionicons name="star" size={14} color="#FFA000" />
-              <Text style={styles.ratingText}>4.8 · House Cleaning</Text>
+              <Text style={styles.ratingText}>
+                {booking?.provider?.rating || '0.0'} | {booking?.provider?.specialty || booking?.service || 'Service'}
+              </Text>
             </View>
           </View>
           <View style={styles.etaBadge}>
-            <Text style={styles.etaTime}>12 mins</Text>
-            <Text style={styles.etaLabel}>ETA</Text>
+            <Text style={styles.etaTime}>{etaText}</Text>
+            <Text style={styles.etaLabel}>Status</Text>
           </View>
         </View>
 
-        {/* Booking Details */}
         <View style={styles.detailsSection}>
           <View style={styles.detailItem}>
             <Ionicons name="location-outline" size={18} color="#999" style={{ marginRight: 12 }} />
-            <Text style={styles.detailText}>123 Rizal St, Makati City</Text>
+            <Text style={styles.detailText}>{booking?.address || 'No address provided.'}</Text>
           </View>
           <View style={[styles.detailItem, { marginTop: 15 }]}>
             <Ionicons name="calendar-outline" size={18} color="#999" style={{ marginRight: 12 }} />
-            <Text style={styles.detailText}>March 14, 2026 · 10:00 AM</Text>
+            <Text style={styles.detailText}>
+              {booking?.date || 'N/A'} | {booking?.time || 'N/A'}
+            </Text>
+          </View>
+          <View style={[styles.detailItem, { marginTop: 15 }]}>
+            <Ionicons name="construct-outline" size={18} color="#999" style={{ marginRight: 12 }} />
+            <Text style={styles.detailText}>{bookingState.summaryText}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalPrice}>₱1,500.00</Text>
+            <Text style={styles.totalPrice}>P{booking?.totalAmount || '0.00'}</Text>
           </View>
         </View>
 
-        {/* Footer Actions */}
-        <TouchableOpacity 
-          style={styles.cancelButton}
-          onPress={() => router.push('/customer-cancel-booking' as any)}
-        >
-          <Ionicons name="close" size={18} color="#FF5252" style={{ marginRight: 8 }} />
-          <Text style={styles.cancelButtonText}>Cancel Booking</Text>
-        </TouchableOpacity>
-        <Text style={styles.cancelFooterText}>Free cancellation up to 24 hours before the service</Text>
+        {bookingState.canCancel && booking?.rawId ? (
+          <>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() =>
+                router.push({
+                  pathname: '/customer-cancel-booking',
+                  params: {
+                    id: String(booking.rawId),
+                    booking: JSON.stringify(booking),
+                  },
+                } as any)
+              }
+            >
+              <Ionicons name="close" size={18} color="#FF5252" style={{ marginRight: 8 }} />
+              <Text style={styles.cancelButtonText}>Cancel Booking</Text>
+            </TouchableOpacity>
+            <Text style={styles.cancelFooterText}>
+              Free cancellation up to 24 hours before the service
+            </Text>
+          </>
+        ) : null}
       </View>
     </View>
   );
@@ -166,7 +337,7 @@ const styles = StyleSheet.create({
   },
   mapContainer: {
     flex: 1,
-    backgroundColor: '#F1F8F5', // Light green map background
+    backgroundColor: '#F1F8F5',
   },
   mapGridHorizontal: {
     position: 'absolute',
@@ -213,7 +384,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#2D3436', // Dark gray marker
+    backgroundColor: '#2D3436',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
@@ -319,6 +490,21 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 25,
+  },
+  loadingWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  loadingText: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  errorText: {
+    color: '#B91C1C',
+    fontSize: 12,
+    marginBottom: 12,
   },
   stepperContainer: {
     flexDirection: 'row',
@@ -433,16 +619,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   detailsSection: {
-    marginBottom: 30,
+    marginBottom: 20,
   },
   detailItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   detailText: {
+    flex: 1,
     fontSize: 14,
     color: '#444',
     fontWeight: '500',
+    lineHeight: 20,
   },
   divider: {
     height: 1,
@@ -486,4 +674,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-

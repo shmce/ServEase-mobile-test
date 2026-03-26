@@ -3,13 +3,25 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Act
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
+import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
+import { NotificationBadge } from '@/components/ui/notification-badge';
 import { getErrorMessage } from '@/lib/error-handling';
 import { getProviderBookings } from '@/services/providerBookingService';
+import { getProviderEarningsSummary } from '@/services/paymentService';
+import {
+  getProviderChatSummaries,
+  subscribeToChatSummaries,
+  type ChatSummary,
+} from '@/services/chatService';
 
 export default function ProviderDashboard() {
   const router = useRouter();
   const { user } = useAuth();
+  const unreadNotifications = useUnreadNotifications();
   const [rows, setRows] = useState<any[]>([]);
+  const [paidEarnings, setPaidEarnings] = useState(0);
+  const [pendingCollections, setPendingCollections] = useState(0);
+  const [chatSummaries, setChatSummaries] = useState<ChatSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -25,8 +37,15 @@ export default function ProviderDashboard() {
         setIsLoading(true);
         setError('');
         try {
-          const data = await getProviderBookings(user.id);
-          if (mounted) setRows(data);
+          const [data, earningsSummary] = await Promise.all([
+            getProviderBookings(user.id),
+            getProviderEarningsSummary(user.id),
+          ]);
+          if (mounted) {
+            setRows(data);
+            setPaidEarnings(earningsSummary.totalNetEarnings);
+            setPendingCollections(earningsSummary.pendingRevenue);
+          }
         } catch (err) {
           if (mounted) setError(getErrorMessage(err, 'Failed to load provider dashboard.'));
         } finally {
@@ -40,22 +59,62 @@ export default function ProviderDashboard() {
     }, [user?.id])
   );
 
+  const loadChatSummaries = React.useCallback(async () => {
+    if (!user?.id) {
+      setChatSummaries([]);
+      return;
+    }
+
+    try {
+      const summaries = await getProviderChatSummaries(user.id);
+      setChatSummaries(summaries);
+    } catch {
+      setChatSummaries([]);
+    }
+  }, [user?.id]);
+
+  React.useEffect(() => {
+    void loadChatSummaries();
+  }, [loadChatSummaries]);
+
+  React.useEffect(() => {
+    if (!user?.id) return;
+
+    return subscribeToChatSummaries({
+      role: 'provider',
+      userId: user.id,
+      onChange: () => {
+        void loadChatSummaries();
+      },
+    });
+  }, [loadChatSummaries, user?.id]);
+
   const stats = useMemo(() => {
     const total = rows.length;
     const upcoming = rows.filter((r) => !String(r.status).toLowerCase().includes('cancel') && !String(r.status).toLowerCase().includes('complete')).length;
     const completed = rows.filter((r) => String(r.status).toLowerCase().includes('complete')).length;
-    const earnings = rows
-      .filter((r) => String(r.status).toLowerCase().includes('complete'))
-      .reduce((sum, r) => sum + Number(r.total_amount || 0), 0);
-    return { total, upcoming, completed, earnings };
+    return { total, upcoming, completed };
   }, [rows]);
 
   const upcomingRows = useMemo(() => {
-    return rows.filter((r) => {
-      const s = String(r.status).toLowerCase();
-      return !s.includes('cancel') && !s.includes('complete');
-    }).slice(0, 5);
-  }, [rows]);
+    const summaryMap = new Map(chatSummaries.map((summary) => [summary.bookingId, summary]));
+
+    return rows
+      .filter((r) => {
+        const s = String(r.status).toLowerCase();
+        return !s.includes('cancel') && !s.includes('complete');
+      })
+      .sort((left, right) => {
+        const leftUnread = summaryMap.get(String(left.id))?.unreadCount || 0;
+        const rightUnread = summaryMap.get(String(right.id))?.unreadCount || 0;
+        return rightUnread - leftUnread;
+      })
+      .slice(0, 5);
+  }, [chatSummaries, rows]);
+  const chatSummaryMap = useMemo(
+    () => new Map(chatSummaries.map((summary) => [summary.bookingId, summary])),
+    [chatSummaries]
+  );
 
   return (
     <View style={styles.container}>
@@ -66,7 +125,15 @@ export default function ProviderDashboard() {
               <Text style={styles.welcome}>Welcome back</Text>
               <Text style={styles.name}>Provider Dashboard</Text>
             </View>
-            <TouchableOpacity style={styles.notif}><Ionicons name="notifications-outline" size={22} color="#fff" /></TouchableOpacity>
+            <TouchableOpacity style={styles.notif} onPress={() => router.push('/notifications' as any)}>
+              <Ionicons name="notifications-outline" size={22} color="#fff" />
+              <NotificationBadge
+                count={unreadNotifications}
+                top={-4}
+                right={-4}
+                borderColor="#00B761"
+              />
+            </TouchableOpacity>
           </View>
         </SafeAreaView>
 
@@ -76,15 +143,15 @@ export default function ProviderDashboard() {
 
           <View style={styles.earningsCard}>
             <Text style={styles.earningsLabel}>Total Earnings</Text>
-            <Text style={styles.earningsValue}>P{stats.earnings.toFixed(2)}</Text>
-            <Text style={styles.earningsHint}>From completed services</Text>
+            <Text style={styles.earningsValue}>P{paidEarnings.toFixed(2)}</Text>
+            <Text style={styles.earningsHint}>From paid services after fees</Text>
           </View>
 
           <View style={styles.statsGrid}>
             <View style={styles.card}><Text style={styles.k}>Total</Text><Text style={styles.v}>{stats.total}</Text></View>
             <View style={styles.card}><Text style={styles.k}>Upcoming</Text><Text style={styles.v}>{stats.upcoming}</Text></View>
             <View style={styles.card}><Text style={styles.k}>Completed</Text><Text style={styles.v}>{stats.completed}</Text></View>
-            <View style={styles.card}><Text style={styles.k}>Earnings</Text><Text style={styles.v}>P{stats.earnings.toFixed(2)}</Text></View>
+            <View style={styles.card}><Text style={styles.k}>Pending</Text><Text style={styles.v}>P{pendingCollections.toFixed(2)}</Text></View>
           </View>
 
           <Text style={styles.section}>Quick Actions</Text>
@@ -119,12 +186,41 @@ export default function ProviderDashboard() {
           ) : null}
           {upcomingRows.map((b) => {
             const d = b.scheduled_at ? new Date(b.scheduled_at) : null;
+            const chatSummary = chatSummaryMap.get(String(b.id));
+            const needsReply = Boolean((chatSummary?.unreadCount || 0) > 0);
             return (
-              <TouchableOpacity key={b.id} style={styles.row} onPress={() => router.push({ pathname: '/provider-booking-details', params: { id: b.id } } as any)}>
+              <TouchableOpacity
+                key={b.id}
+                style={[styles.row, needsReply && styles.rowAttention]}
+                onPress={() =>
+                  needsReply
+                    ? router.push({
+                        pathname: '/provider-chat',
+                        params: {
+                          id: b.id,
+                          name: b.customer_name,
+                          serviceName: b.service_title,
+                        },
+                      } as any)
+                    : router.push({ pathname: '/provider-booking-details', params: { id: b.id } } as any)
+                }
+              >
                 <View style={{ flex: 1 }}>
                   <Text style={styles.rowTitle}>{b.service_title}</Text>
                   <Text style={styles.rowSub}>{b.customer_name}</Text>
                   <Text style={styles.rowSub}>{d ? d.toLocaleString() : 'N/A'}</Text>
+                  {chatSummary ? (
+                    <View style={styles.rowContactWrap}>
+                      <Text style={styles.rowContactText} numberOfLines={1}>
+                        {chatSummary.lastMessage}
+                      </Text>
+                      {needsReply ? (
+                        <View style={styles.rowAttentionChip}>
+                          <Text style={styles.rowAttentionChipText}>Needs reply</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
                 </View>
                 <Ionicons name="chevron-forward" size={18} color="#888" />
               </TouchableOpacity>
@@ -165,8 +261,13 @@ const styles = StyleSheet.create({
   quickCard: { width: '48%', backgroundColor: '#FFF', borderRadius: 10, paddingVertical: 14, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   quickText: { color: '#223', fontWeight: '700' },
   row: { backgroundColor: '#fff', borderRadius: 10, padding: 12, flexDirection: 'row', alignItems: 'center' },
+  rowAttention: { borderWidth: 1, borderColor: '#BDE4CD', backgroundColor: '#FCFFFD' },
   rowTitle: { fontWeight: '700', color: '#0D1B2A' },
   rowSub: { fontSize: 12, color: '#667', marginTop: 3 },
+  rowContactWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  rowContactText: { flex: 1, fontSize: 12, color: '#556' },
+  rowAttentionChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: '#E8FBF2' },
+  rowAttentionChipText: { fontSize: 10, fontWeight: '700', color: '#00B761' },
   emptyCard: { backgroundColor: '#FFF', borderRadius: 10, padding: 14 },
   emptyText: { color: '#778' },
   error: { color: '#C62828' },
