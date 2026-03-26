@@ -13,7 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { supabase } from '@/lib/supabase';
+import { supabase, identityDb, providerCatalogDb } from '@/lib/db';
 import { getErrorMessage } from '@/lib/error-handling';
 
 const { width } = Dimensions.get('window');
@@ -119,7 +119,7 @@ export default function ProviderSignupScreen() {
   const [showIdDropdown, setShowIdDropdown] = useState(false);
 
   const persistProviderProfile = async (userId: string) => {
-    const { error } = await supabase.from('provider_profiles').upsert({
+    const { error } = await providerCatalogDb.from('provider_profiles').upsert({
       user_id: userId,
       business_name: formData.fullName.trim(),
     });
@@ -733,7 +733,7 @@ export default function ProviderSignupScreen() {
                 if (error) throw error;
 
                 if (data.user?.id) {
-                  const { error: usersError } = await supabase.from('users').upsert({
+                  const { error: usersError } = await identityDb.from('users').upsert({
                     id: data.user.id,
                     email: formData.email.trim().toLowerCase(),
                     full_name: formData.fullName.trim(),

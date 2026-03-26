@@ -13,7 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { supabase } from '@/lib/supabase';
+import { supabase, identityDb, providerCatalogDb } from '@/lib/db';
 import { getErrorMessage } from '@/lib/error-handling';
 
 export default function ProviderLoginScreen() {
@@ -119,7 +119,7 @@ export default function ProviderLoginScreen() {
                   let resolvedRole = String(roleRaw).toLowerCase();
 
                   if (!resolvedRole && data.user?.id) {
-                    const { data: roleRow } = await supabase
+                    const { data: roleRow } = await identityDb
                       .from('users')
                       .select('role')
                       .eq('id', data.user.id)
@@ -128,7 +128,7 @@ export default function ProviderLoginScreen() {
                   }
 
                   if (!resolvedRole && data.user?.id) {
-                    const { data: providerRow } = await supabase
+                    const { data: providerRow } = await providerCatalogDb
                       .from('provider_profiles')
                       .select('user_id')
                       .eq('user_id', data.user.id)

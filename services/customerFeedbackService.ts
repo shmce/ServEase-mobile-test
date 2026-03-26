@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { bookingDb, trustDb, providerCatalogDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 
 const formatDbError = (error: any, fallback: string) => {
@@ -28,7 +28,7 @@ export const submitCustomerReview = async (input: {
     throw new Error('Ratings must be between 1 and 5 stars.');
   }
 
-  const { data: booking, error: bookingError } = await supabase
+  const { data: booking, error: bookingError } = await bookingDb
     .from('bookings')
     .select('id,customer_id,provider_id,status')
     .eq('id', bookingId)
@@ -57,7 +57,7 @@ export const submitCustomerReview = async (input: {
     review_text: String(input.reviewText || '').trim() || null,
   };
 
-  const { data: review, error: reviewError } = await supabase
+  const { data: review, error: reviewError } = await trustDb
     .from('reviews')
     .upsert(payload, { onConflict: 'booking_id,reviewer_id' })
     .select('*')
@@ -67,7 +67,7 @@ export const submitCustomerReview = async (input: {
     throw new Error(formatDbError(reviewError, 'Failed to submit review.'));
   }
 
-  const { data: allReviews, error: reviewsError } = await supabase
+  const { data: allReviews, error: reviewsError } = await trustDb
     .from('reviews')
     .select('rating')
     .eq('reviewee_id', providerId);
@@ -82,7 +82,7 @@ export const submitCustomerReview = async (input: {
     ? Number((ratings.reduce((sum, value) => sum + value, 0) / totalReviews).toFixed(2))
     : 0;
 
-  const { error: profileError } = await supabase
+  const { error: profileError } = await providerCatalogDb
     .from('provider_profiles')
     .upsert({
       user_id: providerId,
@@ -124,7 +124,7 @@ export const submitProviderProfileReport = async (input: {
     status: 'submitted',
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await trustDb
     .from('provider_profile_reports')
     .insert(payload)
     .select('*')

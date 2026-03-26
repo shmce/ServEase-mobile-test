@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, bookingDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 
 export const BOOKING_ATTACHMENTS_BUCKET = 'booking-attachments';
@@ -94,7 +94,7 @@ export const saveBookingAttachments = async (
   }));
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await bookingDb
       .from('booking_attachments')
       .insert(payload as any)
       .select('id,booking_id,file_url,file_name,mime_type,created_at');
@@ -108,7 +108,7 @@ export const saveBookingAttachments = async (
 
 export const getBookingAttachments = async (bookingId: string) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await bookingDb
       .from('booking_attachments')
       .select('id,booking_id,file_url,file_name,mime_type,created_at')
       .eq('booking_id', bookingId)

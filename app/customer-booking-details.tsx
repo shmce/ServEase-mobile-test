@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { supabase } from '@/lib/supabase';
+import { supabase, identityDb, providerCatalogDb, bookingDb } from '@/lib/db';
 import { getErrorMessage } from '@/lib/error-handling';
 import { getBookingAttachments, type BookingAttachmentRow } from '@/services/bookingAttachmentService';
 import {
@@ -121,7 +121,7 @@ const BookingDetailsScreen = () => {
 
       setIsLoading(true);
       try {
-        const { data: bookingRow, error: bookingError } = await supabase
+        const { data: bookingRow, error: bookingError } = await bookingDb
           .from('bookings')
           .select('id,booking_reference,status,service_address,scheduled_at,total_amount,provider_id,service_id,customer_notes')
           .eq('id', bookingId)
@@ -130,13 +130,13 @@ const BookingDetailsScreen = () => {
         if (!bookingRow) return;
 
         const [providerRes, profileRes, serviceRes] = await Promise.all([
-          supabase.from('users').select('id,full_name,is_verified').eq('id', bookingRow.provider_id).maybeSingle(),
-          supabase
+          identityDb.from('users').select('id,full_name,is_verified').eq('id', bookingRow.provider_id).maybeSingle(),
+          providerCatalogDb
             .from('provider_profiles')
             .select('user_id,business_name,average_rating,verification_status')
             .eq('user_id', bookingRow.provider_id)
             .maybeSingle(),
-          supabase.from('provider_services').select('id,title').eq('id', bookingRow.service_id).maybeSingle(),
+          providerCatalogDb.from('provider_services').select('id,title').eq('id', bookingRow.service_id).maybeSingle(),
         ]);
 
         if (providerRes.error) throw providerRes.error;

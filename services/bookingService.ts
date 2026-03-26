@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { bookingDb, providerCatalogDb, identityDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 import { createBookingStatusNotification } from './notificationService';
 import { cancelBookingPayment, ensureBookingPayment, type PaymentMethod } from './paymentService';
@@ -65,7 +65,7 @@ const normalizePaymentMethod = (methodRaw: unknown): PaymentMethod => {
 };
 
 export const getCustomerBookings = async (customerId: string) => {
-  const richQuery = await supabase
+  const richQuery = await bookingDb
     .from('bookings')
     .select(`
       *,
@@ -79,7 +79,7 @@ export const getCustomerBookings = async (customerId: string) => {
     return richQuery.data;
   }
 
-  const fallbackCustomerId = await supabase
+  const fallbackCustomerId = await bookingDb
     .from('bookings')
     .select('*')
     .eq('customer_id', customerId)
@@ -89,7 +89,7 @@ export const getCustomerBookings = async (customerId: string) => {
     return fallbackCustomerId.data;
   }
 
-  const fallbackUserId = await supabase
+  const fallbackUserId = await bookingDb
     .from('bookings')
     .select('*')
     .eq('user_id', customerId)
@@ -111,7 +111,7 @@ export const createBooking = async (bookingData: any) => {
   let serviceError: any = null;
 
   if (requestedServiceId) {
-    const byId = await supabase
+    const byId = await providerCatalogDb
       .from('provider_services')
       .select('id, price, provider_id, title')
       .eq('id', requestedServiceId)
@@ -121,7 +121,7 @@ export const createBooking = async (bookingData: any) => {
   }
 
   if (!serviceRow && providerId) {
-    const withProvider = await supabase
+    const withProvider = await providerCatalogDb
       .from('provider_services')
       .select('id, price, provider_id')
       .eq('provider_id', providerId)
@@ -133,7 +133,7 @@ export const createBooking = async (bookingData: any) => {
   }
 
   if (!serviceRow) {
-    const byTitle = await supabase
+    const byTitle = await providerCatalogDb
       .from('provider_services')
       .select('id, price, provider_id')
       .eq('title', serviceTitle)
@@ -201,7 +201,7 @@ export const createBooking = async (bookingData: any) => {
     ];
 
     for (const payload of candidates) {
-      const { data, error } = await supabase
+      const { data, error } = await bookingDb
         .from('bookings')
         .insert([payload])
         .select()
@@ -243,7 +243,7 @@ export const createBooking = async (bookingData: any) => {
 };
 
 export const getBookingById = async (bookingId: string) => {
-  const { data, error } = await supabase
+  const { data, error } = await bookingDb
     .from('bookings')
     .select('*')
     .eq('id', bookingId)
@@ -278,7 +278,7 @@ export const cancelCustomerBooking = async (
   let lastError: any = null;
 
   for (const payload of payloads) {
-    const byCustomerId = await supabase
+    const byCustomerId = await bookingDb
       .from('bookings')
       .update(payload)
       .eq('id', bookingId)
@@ -292,7 +292,7 @@ export const cancelCustomerBooking = async (
     }
     lastError = byCustomerId.error;
 
-    const byUserId = await supabase
+    const byUserId = await bookingDb
       .from('bookings')
       .update(payload)
       .eq('id', bookingId)
@@ -317,9 +317,9 @@ const maybeNotifyProviderAboutNewBooking = async (booking: any, customerId: stri
 
   try {
     const [{ data: customer }, { data: service }] = await Promise.all([
-      supabase.from('users').select('full_name,contact_number').eq('id', customerId).maybeSingle(),
+      identityDb.from('users').select('full_name,contact_number').eq('id', customerId).maybeSingle(),
       booking?.service_id
-        ? supabase.from('provider_services').select('title').eq('id', booking.service_id).maybeSingle()
+        ? providerCatalogDb.from('provider_services').select('title').eq('id', booking.service_id).maybeSingle()
         : Promise.resolve({ data: null } as any),
     ]);
 
@@ -370,9 +370,9 @@ const maybeNotifyProviderAboutCustomerCancellation = async (booking: any, custom
 
   try {
     const [{ data: customer }, { data: service }] = await Promise.all([
-      supabase.from('users').select('full_name,contact_number').eq('id', customerId).maybeSingle(),
+      identityDb.from('users').select('full_name,contact_number').eq('id', customerId).maybeSingle(),
       booking?.service_id
-        ? supabase.from('provider_services').select('title').eq('id', booking.service_id).maybeSingle()
+        ? providerCatalogDb.from('provider_services').select('title').eq('id', booking.service_id).maybeSingle()
         : Promise.resolve({ data: null } as any),
     ]);
 

@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { identityDb, providerCatalogDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 
 export type ProviderProfileDraft = {
@@ -41,9 +41,9 @@ export const getProviderProfileDraft = async (userId: string): Promise<ProviderP
   const fallback = getDefaultProviderProfileDraft();
 
   const [{ data: user }, { data: profile }, { data: services }] = await Promise.all([
-    supabase.from('users').select('id,full_name').eq('id', userId).maybeSingle(),
-    supabase.from('provider_profiles').select('*').eq('user_id', userId).maybeSingle(),
-    supabase
+    identityDb.from('users').select('id,full_name').eq('id', userId).maybeSingle(),
+    providerCatalogDb.from('provider_profiles').select('*').eq('user_id', userId).maybeSingle(),
+    providerCatalogDb
       .from('provider_services')
       .select('title,service_categories(name)')
       .eq('provider_id', userId),
@@ -75,7 +75,7 @@ export const saveProviderProfileDraft = async (userId: string, input: ProviderPr
   const normalizedFullName = String(input.fullName || '').trim();
   const normalizedBusinessName = String(input.businessName || normalizedFullName).trim();
 
-  const { error: userError } = await supabase
+  const { error: userError } = await identityDb
     .from('users')
     .update({
       full_name: normalizedFullName || null,
@@ -98,7 +98,7 @@ export const saveProviderProfileDraft = async (userId: string, input: ProviderPr
     website_url: String(input.websiteUrl || '').trim() || null,
   };
 
-  const { error: profileError } = await supabase
+  const { error: profileError } = await providerCatalogDb
     .from('provider_profiles')
     .upsert(profilePayload, { onConflict: 'user_id' });
 

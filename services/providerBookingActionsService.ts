@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { bookingDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 import { getPaymentByBookingId, updateBookingPaymentAmount } from './paymentService';
 
@@ -71,7 +71,7 @@ export const createProviderRescheduleRequest = async (
     status: 'pending',
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await bookingDb
     .from('booking_reschedule_requests')
     .insert(payload)
     .select()
@@ -85,7 +85,7 @@ export const createProviderRescheduleRequest = async (
 };
 
 export const getProviderRescheduleRequests = async (bookingId: string) => {
-  const { data, error } = await supabase
+  const { data, error } = await bookingDb
     .from('booking_reschedule_requests')
     .select('*')
     .eq('booking_id', bookingId)
@@ -114,7 +114,7 @@ export const createProviderAdditionalChargeRequest = async (
     status: 'pending',
   }));
 
-  const { data, error } = await supabase
+  const { data, error } = await bookingDb
     .from('additional_charges')
     .insert(payload)
     .select('*');
@@ -127,7 +127,7 @@ export const createProviderAdditionalChargeRequest = async (
 };
 
 export const getProviderAdditionalChargeRequests = async (bookingId: string) => {
-  const { data, error } = await supabase
+  const { data, error } = await bookingDb
     .from('additional_charges')
     .select('*')
     .eq('booking_id', bookingId)
@@ -173,7 +173,7 @@ export const reviewRescheduleRequest = async (input: {
   decision: 'approved' | 'declined';
 }) => {
   const reviewedAt = new Date().toISOString();
-  const { data: request, error: requestError } = await supabase
+  const { data: request, error: requestError } = await bookingDb
     .from('booking_reschedule_requests')
     .select('*')
     .eq('id', input.requestId)
@@ -187,7 +187,7 @@ export const reviewRescheduleRequest = async (input: {
     throw new Error('Reschedule request not found.');
   }
 
-  const { data: booking, error: bookingError } = await supabase
+  const { data: booking, error: bookingError } = await bookingDb
     .from('bookings')
     .select('id,customer_id')
     .eq('id', input.bookingId)
@@ -200,7 +200,7 @@ export const reviewRescheduleRequest = async (input: {
     throw new Error('You can only review requests for your own booking.');
   }
 
-  const { data: updatedRequest, error: updateError } = await supabase
+  const { data: updatedRequest, error: updateError } = await bookingDb
     .from('booking_reschedule_requests')
     .update({
       status: input.decision,
@@ -221,7 +221,7 @@ export const reviewRescheduleRequest = async (input: {
       throw new Error('The proposed reschedule time is invalid.');
     }
 
-    const { error: bookingUpdateError } = await supabase
+    const { error: bookingUpdateError } = await bookingDb
       .from('bookings')
       .update({
         scheduled_at: scheduledAt,
@@ -248,7 +248,7 @@ export const reviewAdditionalChargeRequest = async (input: {
     throw new Error('No additional charges were selected.');
   }
 
-  const { data: booking, error: bookingError } = await supabase
+  const { data: booking, error: bookingError } = await bookingDb
     .from('bookings')
     .select('id,customer_id,total_amount')
     .eq('id', input.bookingId)
@@ -261,7 +261,7 @@ export const reviewAdditionalChargeRequest = async (input: {
     throw new Error('You can only review charges for your own booking.');
   }
 
-  const { data: charges, error: chargesError } = await supabase
+  const { data: charges, error: chargesError } = await bookingDb
     .from('additional_charges')
     .select('*')
     .eq('booking_id', input.bookingId)
@@ -272,7 +272,7 @@ export const reviewAdditionalChargeRequest = async (input: {
   }
 
   const reviewedAt = new Date().toISOString();
-  const { data: updatedCharges, error: updateError } = await supabase
+  const { data: updatedCharges, error: updateError } = await bookingDb
     .from('additional_charges')
     .update({
       status: input.decision,
@@ -294,7 +294,7 @@ export const reviewAdditionalChargeRequest = async (input: {
     );
     const nextTotalAmount = Number(booking.total_amount || 0) + approvedAmount;
 
-    const { error: bookingUpdateError } = await supabase
+    const { error: bookingUpdateError } = await bookingDb
       .from('bookings')
       .update({
         total_amount: nextTotalAmount,

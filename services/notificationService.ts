@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, notificationDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 import {
   areMessageNotificationsEnabled,
@@ -108,7 +108,7 @@ export const getNotifications = async (userId: string): Promise<AppNotification[
   if (!userId) return [];
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await notificationDb
       .from('notifications')
       .select('*')
       .eq('user_id', userId)
@@ -137,7 +137,7 @@ export const markNotificationRead = async (userId: string, notificationId: strin
   );
 
   try {
-    await supabase
+    await notificationDb
       .from('notifications')
       .update({ is_read: true })
       .eq('id', notificationId)
@@ -156,7 +156,7 @@ export const markAllNotificationsRead = async (userId: string) => {
   );
 
   try {
-    await supabase
+    await notificationDb
       .from('notifications')
       .update({ is_read: true })
       .eq('user_id', userId)
@@ -223,7 +223,7 @@ export const createChatNotification = async (input: {
   ]);
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await notificationDb
       .from('notifications')
       .insert({
         user_id: recipientUserId,
@@ -315,7 +315,7 @@ export const createBookingStatusNotification = async (input: {
   ]);
 
   try {
-    const { data: savedRow, error } = await supabase
+    const { data: savedRow, error } = await notificationDb
       .from('notifications')
       .insert({
         user_id: recipientUserId,
@@ -360,7 +360,7 @@ export const subscribeToNotifications = (input: {
       'postgres_changes',
       {
         event: '*',
-        schema: 'public',
+        schema: 'notification_svc',
         table: 'notifications',
         filter: `user_id=eq.${userId}`,
       },

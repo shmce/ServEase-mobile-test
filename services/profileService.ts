@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { identityDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 
 export type UserProfileRecord = {
@@ -10,7 +10,7 @@ export type UserProfileRecord = {
 };
 
 export const getProfile = async (userId: string) => {
-  const { data, error } = await supabase
+  const { data, error } = await identityDb
     .from('users')
     .select('*')
     .eq('id', userId)
@@ -23,7 +23,7 @@ export const getProfile = async (userId: string) => {
 };
 
 export const updateProfile = async (userId: string, updates: Partial<UserProfileRecord>) => {
-  const { data, error } = await supabase
+  const { data, error } = await identityDb
     .from('users')
     .update(updates)
     .eq('id', userId)

@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { notificationDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 
 const createUuid = () =>
@@ -20,7 +20,7 @@ const tryInsertSupportTicket = async (payload: Record<string, any>) => {
   ];
 
   for (const variant of variants) {
-    const { data, error } = await supabase.from('support_tickets').insert(variant).select('*').maybeSingle();
+    const { data, error } = await notificationDb.from('support_tickets').insert(variant).select('*').maybeSingle();
     if (!error && data) return data;
   }
 

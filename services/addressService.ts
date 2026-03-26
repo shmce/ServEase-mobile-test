@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { identityDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 
 export type AddressRecord = {
@@ -107,7 +107,7 @@ const trySelectAddresses = async (table: AddressTableName, userId: string) => {
 
   for (const column of filters) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await identityDb
         .from(table)
         .select('*')
         .eq(column, userId)
@@ -127,7 +127,7 @@ const trySelectAddresses = async (table: AddressTableName, userId: string) => {
 const tryInsertAddress = async (table: AddressTableName, address: AddressRecord) => {
   for (const payload of buildInsertPayloads(address)) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await identityDb
         .from(table)
         .insert([payload])
         .select('*')
@@ -161,7 +161,7 @@ const tryUpdateAddress = async (
     for (const idColumn of idColumns) {
       for (const filter of filterSets) {
         try {
-          let query = supabase.from(table).update(payload).eq(idColumn, id);
+          let query = identityDb.from(table).update(payload).eq(idColumn, id);
 
           if (filter) {
             query = query.eq(filter.column, filter.value);
@@ -192,7 +192,7 @@ const tryUpdateAddress = async (
 const tryDeleteAddress = async (table: AddressTableName, id: string) => {
   for (const idColumn of ['id', 'address_id']) {
     try {
-      const { error } = await supabase.from(table).delete().eq(idColumn, id);
+      const { error } = await identityDb.from(table).delete().eq(idColumn, id);
       if (!error) return true;
     } catch {
       // Try next id shape.

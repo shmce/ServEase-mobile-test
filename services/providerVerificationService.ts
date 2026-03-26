@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../lib/supabase';
+import { providerCatalogDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 
 export type VerificationStatus = 'not_started' | 'draft' | 'submitted' | 'approved' | 'rejected';
@@ -136,7 +136,7 @@ export const getProviderVerificationDraft = async (userId: string) => {
 
   let remoteProfile: any = null;
   try {
-    const { data, error } = await supabase
+    const { data, error } = await providerCatalogDb
       .from('provider_profiles')
       .select('user_id,business_name,verification_status')
       .eq('user_id', userId)
@@ -216,7 +216,7 @@ export const saveProviderVerificationDraft = async (
   };
 
   try {
-    const { error } = await supabase.from('provider_profiles').upsert({
+    const { error } = await providerCatalogDb.from('provider_profiles').upsert({
       user_id: userId,
       business_name: nextDraft.businessName || null,
       verification_status: nextDraft.status,

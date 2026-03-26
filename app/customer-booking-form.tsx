@@ -27,7 +27,7 @@ import {
 import { createBooking } from '@/services/bookingService';
 import { getPaymentMethodLabel, type PaymentMethod } from '@/services/paymentService';
 import { getErrorMessage } from '@/lib/error-handling';
-import { supabase } from '@/lib/supabase';
+import { supabase, providerCatalogDb } from '@/lib/db';
 
 type ServiceOption = {
   id: string;
@@ -184,7 +184,7 @@ export default function CustomerBookingFormScreen() {
       setIsServicesLoading(true);
       setServicesLoadError('');
       try {
-        let query = supabase.from('provider_services').select('id,title,price').order('title', { ascending: true });
+        let query = providerCatalogDb.from('provider_services').select('id,title,price').order('title', { ascending: true });
 
         if (params.providerId) {
           query = query.eq('provider_id', params.providerId);

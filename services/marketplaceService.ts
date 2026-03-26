@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { identityDb, providerCatalogDb, trustDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 
 export type ServiceCategory = {
@@ -27,7 +27,7 @@ export type ProviderCard = {
 };
 
 export const getServiceCategories = async () => {
-  const { data, error } = await supabase
+  const { data, error } = await providerCatalogDb
     .from('service_categories')
     .select('*')
     .eq('is_active', true)
@@ -38,7 +38,7 @@ export const getServiceCategories = async () => {
 };
 
 export const getServicesByCategoryName = async (categoryName: string) => {
-  const { data: category, error: categoryError } = await supabase
+  const { data: category, error: categoryError } = await providerCatalogDb
     .from('service_categories')
     .select('id,name,slug')
     .ilike('name', categoryName)
@@ -50,7 +50,7 @@ export const getServicesByCategoryName = async (categoryName: string) => {
 
   if (!category?.id) return [];
 
-  const { data: services, error: servicesError } = await supabase
+  const { data: services, error: servicesError } = await providerCatalogDb
     .from('provider_services')
     .select('id,title,description,price')
     .eq('category_id', category.id)
@@ -64,7 +64,7 @@ export const getServicesByCategoryName = async (categoryName: string) => {
 };
 
 export const getProvidersByServiceName = async (serviceName: string) => {
-  const { data: serviceRows, error: servicesError } = await supabase
+  const { data: serviceRows, error: servicesError } = await providerCatalogDb
     .from('provider_services')
     .select('id,provider_id,title,price')
     .ilike('title', serviceName);
@@ -79,8 +79,8 @@ export const getProvidersByServiceName = async (serviceName: string) => {
   const providerIds = Array.from(new Set(rows.map((r: any) => r.provider_id)));
 
   const [{ data: usersData, error: usersError }, { data: profilesData, error: profilesError }] = await Promise.all([
-    supabase.from('users').select('id,full_name').in('id', providerIds),
-    supabase.from('provider_profiles').select('user_id,business_name,average_rating,total_reviews').in('user_id', providerIds),
+    identityDb.from('users').select('id,full_name').in('id', providerIds),
+    providerCatalogDb.from('provider_profiles').select('user_id,business_name,average_rating,total_reviews').in('user_id', providerIds),
   ]);
 
   if (usersError) throw new Error(getErrorMessage(usersError, 'Failed to load provider users.'));
@@ -110,10 +110,10 @@ export const getProvidersByServiceName = async (serviceName: string) => {
 
 export const getProviderProfileData = async (providerId: string) => {
   const [{ data: user, error: userError }, { data: profile, error: profileError }, { data: services, error: servicesError }, { data: reviews, error: reviewsError }] = await Promise.all([
-    supabase.from('users').select('id,full_name,email,contact_number,created_at').eq('id', providerId).maybeSingle(),
-    supabase.from('provider_profiles').select('*').eq('user_id', providerId).maybeSingle(),
-    supabase.from('provider_services').select('*').eq('provider_id', providerId).order('created_at', { ascending: false }),
-    supabase.from('reviews').select('*').eq('reviewee_id', providerId).order('created_at', { ascending: false }),
+    identityDb.from('users').select('id,full_name,email,contact_number,created_at').eq('id', providerId).maybeSingle(),
+    providerCatalogDb.from('provider_profiles').select('*').eq('user_id', providerId).maybeSingle(),
+    providerCatalogDb.from('provider_services').select('*').eq('provider_id', providerId).order('created_at', { ascending: false }),
+    trustDb.from('reviews').select('*').eq('reviewee_id', providerId).order('created_at', { ascending: false }),
   ]);
 
   if (userError) throw new Error(getErrorMessage(userError, 'Failed to load provider user.'));
@@ -124,7 +124,7 @@ export const getProviderProfileData = async (providerId: string) => {
   let reviewerNames = new Map<string, string>();
   const reviewerIds = Array.from(new Set((reviews || []).map((r: any) => r.reviewer_id).filter(Boolean)));
   if (reviewerIds.length) {
-    const { data: reviewerRows } = await supabase.from('users').select('id,full_name').in('id', reviewerIds);
+    const { data: reviewerRows } = await identityDb.from('users').select('id,full_name').in('id', reviewerIds);
     reviewerNames = new Map((reviewerRows || []).map((u: any) => [u.id, u.full_name || 'User']));
   }
 

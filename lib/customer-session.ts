@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSyncExternalStore } from 'react';
-import { supabase } from './supabase';
+import { supabase, identityDb } from './db';
 import { useAuth } from '../hooks/useAuth';
 import { getErrorMessage } from './error-handling';
 
@@ -90,7 +90,7 @@ async function persistCustomerToDatabase(userId: string, email: string, profile:
   const contactNumber = profile.mobileNumber.trim();
 
   try {
-    await supabase.from('users').upsert({
+    await identityDb.from('users').upsert({
       id: userId,
       email,
       full_name: fullName,

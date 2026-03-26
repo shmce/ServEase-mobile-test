@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, bookingDb, identityDb, providerCatalogDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 import { getCustomerBookingPresentation } from '../lib/booking-status';
 import { getCustomerBookings } from './bookingService';
@@ -240,7 +240,7 @@ const mapConversationMessages = (rows: any[]): ChatMessage[] =>
 
 const tryLoadConversationRecords = async (role: ChatRole, userId: string) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await bookingDb
       .from('conversations')
       .select('*')
       .eq(role === 'customer' ? 'customer_id' : 'provider_id', userId)
@@ -255,7 +255,7 @@ const tryLoadConversationRecords = async (role: ChatRole, userId: string) => {
 
 const tryLoadConversationMessages = async (bookingId: string) => {
   try {
-    const { data: conversation, error: conversationError } = await supabase
+    const { data: conversation, error: conversationError } = await bookingDb
       .from('conversations')
       .select('id')
       .eq('booking_id', bookingId)
@@ -263,7 +263,7 @@ const tryLoadConversationMessages = async (bookingId: string) => {
 
     if (conversationError || !conversation?.id) return null;
 
-    const { data, error } = await supabase
+    const { data, error } = await bookingDb
       .from('messages')
       .select('*')
       .eq('conversation_id', conversation.id)
@@ -279,13 +279,13 @@ const tryLoadConversationMessages = async (bookingId: string) => {
 const tryLoadSupabaseMessages = async (bookingId: string) => {
   const attempts = [
     () =>
-      supabase
+      bookingDb
         .from('messages')
         .select('*')
         .eq('booking_id', bookingId)
         .order('created_at', { ascending: true }),
     () =>
-      supabase
+      bookingDb
         .from('messages')
         .select('*')
         .eq('conversation_id', bookingId)
@@ -317,7 +317,7 @@ const tryUpsertConversation = async (input: {
   if (!input.customerId || !input.providerId) return null;
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await bookingDb
       .from('conversations')
       .upsert({
         booking_id: input.bookingId,
@@ -367,7 +367,7 @@ const tryPersistSupabaseMessage = async (
 
   for (const payload of payloads) {
     try {
-      const { error } = await supabase.from('messages').insert(payload);
+      const { error } = await bookingDb.from('messages').insert(payload);
       if (!error) return true;
     } catch {
       // Ignore and continue.
@@ -448,10 +448,10 @@ const enrichConversationSummaries = async (
 
   const [{ data: users }, { data: services }] = await Promise.all([
     otherPartyIds.length
-      ? supabase.from('users').select('id,full_name,contact_number').in('id', otherPartyIds)
+      ? identityDb.from('users').select('id,full_name,contact_number').in('id', otherPartyIds)
       : Promise.resolve({ data: [] as any[] }),
     serviceIds.length
-      ? supabase.from('provider_services').select('id,title').in('id', serviceIds)
+      ? providerCatalogDb.from('provider_services').select('id,title').in('id', serviceIds)
       : Promise.resolve({ data: [] as any[] }),
   ]);
 
@@ -617,7 +617,7 @@ export const sendChatMessage = async (input: {
   try {
     let booking: any = null;
 
-    const richBooking = await supabase
+    const richBooking = await bookingDb
       .from('bookings')
       .select(`
         id,
@@ -635,7 +635,7 @@ export const sendChatMessage = async (input: {
     if (!richBooking.error && richBooking.data) {
       booking = richBooking.data;
     } else {
-      const fallbackBooking = await supabase
+      const fallbackBooking = await bookingDb
         .from('bookings')
         .select('id,customer_id,provider_id,service_id,status')
         .eq('id', bookingId)
@@ -736,7 +736,7 @@ export const retryChatMessage = async (input: {
   replaceMemoryMessage(bookingId, messageId, pendingMessage);
 
   try {
-    const { data: booking } = await supabase
+    const { data: booking } = await bookingDb
       .from('bookings')
       .select('id,customer_id,provider_id,service_id')
       .eq('id', bookingId)
@@ -792,7 +792,7 @@ export const markChatThreadRead = async (input: {
   try {
     const column =
       input.role === 'customer' ? 'customer_last_read_at' : 'provider_last_read_at';
-    const { error } = await supabase
+    const { error } = await bookingDb
       .from('conversations')
       .update({ [column]: readAt })
       .eq('booking_id', bookingId);
@@ -819,7 +819,7 @@ export const subscribeToChatThread = (input: {
       'postgres_changes',
       {
         event: '*',
-        schema: 'public',
+        schema: 'booking_svc',
         table: 'conversations',
         filter: `booking_id=eq.${bookingId}`,
       },
@@ -829,7 +829,7 @@ export const subscribeToChatThread = (input: {
       'postgres_changes',
       {
         event: '*',
-        schema: 'public',
+        schema: 'booking_svc',
         table: 'messages',
         filter: `booking_id=eq.${bookingId}`,
       },
@@ -859,7 +859,7 @@ export const subscribeToChatSummaries = (input: {
       'postgres_changes',
       {
         event: '*',
-        schema: 'public',
+        schema: 'booking_svc',
         table: 'conversations',
         filter: `${filterColumn}=eq.${userId}`,
       },

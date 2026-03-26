@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { supabase } from '@/lib/supabase';
+import { supabase, identityDb, providerCatalogDb } from '@/lib/db';
 import { useAuth } from '@/hooks/useAuth';
 import { getErrorMessage } from '@/lib/error-handling';
 
@@ -179,7 +179,7 @@ export default function PricingScreen() {
       throw new Error('Authenticated account has no email. Please re-login.');
     }
 
-    const { error: usersUpsertError } = await supabase.from('users').upsert({
+    const { error: usersUpsertError } = await identityDb.from('users').upsert({
       id: user.id,
       role: 'provider',
       full_name: fullName,
@@ -188,7 +188,7 @@ export default function PricingScreen() {
     });
     if (usersUpsertError) throw usersUpsertError;
 
-    const { error: profileUpsertError } = await supabase.from('provider_profiles').upsert({
+    const { error: profileUpsertError } = await providerCatalogDb.from('provider_profiles').upsert({
       user_id: user.id,
       business_name: fullName,
     });
@@ -325,11 +325,11 @@ export default function PricingScreen() {
           ...basePayload,
           category_id: categoryId,
         }));
-        const { error } = await supabase.from('provider_services').insert(payloads);
+        const { error } = await providerCatalogDb.from('provider_services').insert(payloads);
         if (error) {
           // If DB requires parent identity rows, create them once then retry.
           await ensureProviderIdentityRows();
-          const { error: retryError } = await supabase.from('provider_services').insert(payloads);
+          const { error: retryError } = await providerCatalogDb.from('provider_services').insert(payloads);
           if (retryError) throw retryError;
         }
       }

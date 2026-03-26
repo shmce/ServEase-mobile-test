@@ -6,7 +6,7 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { supabase, identityDb } from '@/lib/db';
 import { AuthProvider } from '../context/AuthContext';
 
 function AuthGate() {
@@ -35,7 +35,7 @@ function AuthGate() {
         return;
       }
 
-      const { data } = await supabase
+      const { data } = await identityDb
         .from('users')
         .select('role')
         .eq('id', user.id)

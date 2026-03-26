@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { paymentDb, bookingDb, identityDb, providerCatalogDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 
 export type PaymentRow = {
@@ -54,7 +54,7 @@ const tryInsertPayment = async (payload: Record<string, any>) => {
 
   for (const variant of variants) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await paymentDb
         .from('payments')
         .insert(variant)
         .select(
@@ -79,7 +79,7 @@ const tryUpdatePayment = async (paymentId: string, payload: Record<string, any>)
 
   for (const variant of variants) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await paymentDb
         .from('payments')
         .update(variant)
         .eq('id', paymentId)
@@ -98,7 +98,7 @@ const tryUpdatePayment = async (paymentId: string, payload: Record<string, any>)
 };
 
 export const getPaymentByBookingId = async (bookingId: string) => {
-  const { data, error } = await supabase
+  const { data, error } = await paymentDb
     .from('payments')
     .select('id,booking_id,customer_id,provider_id,amount,method,status,transaction_reference,paid_at,created_at')
     .eq('booking_id', bookingId)
@@ -111,7 +111,7 @@ export const getPaymentByBookingId = async (bookingId: string) => {
 };
 
 export const getProviderPayments = async (providerId: string) => {
-  const { data, error } = await supabase
+  const { data, error } = await paymentDb
     .from('payments')
     .select('id,booking_id,customer_id,provider_id,amount,method,status,transaction_reference,paid_at,created_at')
     .eq('provider_id', providerId)
@@ -131,13 +131,13 @@ export const getProviderPaymentHistory = async (providerId: string) => {
 
   const [{ data: bookings }, { data: customers }] = await Promise.all([
     bookingIds.length
-      ? supabase
+      ? bookingDb
           .from('bookings')
           .select('id,booking_reference,service_id,scheduled_at')
           .in('id', bookingIds)
       : Promise.resolve({ data: [] as any[] }),
     customerIds.length
-      ? supabase.from('users').select('id,full_name').in('id', customerIds)
+      ? identityDb.from('users').select('id,full_name').in('id', customerIds)
       : Promise.resolve({ data: [] as any[] }),
   ]);
 
@@ -146,7 +146,7 @@ export const getProviderPaymentHistory = async (providerId: string) => {
   );
 
   const { data: services } = serviceIds.length
-    ? await supabase.from('provider_services').select('id,title').in('id', serviceIds)
+    ? await providerCatalogDb.from('provider_services').select('id,title').in('id', serviceIds)
     : { data: [] as any[] };
 
   const bookingMap = new Map((bookings || []).map((booking: any) => [String(booking.id), booking]));

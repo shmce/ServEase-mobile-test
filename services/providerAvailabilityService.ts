@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { bookingDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 
 export type ProviderAvailabilityRow = {
@@ -94,11 +94,11 @@ export const getProviderAvailability = async (userId: string) => {
 
   try {
     const [{ data: weeklyRows }, { data: daysOffRows }] = await Promise.all([
-      supabase
+      bookingDb
         .from('provider_availability')
         .select('user_id,day_of_week,is_active,start_time,end_time,break_start_time,break_end_time')
         .eq('user_id', userId),
-      supabase
+      bookingDb
         .from('provider_days_off')
         .select('id,user_id,off_date,reason')
         .eq('user_id', userId)
@@ -152,14 +152,14 @@ export const saveProviderAvailability = async (
       break_end_time: to24Hour(state.weeklySchedule[day]?.break?.end || ''),
     }));
 
-    await supabase.from('provider_availability').upsert(weeklyPayload, {
+    await bookingDb.from('provider_availability').upsert(weeklyPayload, {
       onConflict: 'user_id,day_of_week',
     });
 
-    await supabase.from('provider_days_off').delete().eq('user_id', userId);
+    await bookingDb.from('provider_days_off').delete().eq('user_id', userId);
 
     if (state.daysOff.length > 0) {
-      await supabase.from('provider_days_off').insert(
+      await bookingDb.from('provider_days_off').insert(
         state.daysOff.map((item) => ({
           user_id: userId,
           off_date: item.day,

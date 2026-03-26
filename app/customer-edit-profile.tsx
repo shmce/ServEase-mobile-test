@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { supabase, identityDb } from '@/lib/db';
 import { getErrorMessage } from '@/lib/error-handling';
 
 export default function CustomerEditProfileScreen() {
@@ -40,7 +40,7 @@ export default function CustomerEditProfileScreen() {
     async function loadProfile() {
       try {
         // Fetch base user data
-        const { data: userData } = await supabase
+        const { data: userData } = await identityDb
           .from('users')
           .select('*')
           .eq('id', user!.id)
@@ -52,7 +52,7 @@ export default function CustomerEditProfileScreen() {
         }
 
         // Fetch customer profile (for the address)
-        const { data: profileData } = await supabase
+        const { data: profileData } = await identityDb
           .from('customer_profiles')
           .select('*')
           .eq('user_id', user!.id)
@@ -86,7 +86,7 @@ export default function CustomerEditProfileScreen() {
 
     try {
       // Upsert users row to handle first-save cases where row doesn't exist yet
-      const { error: userErr } = await supabase
+      const { error: userErr } = await identityDb
         .from('users')
         .upsert({
           id: user.id,

@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { bookingDb, identityDb, providerCatalogDb, notificationDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 import { createBookingStatusNotification } from './notificationService';
 import { cancelBookingPayment, markBookingPaymentPaid } from './paymentService';
@@ -110,7 +110,7 @@ export type ProviderBookingView = {
 };
 
 export const getProviderBookings = async (providerId: string) => {
-  const { data, error } = await supabase
+  const { data, error } = await bookingDb
     .from('bookings')
     .select('*')
     .eq('provider_id', providerId)
@@ -126,10 +126,10 @@ export const getProviderBookings = async (providerId: string) => {
 
   const [{ data: customers }, { data: services }] = await Promise.all([
     customerIds.length
-      ? supabase.from('users').select('id,full_name').in('id', customerIds)
+      ? identityDb.from('users').select('id,full_name').in('id', customerIds)
       : Promise.resolve({ data: [] as any[] }),
     serviceIds.length
-      ? supabase.from('provider_services').select('id,title').in('id', serviceIds)
+      ? providerCatalogDb.from('provider_services').select('id,title').in('id', serviceIds)
       : Promise.resolve({ data: [] as any[] }),
   ]);
 
@@ -152,13 +152,13 @@ export const getProviderBookings = async (providerId: string) => {
 };
 
 export const getProviderBookingById = async (bookingId: string) => {
-  const { data, error } = await supabase.from('bookings').select('*').eq('id', bookingId).maybeSingle();
+  const { data, error } = await bookingDb.from('bookings').select('*').eq('id', bookingId).maybeSingle();
   if (error) throw new Error(getErrorMessage(error, 'Failed to load booking details.'));
   if (!data) return null;
 
   const [{ data: customer }, { data: service }] = await Promise.all([
-    supabase.from('users').select('id,full_name,contact_number').eq('id', data.customer_id).maybeSingle(),
-    supabase.from('provider_services').select('id,title,description,price').eq('id', data.service_id).maybeSingle(),
+    identityDb.from('users').select('id,full_name,contact_number').eq('id', data.customer_id).maybeSingle(),
+    providerCatalogDb.from('provider_services').select('id,title,description,price').eq('id', data.service_id).maybeSingle(),
   ]);
 
   return {
@@ -174,7 +174,7 @@ export const getProviderBookingById = async (bookingId: string) => {
 export const updateBookingStatus = async (bookingId: string, providerId: string, target: 'confirmed' | 'in_progress' | 'completed' | 'cancelled') => {
   let lastError: any = null;
   for (const statusValue of STATUS_VARIANTS[target]) {
-    const strict = await supabase
+    const strict = await bookingDb
       .from('bookings')
       .update({ status: statusValue })
       .eq('id', bookingId)
@@ -190,7 +190,7 @@ export const updateBookingStatus = async (bookingId: string, providerId: string,
     lastError = strict.error || new Error('No booking row matched this provider.');
 
     // Fallback: some projects store provider linkage differently; let RLS enforce ownership.
-    const relaxed = await supabase
+    const relaxed = await bookingDb
       .from('bookings')
       .update({ status: statusValue })
       .eq('id', bookingId)
@@ -245,9 +245,9 @@ const maybeNotifyCustomerOnProviderStatusChange = async (
 
   try {
     const [{ data: provider }, { data: service }] = await Promise.all([
-      supabase.from('users').select('full_name,contact_number').eq('id', providerId).maybeSingle(),
+      identityDb.from('users').select('full_name,contact_number').eq('id', providerId).maybeSingle(),
       booking?.service_id
-        ? supabase.from('provider_services').select('title').eq('id', booking.service_id).maybeSingle()
+        ? providerCatalogDb.from('provider_services').select('title').eq('id', booking.service_id).maybeSingle()
         : Promise.resolve({ data: null } as any),
     ]);
 
@@ -307,7 +307,7 @@ const maybeNotifyCustomerOnProviderStatusChange = async (
 };
 
 export const createProviderSupportTicket = async (providerId: string, subject: string, message: string) => {
-  const { error } = await supabase.from('support_tickets').insert({
+  const { error } = await notificationDb.from('support_tickets').insert({
     ticket_id: createUuid(),
     user_id: providerId,
     subject,
@@ -318,7 +318,7 @@ export const createProviderSupportTicket = async (providerId: string, subject: s
 };
 
 export const createProviderDispute = async (providerId: string, bookingId: string, reason: string) => {
-  const { error } = await supabase.from('disputes').insert({
+  const { error } = await notificationDb.from('disputes').insert({
     dispute_id: createUuid(),
     booking_id: bookingId,
     raised_by: providerId,
