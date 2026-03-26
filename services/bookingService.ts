@@ -65,42 +65,39 @@ const normalizePaymentMethod = (methodRaw: unknown): PaymentMethod => {
 };
 
 export const getCustomerBookings = async (customerId: string) => {
-  const richQuery = await bookingDb
-    .from('bookings')
-    .select(`
-      *,
-      provider:users!bookings_provider_id_fkey(full_name, contact_number),
-      service:provider_services!bookings_service_id_fkey(title, price)
-    `)
-    .eq('customer_id', customerId)
-    .order('created_at', { ascending: false });
-
-  if (!richQuery.error) {
-    return richQuery.data;
-  }
-
-  const fallbackCustomerId = await bookingDb
+  const { data: rows, error } = await bookingDb
     .from('bookings')
     .select('*')
     .eq('customer_id', customerId)
     .order('created_at', { ascending: false });
 
-  if (!fallbackCustomerId.error) {
-    return fallbackCustomerId.data;
+  if (error) {
+    console.error('Error fetching bookings:', error);
+    throw new Error(getErrorMessage(error, 'Failed to load bookings.'));
   }
 
-  const fallbackUserId = await bookingDb
-    .from('bookings')
-    .select('*')
-    .eq('user_id', customerId)
-    .order('created_at', { ascending: false });
+  if (!rows?.length) return [];
 
-  if (!fallbackUserId.error) {
-    return fallbackUserId.data;
-  }
+  const providerIds = Array.from(new Set(rows.map((b: any) => b.provider_id).filter(Boolean)));
+  const serviceIds = Array.from(new Set(rows.map((b: any) => b.service_id).filter(Boolean)));
 
-  console.error('Error fetching bookings:', fallbackUserId.error);
-  throw new Error(getErrorMessage(fallbackUserId.error, 'Failed to load bookings.'));
+  const [{ data: providers }, { data: services }] = await Promise.all([
+    providerIds.length
+      ? identityDb.from('users').select('id,full_name,contact_number').in('id', providerIds)
+      : Promise.resolve({ data: [] as any[] }),
+    serviceIds.length
+      ? providerCatalogDb.from('provider_services').select('id,title,price').in('id', serviceIds)
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
+
+  const providerMap = new Map((providers || []).map((p: any) => [p.id, p]));
+  const serviceMap = new Map((services || []).map((s: any) => [s.id, s]));
+
+  return rows.map((b: any) => ({
+    ...b,
+    provider: providerMap.get(b.provider_id) || null,
+    service: serviceMap.get(b.service_id) || null,
+  }));
 };
 
 export const createBooking = async (bookingData: any) => {

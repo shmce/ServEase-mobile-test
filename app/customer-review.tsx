@@ -34,8 +34,8 @@ export default function CustomerReviewScreen() {
     }
   }, [params.booking]);
 
-  const bookingId = String(booking?.rawId || params.id || '').trim();
-  const providerId = String(booking?.providerId || booking?.provider?.id || '').trim();
+  const bookingId = String(booking?.rawId || booking?.id || params.id || '').trim();
+  const providerId = String(booking?.providerId || booking?.provider_id || booking?.provider?.id || '').trim();
   const providerName = String(booking?.provider?.name || booking?.providerName || 'your provider');
   const serviceName = String(booking?.service || 'service');
 

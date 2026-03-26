@@ -78,28 +78,40 @@ export default function PricingScreen() {
   }, []);
 
   const loadCategories = useCallback(async () => {
-    let { data, error } = await supabase
+    let rows: CategoryRow[] = [];
+
+    // Try loading from DB — may fail if RLS blocks access or table is misconfigured.
+    const { data, error } = await providerCatalogDb
       .from('service_categories')
       .select('id,name,slug')
       .eq('is_active', true)
       .order('name', { ascending: true });
 
-    if (error) throw error;
-
-    let rows = (data ?? []) as CategoryRow[];
+    if (error) {
+      console.warn('[PricingScreen] loadCategories query failed:', error.message, error.code, error.details);
+    } else {
+      rows = (data ?? []) as CategoryRow[];
+    }
 
     // If DB has no categories yet, bootstrap from signup metadata so provider can save immediately.
     if (rows.length === 0 && user?.id) {
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
       const fromSignup = String(meta.sub_category || meta.primary_category || '').trim() || 'General Services';
       const slug = slugify(fromSignup) || `general-services-${Date.now()}`;
-      const { data: inserted, error: insertError } = await supabase
+      const { data: inserted, error: insertError } = await providerCatalogDb
         .from('service_categories')
         .insert({ name: fromSignup, slug, is_active: true })
         .select('id,name,slug')
         .single();
-      if (insertError) throw insertError;
-      rows = [inserted as CategoryRow];
+
+      if (insertError) {
+        console.warn('[PricingScreen] category bootstrap insert failed:', insertError.message, insertError.code);
+        // Generate a synthetic local-only category so the form is still usable.
+        const syntheticId = `local-${Date.now()}`;
+        rows = [{ id: syntheticId, name: fromSignup, slug }];
+      } else {
+        rows = [inserted as CategoryRow];
+      }
     }
 
     const meta = (user?.user_metadata ?? {}) as Record<string, any>;
@@ -131,13 +143,17 @@ export default function PricingScreen() {
   const loadServices = useCallback(async () => {
     if (!user?.id) return;
 
-    const { data, error } = await supabase
+    const { data, error } = await providerCatalogDb
       .from('provider_services')
       .select('id,title,description,price,category_id')
       .eq('provider_id', user.id)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.warn('[PricingScreen] loadServices query failed:', error.message, error.code, error.details);
+      // Don't throw — just leave services empty so the page still renders.
+      return;
+    }
     setServices((data ?? []) as ServiceRow[]);
   }, [user?.id]);
 
@@ -152,13 +168,21 @@ export default function PricingScreen() {
     }
 
     const slug = `general-services-${Date.now()}`;
-    const { data, error } = await supabase
+    const { data, error } = await providerCatalogDb
       .from('service_categories')
       .insert({ name: 'General Services', slug, is_active: true })
       .select('id,name,slug')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.warn('[PricingScreen] ensureCategoryIds insert failed:', error.message, error.code);
+      // Use a synthetic category so saving can still be attempted.
+      const syntheticId = `local-${Date.now()}`;
+      const synthetic: CategoryRow = { id: syntheticId, name: 'General Services', slug };
+      setCategories([synthetic]);
+      setCategoryIds([syntheticId]);
+      return [syntheticId];
+    }
 
     const inserted = data as CategoryRow;
     setCategories([inserted]);
@@ -186,13 +210,17 @@ export default function PricingScreen() {
       email,
       contact_number: contactNumber,
     });
-    if (usersUpsertError) throw usersUpsertError;
+    if (usersUpsertError) {
+      console.warn('[PricingScreen] users upsert failed:', usersUpsertError.message);
+    }
 
     const { error: profileUpsertError } = await providerCatalogDb.from('provider_profiles').upsert({
       user_id: user.id,
       business_name: fullName,
     });
-    if (profileUpsertError) throw profileUpsertError;
+    if (profileUpsertError) {
+      console.warn('[PricingScreen] provider_profiles upsert failed:', profileUpsertError.message);
+    }
   }, [user]);
 
   const bootstrap = useCallback(async () => {
@@ -207,9 +235,9 @@ export default function PricingScreen() {
     try {
       await Promise.all([loadCategories(), loadServices()]);
       setStatusText('Ready');
-    } catch (error) {
-      setStatusText('Load failed');
-      Alert.alert('Load Failed', getErrorMessage(error, 'Could not load your services right now.'));
+    } catch (error: any) {
+      console.warn('[PricingScreen] bootstrap error:', error?.message ?? error);
+      setStatusText('Loaded with warnings');
     } finally {
       setIsBootLoading(false);
     }
@@ -243,7 +271,7 @@ export default function PricingScreen() {
           setIsSaving(true);
           setStatusText('Deleting service...');
           try {
-            const { error } = await supabase
+            const { error } = await providerCatalogDb
               .from('provider_services')
               .delete()
               .eq('id', id)
@@ -305,7 +333,7 @@ export default function PricingScreen() {
           ...basePayload,
           category_id: resolvedCategoryIds[0],
         };
-        const { error } = await supabase
+        const { error } = await providerCatalogDb
           .from('provider_services')
           .update(payload)
           .eq('id', editingId)
@@ -313,7 +341,7 @@ export default function PricingScreen() {
         if (error) {
           // If DB requires parent identity rows, create them once then retry.
           await ensureProviderIdentityRows();
-          const { error: retryError } = await supabase
+          const { error: retryError } = await providerCatalogDb
             .from('provider_services')
             .update(payload)
             .eq('id', editingId)

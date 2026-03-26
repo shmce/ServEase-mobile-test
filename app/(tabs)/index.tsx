@@ -67,7 +67,7 @@ export default function HomeScreen() {
         'postgres_changes',
         {
           event: '*',
-          schema: 'public',
+          schema: 'booking_svc',
           table: 'bookings',
           filter: `customer_id=eq.${user.id}`,
         },

@@ -49,10 +49,18 @@ export default function MoreScreen() {
               borderBottomColor="#F8F9FA"
               badgeBorderColor="#F8F9FA"
             />
-            <SettingsRow 
-              icon="time-outline" 
-              label="View Schedule" 
+            <SettingsRow
+              icon="time-outline"
+              label="View Schedule"
               onPress={() => router.push('/provider-availability' as any)}
+              backgroundColor="#F8F9FA"
+              borderBottomColor="#F8F9FA"
+              badgeBorderColor="#F8F9FA"
+            />
+            <SettingsRow
+              icon="today-outline"
+              label="Calendar Management"
+              onPress={() => router.push('/provider-calendar' as any)}
               backgroundColor="#F8F9FA"
               borderBottomColor="#F8F9FA"
               badgeBorderColor="#F8F9FA"

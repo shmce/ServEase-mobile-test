@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/lib/supabase';
 import { getCustomerBookings } from '@/services/bookingService';
 import { getCustomerBookingPresentation } from '@/lib/booking-status';
 import {
@@ -261,6 +262,31 @@ export default function BookingsScreen() {
   const [chatSummaries, setChatSummaries] = useState<ChatSummary[]>([]);
   const [activeTab, setActiveTab] = useState<BookingTab>('inProgress');
 
+  const loadBookings = React.useCallback(async () => {
+    if (!user?.id) {
+      setLiveBookings([]);
+      setChatSummaries([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const [data, summaries] = await Promise.all([
+        getCustomerBookings(user.id),
+        getCustomerChatSummaries(user.id),
+      ]);
+      setLiveBookings(data || []);
+      setChatSummaries(summaries || []);
+    } catch (error) {
+      console.error('Failed to load bookings:', error);
+      setLiveBookings([]);
+      setChatSummaries([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.id]);
+
   const loadChatSummaries = React.useCallback(async () => {
     if (!user?.id) {
       setChatSummaries([]);
@@ -277,34 +303,33 @@ export default function BookingsScreen() {
 
   useFocusEffect(
     React.useCallback(() => {
-      async function loadBookings() {
-        if (!user?.id) {
-          setLiveBookings([]);
-          setChatSummaries([]);
-          setIsLoading(false);
-          return;
-        }
-
-        setIsLoading(true);
-        try {
-          const [data, summaries] = await Promise.all([
-            getCustomerBookings(user.id),
-            getCustomerChatSummaries(user.id),
-          ]);
-          setLiveBookings(data || []);
-          setChatSummaries(summaries || []);
-        } catch (error) {
-          console.error('Failed to load bookings:', error);
-          setLiveBookings([]);
-          setChatSummaries([]);
-        } finally {
-          setIsLoading(false);
-        }
-      }
-
       void loadBookings();
-    }, [user?.id])
+    }, [loadBookings])
   );
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`customer-bookings-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'booking_svc',
+          table: 'bookings',
+          filter: `customer_id=eq.${user.id}`,
+        },
+        () => {
+          void loadBookings();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [loadBookings, user?.id]);
 
   React.useEffect(() => {
     if (!user?.id) return;

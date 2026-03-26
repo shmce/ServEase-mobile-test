@@ -135,7 +135,7 @@ export default function ProviderSignupScreen() {
 
     for (const name of selected) {
       const slug = toSlug(name);
-      const { error } = await supabase
+      const { error } = await providerCatalogDb
         .from('service_categories')
         .upsert(
           {

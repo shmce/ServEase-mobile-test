@@ -28,6 +28,7 @@ import { createBooking } from '@/services/bookingService';
 import { getPaymentMethodLabel, type PaymentMethod } from '@/services/paymentService';
 import { getErrorMessage } from '@/lib/error-handling';
 import { supabase, providerCatalogDb } from '@/lib/db';
+import { getProviderAvailability, type ProviderAvailabilityState } from '@/services/providerAvailabilityService';
 
 type ServiceOption = {
   id: string;
@@ -61,6 +62,17 @@ const TIME_OPTIONS = [
 ];
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function parseTimeToMinutes(value: string): number | null {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return null;
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const meridiem = match[3].toUpperCase();
+  if (meridiem === 'AM' && hours === 12) hours = 0;
+  if (meridiem === 'PM' && hours !== 12) hours += 12;
+  return hours * 60 + minutes;
+}
 const BOOKABLE_DAYS = 21;
 
 function formatDateValue(date: Date) {
@@ -83,7 +95,9 @@ function isSameMonth(left: Date, right: Date) {
   return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth();
 }
 
-function buildBookableDays(monthDate: Date) {
+const WEEKDAY_NAMES_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function buildBookableDays(monthDate: Date, providerAvailability?: ProviderAvailabilityState | null) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -94,13 +108,21 @@ function buildBookableDays(monthDate: Date) {
     availableKeys.add(formatDateKey(nextDate));
   }
 
+  // Build a set of blocked-off dates from provider days off
+  const daysOffSet = new Set<string>();
+  if (providerAvailability?.daysOff) {
+    for (const dayOff of providerAvailability.daysOff) {
+      daysOffSet.add(dayOff.day); // format: YYYY-MM-DD
+    }
+  }
+
   const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
   const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
   const leadingDays = firstDay.getDay();
 
   const cells: (
     | { key: string; type: 'empty' }
-    | { key: string; type: 'day'; date: Date; isAvailable: boolean }
+    | { key: string; type: 'day'; date: Date; isAvailable: boolean; unavailableReason?: string }
   )[] = [];
 
   for (let index = 0; index < leadingDays; index += 1) {
@@ -109,11 +131,33 @@ function buildBookableDays(monthDate: Date) {
 
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = new Date(monthDate.getFullYear(), monthDate.getMonth(), day);
+    const dateKey = formatDateKey(date);
+    let isAvailable = availableKeys.has(dateKey);
+    let unavailableReason: string | undefined;
+
+    if (isAvailable && providerAvailability) {
+      // Check if provider has marked this specific date as a day off
+      if (daysOffSet.has(dateKey)) {
+        isAvailable = false;
+        unavailableReason = 'Provider is unavailable on this date';
+      }
+      // Check if the weekday is inactive in provider's weekly schedule
+      else {
+        const weekdayName = WEEKDAY_NAMES_FULL[date.getDay()];
+        const daySchedule = providerAvailability.weeklySchedule[weekdayName];
+        if (daySchedule && !daySchedule.active) {
+          isAvailable = false;
+          unavailableReason = `Provider doesn't work on ${weekdayName}s`;
+        }
+      }
+    }
+
     cells.push({
-      key: formatDateKey(date),
+      key: dateKey,
       type: 'day',
       date,
-      isAvailable: availableKeys.has(formatDateKey(date)),
+      isAvailable,
+      unavailableReason,
     });
   }
 
@@ -151,6 +195,8 @@ export default function CustomerBookingFormScreen() {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
+  const [providerAvailability, setProviderAvailability] = useState<ProviderAvailabilityState | null>(null);
+  const [isAvailabilityLoading, setIsAvailabilityLoading] = useState(false);
 
   useEffect(() => {
     let changed = false;
@@ -255,13 +301,71 @@ export default function CustomerBookingFormScreen() {
 
     loadAddresses();
   }, [address, user]);
-  
+
+  // Fetch provider availability (days off + weekly schedule)
+  useEffect(() => {
+    if (!params.providerId) return;
+    let active = true;
+
+    async function loadAvailability() {
+      setIsAvailabilityLoading(true);
+      try {
+        const availability = await getProviderAvailability(params.providerId!);
+        if (active) setProviderAvailability(availability);
+      } catch (error) {
+        console.error('Failed to load provider availability', error);
+      } finally {
+        if (active) setIsAvailabilityLoading(false);
+      }
+    }
+
+    loadAvailability();
+    return () => { active = false; };
+  }, [params.providerId]);
+
+  // Build filtered time options based on provider's schedule for the selected date
+  const availableTimeOptions = React.useMemo(() => {
+    if (!providerAvailability || !dateKey) return TIME_OPTIONS;
+
+    // Parse the selected date to get the weekday
+    const [year, month, day] = dateKey.split('-').map(Number);
+    const selectedDate = new Date(year, month - 1, day);
+    const weekdayName = WEEKDAY_NAMES_FULL[selectedDate.getDay()];
+    const daySchedule = providerAvailability.weeklySchedule[weekdayName];
+
+    if (!daySchedule || !daySchedule.active) return [];
+
+    return TIME_OPTIONS.filter((timeOption) => {
+      const timeMinutes = parseTimeToMinutes(timeOption);
+      if (timeMinutes === null) return true;
+
+      const startMinutes = parseTimeToMinutes(daySchedule.start);
+      const endMinutes = parseTimeToMinutes(daySchedule.end);
+
+      // Filter out times outside working hours
+      if (startMinutes !== null && endMinutes !== null) {
+        if (timeMinutes < startMinutes || timeMinutes >= endMinutes) return false;
+      }
+
+      // Filter out times during break
+      if (daySchedule.break?.start && daySchedule.break?.end) {
+        const breakStart = parseTimeToMinutes(daySchedule.break.start);
+        const breakEnd = parseTimeToMinutes(daySchedule.break.end);
+        if (breakStart !== null && breakEnd !== null) {
+          if (timeMinutes >= breakStart && timeMinutes < breakEnd) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [providerAvailability, dateKey]);
+
   // Modal States
   const [isServiceModalVisible, setServiceModalVisible] = useState(false);
   const [isAddressModalVisible, setAddressModalVisible] = useState(false);
   const [isTimeModalVisible, setTimeModalVisible] = useState(false);
 
-  const calendarDays = buildBookableDays(calendarMonth);
+  const calendarDays = buildBookableDays(calendarMonth, providerAvailability);
   const monthLabel = calendarMonth.toLocaleDateString('en-US', {
     month: 'long',
     year: 'numeric',
@@ -515,6 +619,26 @@ export default function CustomerBookingFormScreen() {
                         onPress={() => {
                           setDate(formattedDate);
                           setDateKey(cell.key);
+                          // Clear time if it won't be valid for the new date
+                          if (time) {
+                            const weekday = WEEKDAY_NAMES_FULL[cell.date.getDay()];
+                            const sched = providerAvailability?.weeklySchedule[weekday];
+                            if (sched && sched.active) {
+                              const tm = parseTimeToMinutes(time);
+                              const s = parseTimeToMinutes(sched.start);
+                              const e = parseTimeToMinutes(sched.end);
+                              if (tm !== null && s !== null && e !== null && (tm < s || tm >= e)) {
+                                setTime('');
+                              }
+                              if (sched.break?.start && sched.break?.end) {
+                                const bs = parseTimeToMinutes(sched.break.start);
+                                const be = parseTimeToMinutes(sched.break.end);
+                                if (tm !== null && bs !== null && be !== null && tm >= bs && tm < be) {
+                                  setTime('');
+                                }
+                              }
+                            }
+                          }
                         }}
                         disabled={!cell.isAvailable}
                       >
@@ -537,15 +661,19 @@ export default function CustomerBookingFormScreen() {
 
           <View style={styles.fieldContainer}>
             <Text style={styles.fieldLabel}>Time <Text style={styles.requiredAsterisk}>*</Text></Text>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.dropdownButton}
               onPress={() => setTimeModalVisible(true)}
+              disabled={availableTimeOptions.length === 0 && !!dateKey}
             >
               <Ionicons name="time-outline" size={20} color={time ? "#0D1B2A" : "#8E8E93"} style={styles.inputIcon} />
               <Text style={[styles.dropdownText, !time && styles.placeholderText]}>
-                {time || 'Select Time'}
+                {time || (dateKey && availableTimeOptions.length === 0 ? 'No available times' : 'Select Time')}
               </Text>
             </TouchableOpacity>
+            {dateKey && availableTimeOptions.length === 0 ? (
+              <Text style={styles.fieldError}>The provider has no available time slots on this date.</Text>
+            ) : null}
           </View>
 
           {/* Address */}
@@ -687,10 +815,10 @@ export default function CustomerBookingFormScreen() {
       <SelectionModal
         visible={isTimeModalVisible}
         title="Select Time"
-        data={TIME_OPTIONS}
+        data={availableTimeOptions}
         onClose={() => setTimeModalVisible(false)}
         renderItem={(item: string, index: number) => (
-          <TouchableOpacity 
+          <TouchableOpacity
             key={index}
             style={[styles.modalOption, time === item && styles.modalOptionSelected]}
             onPress={() => {

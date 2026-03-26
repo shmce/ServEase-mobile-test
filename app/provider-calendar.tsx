@@ -24,6 +24,7 @@ import {
 import {
   getProviderBookings,
   getProviderBookingActionState,
+  normalizeProviderBookingStatus,
   type ProviderBookingView,
 } from '@/services/providerBookingService';
 
@@ -181,9 +182,26 @@ export default function ProviderCalendarScreen() {
     }
   };
 
+  const pendingBookingsOnSelectedDay = React.useMemo(() => {
+    return dayBookings.filter(
+      (b) => normalizeProviderBookingStatus(b.status) === 'pending'
+    );
+  }, [dayBookings]);
+
   const handleToggleBlockDay = async () => {
+    // Unblocking is always allowed
     if (blockedDay) {
       await saveDaysOff(availability.daysOff.filter((item) => item.day !== selectedDateKey));
+      return;
+    }
+
+    // Prevent blocking if there are pending bookings the provider hasn't responded to
+    if (pendingBookingsOnSelectedDay.length > 0) {
+      const count = pendingBookingsOnSelectedDay.length;
+      Alert.alert(
+        'Pending Bookings',
+        `You have ${count} pending booking${count > 1 ? 's' : ''} on this day that need${count === 1 ? 's' : ''} your response. Please accept or decline ${count > 1 ? 'them' : 'it'} before blocking this day.`
+      );
       return;
     }
 
@@ -201,6 +219,15 @@ export default function ProviderCalendarScreen() {
     const reason = eventReason.trim();
     if (!reason) {
       Alert.alert('Missing Details', 'Please enter a reason for blocking this day.');
+      return;
+    }
+
+    if (pendingBookingsOnSelectedDay.length > 0) {
+      const count = pendingBookingsOnSelectedDay.length;
+      Alert.alert(
+        'Pending Bookings',
+        `You have ${count} pending booking${count > 1 ? 's' : ''} on this day that need${count === 1 ? 's' : ''} your response. Please accept or decline ${count > 1 ? 'them' : 'it'} before blocking this day.`
+      );
       return;
     }
 

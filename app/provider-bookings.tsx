@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, FlatList, ActivityIndicator, TextInput, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { getErrorMessage } from '@/lib/error-handling';
+import { supabase } from '@/lib/supabase';
 import {
   getProviderBookings,
   getProviderBookingActionState,
@@ -134,6 +135,30 @@ export default function ProviderBookingsScreen() {
       load();
     }, [load])
   );
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`provider-bookings-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'booking_svc',
+          table: 'bookings',
+          filter: `provider_id=eq.${user.id}`,
+        },
+        () => {
+          void load();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [load, user?.id]);
 
   React.useEffect(() => {
     if (!user?.id) return;
