@@ -1,18 +1,7 @@
-alter table public.provider_profiles add column if not exists bio text;
-alter table public.provider_profiles add column if not exists service_areas text[] default '{}';
-alter table public.provider_profiles add column if not exists languages text[] default '{}';
-alter table public.provider_profiles add column if not exists years_experience text;
-alter table public.provider_profiles add column if not exists facebook_url text;
-alter table public.provider_profiles add column if not exists instagram_handle text;
-alter table public.provider_profiles add column if not exists website_url text;
-
--- Reference-only dual-pricing notes:
--- canonical executable migration lives in dual_pricing_booking_schema.sql.
--- The following statements are preserved here only as compatibility notes.
--- alter table public.provider_services add column if not exists supports_hourly boolean not null default true;
--- alter table public.provider_services add column if not exists hourly_rate numeric(10,2);
--- alter table public.provider_services add column if not exists supports_flat boolean not null default false;
--- alter table public.provider_services add column if not exists flat_rate numeric(10,2);
--- alter table public.provider_services add column if not exists default_pricing_mode text;
--- alter table public.bookings add column if not exists pricing_mode text;
--- alter table public.bookings add column if not exists flat_rate numeric(10,2);
+alter table provider_catalog_svc.provider_services add column if not exists supports_hourly boolean not null default true;
+alter table provider_catalog_svc.provider_services add column if not exists hourly_rate numeric(10,2);
+alter table provider_catalog_svc.provider_services add column if not exists supports_flat boolean not null default false;
+alter table provider_catalog_svc.provider_services add column if not exists flat_rate numeric(10,2);
+alter table provider_catalog_svc.provider_services add column if not exists default_pricing_mode text;
+alter table booking_svc.bookings add column if not exists pricing_mode text;
+alter table booking_svc.bookings add column if not exists flat_rate numeric(10,2);

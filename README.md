@@ -57,6 +57,8 @@ The project utilizes a microservice-inspired schema design in Supabase:
 
 ## 📄 Documentation & Handover
 For detailed technical notes on the recent refactor and current development status, please refer to:
+- **[Microservices Architecture](./docs/architecture/microservices-data-map.md)**: Detailed mapping of schemas and tables.
+- **[SQL Migration Inventory](./docs/supabase/migration-inventory.md)**: Tracking of schema changes and migrations.
 - **[PROJECT_HANDOVER.md](./ServEase-mobile-test-expov3/docs/PROJECT_HANDOVER.md)**: Vital for new developers.
 - **[CLAUDE.md](./CLAUDE.md)**: Developer guide for build commands and environment settings.
 

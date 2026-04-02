@@ -1,7 +1,0 @@
-alter table public.provider_profiles add column if not exists bio text;
-alter table public.provider_profiles add column if not exists service_areas text[] default '{}';
-alter table public.provider_profiles add column if not exists languages text[] default '{}';
-alter table public.provider_profiles add column if not exists years_experience text;
-alter table public.provider_profiles add column if not exists facebook_url text;
-alter table public.provider_profiles add column if not exists instagram_handle text;
-alter table public.provider_profiles add column if not exists website_url text;
