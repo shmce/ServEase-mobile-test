@@ -51,3 +51,5 @@ tmp/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+.worktrees/
+.worktrees/
