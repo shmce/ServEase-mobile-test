@@ -5,6 +5,8 @@ alter table public.provider_profiles add column if not exists years_experience t
 alter table public.provider_profiles add column if not exists facebook_url text;
 alter table public.provider_profiles add column if not exists instagram_handle text;
 alter table public.provider_profiles add column if not exists website_url text;
+
+-- Task 1: append dual-pricing schema notes for the provider profile migration
 alter table public.provider_services add column if not exists supports_hourly boolean not null default true;
 alter table public.provider_services add column if not exists hourly_rate numeric(10,2);
 alter table public.provider_services add column if not exists supports_flat boolean not null default false;

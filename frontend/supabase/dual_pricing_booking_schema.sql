@@ -1,3 +1,25 @@
+-- Task 1 verification instructions
+-- Run this query before applying the migration to confirm the pricing columns
+-- are not all present yet:
+--
+-- select
+--   column_name
+-- from information_schema.columns
+-- where table_schema in ('public', 'provider_catalog_svc', 'booking_svc')
+--   and table_name in ('provider_services', 'bookings')
+--   and column_name in (
+--     'supports_hourly',
+--     'hourly_rate',
+--     'supports_flat',
+--     'flat_rate',
+--     'default_pricing_mode',
+--     'pricing_mode'
+--   )
+-- order by table_name, column_name;
+--
+-- Expected before migration: missing some or all of the requested columns.
+-- Expected after migration: all requested columns exist.
+
 alter table public.provider_services
   add column if not exists supports_hourly boolean not null default true,
   add column if not exists hourly_rate numeric(10,2),
