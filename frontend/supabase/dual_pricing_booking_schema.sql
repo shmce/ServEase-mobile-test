@@ -35,6 +35,26 @@ update public.provider_services
 set default_pricing_mode = coalesce(default_pricing_mode, 'hourly')
 where default_pricing_mode is null;
 
+do $$
+declare
+  violating_rows integer;
+begin
+  select count(*)
+    into violating_rows
+  from public.provider_services
+  where supports_hourly
+    and (
+      coalesce(hourly_rate, price) is null
+      or coalesce(hourly_rate, price) <= 0
+    );
+
+  if violating_rows > 0 then
+    raise exception
+      'dual pricing migration blocked: % provider_services rows have missing or non-positive legacy pricing data that cannot satisfy the hourly_rate positive-rate check. Fix public.provider_services.price before rerunning.',
+      violating_rows;
+  end if;
+end $$;
+
 alter table public.provider_services
   drop constraint if exists provider_services_default_pricing_mode_check;
 
