@@ -36,6 +36,9 @@ set default_pricing_mode = coalesce(default_pricing_mode, 'hourly')
 where default_pricing_mode is null;
 
 alter table public.provider_services
+  drop constraint if exists provider_services_default_pricing_mode_check;
+
+alter table public.provider_services
   add constraint provider_services_default_pricing_mode_check
   check (
     default_pricing_mode is null
@@ -43,8 +46,14 @@ alter table public.provider_services
   );
 
 alter table public.provider_services
+  drop constraint if exists provider_services_supported_pricing_check;
+
+alter table public.provider_services
   add constraint provider_services_supported_pricing_check
   check (supports_hourly or supports_flat);
+
+alter table public.provider_services
+  drop constraint if exists provider_services_hourly_rate_check;
 
 alter table public.provider_services
   add constraint provider_services_hourly_rate_check
@@ -52,6 +61,9 @@ alter table public.provider_services
     (not supports_hourly)
     or (hourly_rate is not null and hourly_rate > 0)
   );
+
+alter table public.provider_services
+  drop constraint if exists provider_services_flat_rate_check;
 
 alter table public.provider_services
   add constraint provider_services_flat_rate_check
@@ -70,6 +82,9 @@ where pricing_mode is null;
 
 alter table public.bookings
   alter column pricing_mode set not null;
+
+alter table public.bookings
+  drop constraint if exists bookings_pricing_mode_check;
 
 alter table public.bookings
   add constraint bookings_pricing_mode_check
