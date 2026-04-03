@@ -33,7 +33,10 @@ declare module 'react-native' {
   export interface TextInput extends React.Component<any, any>, HostInstance {}
   export interface ActivityIndicator extends React.Component<any, any>, HostInstance {}
   export interface TouchableOpacity extends React.Component<any, any>, HostInstance {}
-  export interface FlatList<ItemT = any> extends React.Component<any, any>, HostInstance {}
+  export interface FlatList<ItemT = any> extends React.Component<any, any>, HostInstance {
+    props: any;
+    render(): React.ReactNode;
+  }
   export interface KeyboardAvoidingView extends React.Component<any, any>, HostInstance {}
   export interface Switch extends React.Component<any, any>, HostInstance {}
   export interface TouchableWithoutFeedback extends React.Component<any, any>, HostInstance {}

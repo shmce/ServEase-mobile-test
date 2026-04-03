@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,15 @@ import {
   ScrollView,
   Dimensions,
   Alert,
+  Modal,
+  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { supabase, identityDb, providerCatalogDb } from '@/lib/db';
-import { getErrorMessage } from '@/lib/error-handling';
+import { supabase, providerCatalogDb } from '@/lib/db';
+import * as ImagePicker from 'expo-image-picker';
+import Constants from 'expo-constants';
 import { TOKENS } from '@/constants/tokens';
 import { AppButton } from '@/src/components/common/AppButton';
 import { AppTextInput } from '@/src/components/common/AppTextInput';
@@ -21,9 +24,11 @@ import { AppPressable } from '@/src/components/common/AppPressable';
 
 const CheckItem = ({ label, met }: { label: string; met: boolean }) => (
   <View style={styles.criteriaItem}>
-    <View style={[styles.checkCircle, met && styles.checkCircleMet]}>
-      {met && <Ionicons name="checkmark" size={12} color="#FFF" />}
-    </View>
+    <Ionicons 
+      name={met ? "checkmark-circle" : "ellipse-outline"} 
+      size={20} 
+      color={met ? "#10B981" : "#CBD5E1"} 
+    />
     <Text style={[styles.criteriaText, met && styles.criteriaTextMet]}>{label}</Text>
   </View>
 );
@@ -40,6 +45,9 @@ export function ProviderSignupScreen() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const successAnim = useRef(new Animated.Value(0)).current;
+  const otpRefs = useRef<(TextInput | null)[]>([]);
   
   // Dropdown states
   const [showPrimaryDropdown, setShowPrimaryDropdown] = useState(false);
@@ -63,7 +71,7 @@ export function ProviderSignupScreen() {
     zipCode: '',
     radius: 10,
     idType: '',
-    idDocument: null as string | null,
+    idDocument: null as any,
     otp: ['', '', '', '', '', ''],
   });
 
@@ -77,12 +85,6 @@ export function ProviderSignupScreen() {
       return () => clearInterval(timer);
     }
   }, [step, timeLeft]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
 
   const categories = [
     "Home Maintenance & Repair",
@@ -99,9 +101,9 @@ export function ProviderSignupScreen() {
     "Beauty, Wellness & Personal Care": ["Hair Styling", "Makeup Artist", "Massage Therapy", "Nails", "Other"],
     "Education & Professional Services": ["Academic Tutor", "Language Teacher", "Music Lessons", "Other"],
     "Domestic & Cleaning Services": ["House Cleaning", "Laundry", "Ironing", "Deep Cleaning", "Other"],
-    "Pet Services": ["Pet Grooming", "Dog Walking", "Pet Sitting", "Other"],
-    "Events & Entertainment": ["Photography", "Hosting/MC", "Catering", "DJ/Live Music", "Other"],
-    "Automotive & Tech Support": ["Car Repair", "Car Wash", "PC/Laptop Repair", "Phone/Tablet Repair", "Other"]
+    "Pet Services": ["Grooming", "Walking", "Training", "Sitting"],
+    "Events & Entertainment": ["Photography", "DJ", "Host", "Catering"],
+    "Automotive & Tech Support": ["Car Wash", "Mechanic", "Computer Repair", "Mobile Repair"]
   };
 
   const idTypes = [
@@ -119,6 +121,7 @@ export function ProviderSignupScreen() {
     uppercase: false,
     lowercase: false,
     number: false,
+    specialChar: false,
   });
 
   useEffect(() => {
@@ -128,67 +131,238 @@ export function ProviderSignupScreen() {
       uppercase: /[A-Z]/.test(password),
       lowercase: /[a-z]/.test(password),
       number: /[0-9]/.test(password),
+      specialChar: /[@$!%*?&]/.test(password),
     });
   }, [formData.password]);
 
-  const persistProviderProfile = async (userId: string) => {
-    const { error } = await providerCatalogDb.from('provider_profiles').upsert({
-      user_id: userId,
-      business_name: formData.fullName.trim(),
-    });
-    if (error) throw error;
+  const handleDobChange = (text: string) => {
+    let cleaned = text.replace(/\D/g, '');
+    let formatted = '';
+    if (cleaned.length > 0) {
+      formatted = cleaned.substring(0, 2);
+      if (cleaned.length > 2) {
+        formatted += '/' + cleaned.substring(2, 4);
+        if (cleaned.length > 4) {
+          formatted += '/' + cleaned.substring(4, 8);
+        }
+      }
+    }
+    setFormData({ ...formData, dob: formatted.substring(0, 10) });
   };
 
-  const persistSignupCategories = async () => {
-    const selected = [formData.primaryCategory, formData.subCategory]
-      .map((v) => v.trim())
-      .filter(Boolean);
+  const showSuccessOverlay = () => {
+    setShowSuccess(true);
+    Animated.timing(successAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
 
-    if (selected.length === 0) return;
+    setTimeout(() => {
+      router.replace('/provider-login' as any);
+    }, 2500);
+  };
 
-    for (const name of selected) {
-      const slug = toSlug(name);
-      const { error } = await providerCatalogDb
-        .from('service_categories')
-        .upsert(
-          { name, slug, is_active: true },
-          { onConflict: 'slug' }
-        );
-      if (error) throw error;
+  const handlePicker = async (useScanner = false) => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        setFormData({ ...formData, idDocument: result.assets[0] });
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to pick image');
     }
   };
 
+  const validateStep = (currentStep: number) => {
+    switch (currentStep) {
+      case 1:
+        return (
+          formData.fullName.trim() !== "" &&
+          formData.email.trim() !== "" &&
+          formData.phone.trim() !== "" &&
+          formData.dob !== "" &&
+          formData.password.length >= 8 &&
+          formData.password === formData.confirmPassword
+        );
+      case 2:
+        return (
+          formData.primaryCategory !== "" &&
+          formData.subCategory !== "" &&
+          formData.experienceLevel !== ""
+        );
+      case 3:
+        return (
+          formData.streetAddress.trim() !== "" &&
+          formData.city.trim() !== "" &&
+          formData.province.trim() !== "" &&
+          formData.zipCode.trim() !== ""
+        );
+      case 4:
+        return formData.idType !== "" && formData.idDocument !== null;
+      case 5:
+        return formData.otp.every(digit => digit !== "");
+      default:
+        return true;
+    }
+  };
+
+  const handleNextStep = async () => {
+    if (!validateStep(step)) {
+      Alert.alert(
+        'Incomplete Information', 
+        'Please ensure all required fields are filled out correctly before proceeding.'
+      );
+      return;
+    }
+
+    if (step < 5) {
+      setStep(step + 1);
+    } else {
+      // Final Submit
+      setIsSubmitting(true);
+      try {
+        const apiUrl = Constants.expoConfig?.extra?.apiUrl || process.env.EXPO_PUBLIC_API_URL;
+        
+        const multipartBody = new FormData();
+        
+        // --- Required Fields according to RegisterProviderDto ---
+        multipartBody.append('full_name', formData.fullName.trim());
+        multipartBody.append('email', formData.email.trim().toLowerCase());
+        multipartBody.append('contact_number', formData.phone.trim());
+        multipartBody.append('password', formData.password);
+        multipartBody.append('date_of_birth', formData.dob); // Critical: was missing
+        
+        // Role and Business Name (Defaulted for premium provider experience)
+        multipartBody.append('role', 'provider');
+        multipartBody.append('business_name', formData.fullName.trim());
+        
+        // --- Address Fields (Corrected keys) ---
+        multipartBody.append('street_address', formData.streetAddress);
+        multipartBody.append('city', formData.city);
+        multipartBody.append('province', formData.province);
+        multipartBody.append('zip_code', formData.zipCode);
+        
+        // --- Service Categories ---
+        multipartBody.append('primary_category', formData.primaryCategory);
+        multipartBody.append('sub_category', formData.subCategory);
+        multipartBody.append('experience_level', formData.experienceLevel);
+        
+        // --- Document Selection & Mapping ---
+        // Map UI labels to backend 'government_id' or equivalent DocumentType enum
+        const docType = formData.idType.toLowerCase().includes('permit') ? 'business_permit' : 'government_id';
+        multipartBody.append('document_type', docType);
+
+        if (formData.idDocument) {
+          const uri = formData.idDocument.uri;
+          const filename = uri.split('/').pop() || 'upload.jpg';
+          const match = /\.(\w+)$/.exec(filename);
+          const type = match ? `image/${match[1]}` : `image/jpeg`;
+          
+          multipartBody.append('document_file', {
+            uri,
+            name: filename,
+            type,
+          } as any);
+        }
+
+        console.log('Sending registration request to:', `${apiUrl}/api/v1/auth/register-provider`);
+        const response = await fetch(`${apiUrl}/api/v1/auth/register-provider`, {
+          method: 'POST',
+          body: multipartBody,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+
+        const result = await response.json();
+        console.log('Registration response body:', result);
+
+        if (!response.ok) {
+          if (result.message?.toLowerCase().includes('already registered')) {
+            Alert.alert(
+              'Already Registered',
+              'An account with this email already exists. Would you like to log in instead?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Login', onPress: () => router.replace('/provider-login' as any) }
+              ]
+            );
+            return;
+          }
+          throw new Error(result.message || 'Registration failed');
+        }
+
+        showSuccessOverlay();
+      } catch (err: any) {
+        console.error('Registration Error:', err);
+        Alert.alert('Signup Failed', err.message || 'Unable to create provider account.');
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+  };
+
+  const handlePrevStep = () => {
+    if (step > 1) setStep(step - 1);
+    else router.back();
+  };
+
+  const SuccessOverlay = () => {
+    if (!showSuccess) return null;
+    const AnimatedView = Animated.View as any;
+    return (
+      <Modal transparent visible={showSuccess}>
+        <View style={styles.successContainer}>
+          <AnimatedView style={[styles.successCard, { opacity: successAnim, transform: [{ scale: successAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }] }]}>
+            <View style={styles.successIconCircle}>
+              <Ionicons name="checkmark" size={60} color="#FFF" />
+            </View>
+            <Text style={styles.successTitle}>Verified!</Text>
+            <Text style={styles.successSubtitle}>Welcome to ServEase. Your provider journey starts now.</Text>
+          </AnimatedView>
+        </View>
+      </Modal>
+    );
+  };
 
   const renderStep1 = () => (
     <View style={styles.stepContent}>
-      <Text style={styles.title}>Create your account</Text>
-      <Text style={styles.subtitle}>Fill in your personal details to get started.</Text>
-
+      <View style={styles.stepHeader}>
+        <Text style={styles.title}>Create Account</Text>
+        <Text style={styles.subtitle}>Enter your personal information to start your provider journey.</Text>
+      </View>
+      
       <View style={styles.form}>
         <AppTextInput
           label="Full Name"
-          placeholder="Enter your full name"
+          placeholder="e.g. John Doe"
           value={formData.fullName}
-          onChangeText={(text: string) => setFormData({...formData, fullName: text})}
+          onChangeText={(text) => setFormData({...formData, fullName: text})}
           leftIcon="person-outline"
         />
 
         <AppTextInput
           label="Email Address"
-          placeholder="Enter your email address"
+          placeholder="email@example.com"
           value={formData.email}
-          onChangeText={(text: string) => setFormData({...formData, email: text})}
+          onChangeText={(text) => setFormData({...formData, email: text})}
           keyboardType="email-address"
           autoCapitalize="none"
           leftIcon="mail-outline"
-          error={formData.email && !formData.email.includes('@') ? "Invalid email address" : ""}
         />
 
         <AppTextInput
           label="Contact Number"
-          placeholder="9XX XXX XXXX"
+          placeholder="912 345 6789"
           value={formData.phone}
-          onChangeText={(text: string) => setFormData({...formData, phone: text.replace(/\D/g, '').slice(0, 10)})}
+          onChangeText={(text) => setFormData({...formData, phone: text.replace(/\D/g, '').slice(0, 10)})}
           keyboardType="phone-pad"
           leftIcon="call-outline"
           maxLength={10}
@@ -196,219 +370,195 @@ export function ProviderSignupScreen() {
 
         <AppTextInput
           label="Date of Birth"
-          placeholder="MM/DD/YYYY"
+          placeholder="MM / DD / YYYY"
           value={formData.dob}
-          onChangeText={(text: string) => setFormData({...formData, dob: text})}
+          onChangeText={handleDobChange}
+          keyboardType="numeric"
+          maxLength={10}
           leftIcon="calendar-outline"
         />
 
         <AppTextInput
           label="Password"
-          placeholder="Create a password"
+          placeholder="Create a strong password"
           value={formData.password}
-          onChangeText={(text: string) => setFormData({...formData, password: text})}
+          onChangeText={(text) => setFormData({...formData, password: text})}
           isPassword
           leftIcon="lock-closed-outline"
         />
 
         <View style={styles.criteriaContainer}>
-          <Text style={styles.criteriaHeader}>Password must contain:</Text>
-          <CheckItem label="At least 8 characters" met={passwordCriteria.length} />
-          <CheckItem label="One uppercase letter (A-Z)" met={passwordCriteria.uppercase} />
-          <CheckItem label="One lowercase letter (a-z)" met={passwordCriteria.lowercase} />
-          <CheckItem label="One number (0-9)" met={passwordCriteria.number} />
+          <Text style={styles.criteriaHeader}>Password Requirements</Text>
+          <View style={styles.criteriaGrid}>
+            <CheckItem label="8+ characters" met={passwordCriteria.length} />
+            <CheckItem label="Uppercase" met={passwordCriteria.uppercase} />
+            <CheckItem label="Lowercase" met={passwordCriteria.lowercase} />
+            <CheckItem label="Number" met={passwordCriteria.number} />
+            <CheckItem label="Special char" met={passwordCriteria.specialChar} />
+          </View>
         </View>
 
         <AppTextInput
           label="Confirm Password"
-          placeholder="Confirm your password"
+          placeholder="Repeat your password"
           value={formData.confirmPassword}
-          onChangeText={(text: string) => setFormData({...formData, confirmPassword: text})}
+          onChangeText={(text) => setFormData({...formData, confirmPassword: text})}
           isPassword
           leftIcon="lock-closed-outline"
-          error={formData.confirmPassword && formData.password !== formData.confirmPassword ? "Passwords do not match" : ""}
         />
       </View>
     </View>
   );
 
-  const renderStep2 = () => (
-    <View style={styles.stepContent}>
-      <Text style={styles.title}>Your Service Profile</Text>
-      <Text style={styles.subtitle}>
-        Tell us what type of service you offer and your experience level.
-      </Text>
+  const renderStep2 = () => {
+    const currentSubCategories = formData.primaryCategory ? subCategories[formData.primaryCategory] || [] : [];
+    
+    return (
+      <View style={styles.stepContent}>
+        <View style={styles.stepHeader}>
+          <Text style={styles.title}>Service Profile</Text>
+          <Text style={styles.subtitle}>Tell us about your expertise and what you offer.</Text>
+        </View>
 
-      <View style={styles.form}>
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Primary Category <Text style={styles.required}>*</Text></Text>
-          <AppPressable 
-            style={[styles.pickerButton, showPrimaryDropdown && styles.pickerButtonActive]}
-            onPress={() => setShowPrimaryDropdown(!showPrimaryDropdown)}
-          >
-            <Text style={[styles.pickerText, !formData.primaryCategory && { color: TOKENS.colors.text.muted }]}>
-              {formData.primaryCategory || "Select your service category"}
-            </Text>
-            <Ionicons name={showPrimaryDropdown ? "chevron-up" : "chevron-down"} size={20} color={TOKENS.colors.text.muted} />
-          </AppPressable>
-          
-          {showPrimaryDropdown && (
-            <View style={styles.dropdownMenu}>
-              <ScrollView nestedScrollEnabled style={{ maxHeight: 250 }}>
-                {categories.map((cat, index) => (
+        <View style={styles.form}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Primary Category</Text>
+            <AppPressable 
+              style={styles.pickerButton} 
+              onPress={() => setShowPrimaryDropdown(true)}
+            >
+              <Text style={[styles.pickerText, !formData.primaryCategory && { color: '#94A3B8' }]}>
+                {formData.primaryCategory || "Select Category"}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color="#64748B" />
+            </AppPressable>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Sub-category</Text>
+            <AppPressable 
+              style={[styles.pickerButton, !formData.primaryCategory && styles.pickerButtonDisabled]} 
+              onPress={() => formData.primaryCategory && setShowSubDropdown(true)}
+              disabled={!formData.primaryCategory}
+            >
+              <Text style={[styles.pickerText, !formData.subCategory && { color: '#94A3B8' }]}>
+                {formData.subCategory || "Select Sub-category"}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color="#64748B" />
+            </AppPressable>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Experience Level</Text>
+            <AppPressable 
+              style={styles.pickerButton} 
+              onPress={() => setShowExpDropdown(true)}
+            >
+              <Text style={[styles.pickerText, !formData.experienceLevel && { color: '#94A3B8' }]}>
+                {formData.experienceLevel || "Select Level"}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color="#64748B" />
+            </AppPressable>
+          </View>
+        </View>
+
+        {/* Categories Modal */}
+        <Modal visible={showPrimaryDropdown} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Choose Category</Text>
+                <AppPressable onPress={() => setShowPrimaryDropdown(false)}>
+                  <Ionicons name="close" size={24} color="#64748B" />
+                </AppPressable>
+              </View>
+              <ScrollView>
+                {categories.map((cat) => (
                   <AppPressable 
-                    key={index} 
-                    style={styles.dropdownOption}
-                    onPress={() => {
-                      setFormData({...formData, primaryCategory: cat, subCategory: ''});
-                      setShowPrimaryDropdown(false);
-                    }}
+                    key={cat} 
+                    style={[styles.modalOption, formData.primaryCategory === cat && styles.modalOptionSelected]} 
+                    onPress={() => { setFormData({...formData, primaryCategory: cat, subCategory: ''}); setShowPrimaryDropdown(false); }}
                   >
-                    <Text style={[styles.dropdownOptionText, formData.primaryCategory === cat && styles.dropdownOptionTextActive]}>
-                      {cat}
-                    </Text>
+                    <Text style={[styles.modalOptionText, formData.primaryCategory === cat && styles.modalOptionTextSelected]}>{cat}</Text>
+                    {formData.primaryCategory === cat && <Ionicons name="checkmark" size={20} color={TOKENS.colors.primary} />}
                   </AppPressable>
                 ))}
               </ScrollView>
             </View>
-          )}
-        </View>
+          </View>
+        </Modal>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Sub-category <Text style={styles.required}>*</Text></Text>
-          <AppPressable 
-            style={[
-              styles.pickerButton, 
-              showSubDropdown && styles.pickerButtonActive, 
-              !formData.primaryCategory && { opacity: 0.6 }
-            ]}
-            onPress={() => setShowSubDropdown(!showSubDropdown)}
-            disabled={!formData.primaryCategory}
-          >
-            <Text style={[styles.pickerText, !formData.subCategory && { color: TOKENS.colors.text.muted }]}>
-              {formData.subCategory || "Select a sub-category"}
-            </Text>
-            <Ionicons name={showSubDropdown ? "chevron-up" : "chevron-down"} size={20} color={TOKENS.colors.text.muted} />
-          </AppPressable>
-
-          {showSubDropdown && formData.primaryCategory && subCategories[formData.primaryCategory] && (
-            <View style={styles.dropdownMenu}>
-              {subCategories[formData.primaryCategory].map((sub, index) => (
-                <AppPressable 
-                  key={index} 
-                  style={styles.dropdownOption}
-                  onPress={() => {
-                    setFormData({...formData, subCategory: sub});
-                    setShowSubDropdown(false);
-                  }}
-                >
-                  <Text style={[styles.dropdownOptionText, formData.subCategory === sub && styles.dropdownOptionTextActive]}>
-                    {sub}
-                  </Text>
+        {/* Sub-categories Modal */}
+        <Modal visible={showSubDropdown} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Choose Sub-category</Text>
+                <AppPressable onPress={() => setShowSubDropdown(false)}>
+                  <Ionicons name="close" size={24} color="#64748B" />
                 </AppPressable>
-              ))}
+              </View>
+              <ScrollView>
+                {currentSubCategories.map((sub) => (
+                  <AppPressable 
+                    key={sub} 
+                    style={[styles.modalOption, formData.subCategory === sub && styles.modalOptionSelected]} 
+                    onPress={() => { setFormData({...formData, subCategory: sub}); setShowSubDropdown(false); }}
+                  >
+                    <Text style={[styles.modalOptionText, formData.subCategory === sub && styles.modalOptionTextSelected]}>{sub}</Text>
+                    {formData.subCategory === sub && <Ionicons name="checkmark" size={20} color={TOKENS.colors.primary} />}
+                  </AppPressable>
+                ))}
+              </ScrollView>
             </View>
-          )}
-        </View>
+          </View>
+        </Modal>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Experience Level <Text style={styles.required}>*</Text></Text>
-          <AppPressable 
-            style={[styles.pickerButton, showExpDropdown && styles.pickerButtonActive]}
-            onPress={() => setShowExpDropdown(!showExpDropdown)}
-          >
-            <Text style={[styles.pickerText, !formData.experienceLevel && { color: TOKENS.colors.text.muted }]}>
-              {formData.experienceLevel || "Select years of experience"}
-            </Text>
-            <Ionicons name={showExpDropdown ? "chevron-up" : "chevron-down"} size={20} color={TOKENS.colors.text.muted} />
-          </AppPressable>
-
-          {showExpDropdown && (
-            <View style={styles.dropdownMenu}>
-              {expLevels.map((lvl, index) => (
-                <AppPressable 
-                  key={index} 
-                  style={styles.dropdownOption}
-                  onPress={() => {
-                    setFormData({...formData, experienceLevel: lvl});
-                    setShowExpDropdown(false);
-                  }}
-                >
-                  <Text style={[styles.dropdownOptionText, formData.experienceLevel === lvl && styles.dropdownOptionTextActive]}>
-                    {lvl}
-                  </Text>
+        {/* Experience Modal */}
+        <Modal visible={showExpDropdown} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Choose Experience Level</Text>
+                <AppPressable onPress={() => setShowExpDropdown(false)}>
+                  <Ionicons name="close" size={24} color="#64748B" />
                 </AppPressable>
-              ))}
+              </View>
+              <ScrollView>
+                {expLevels.map((lvl) => (
+                  <AppPressable 
+                    key={lvl} 
+                    style={[styles.modalOption, formData.experienceLevel === lvl && styles.modalOptionSelected]} 
+                    onPress={() => { setFormData({...formData, experienceLevel: lvl}); setShowExpDropdown(false); }}
+                  >
+                    <Text style={[styles.modalOptionText, formData.experienceLevel === lvl && styles.modalOptionTextSelected]}>{lvl}</Text>
+                    {formData.experienceLevel === lvl && <Ionicons name="checkmark" size={20} color={TOKENS.colors.primary} />}
+                  </AppPressable>
+                ))}
+              </ScrollView>
             </View>
-          )}
-        </View>
+          </View>
+        </Modal>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderStep3 = () => (
     <View style={styles.stepContent}>
-      <Text style={styles.title}>Where do you work?</Text>
-      <Text style={styles.subtitle}>
-        Set your service area so customers can find you.
-      </Text>
-
+      <View style={styles.stepHeader}>
+        <Text style={styles.title}>Your Address</Text>
+        <Text style={styles.subtitle}>Where do you provide your services?</Text>
+      </View>
       <View style={styles.form}>
-        <AppTextInput
-          label="Street Address / Landmark"
-          placeholder="e.g. 123 Rizal St, near SM"
-          value={formData.streetAddress}
-          onChangeText={(text: string) => setFormData({...formData, streetAddress: text})}
-          leftIcon="location-outline"
-        />
-
-        <AppTextInput
-          label="City"
-          placeholder="Search your city"
-          value={formData.city}
-          onChangeText={(text: string) => setFormData({...formData, city: text})}
-          leftIcon="business-outline"
-        />
-
-        <AppTextInput
-          label="Province"
-          placeholder="Search your province"
-          value={formData.province}
-          onChangeText={(text: string) => setFormData({...formData, province: text})}
-          leftIcon="map-outline"
-        />
-
-        <AppTextInput
-          label="ZIP Code"
-          placeholder="e.g. 1000"
-          value={formData.zipCode}
-          onChangeText={(text: string) => setFormData({...formData, zipCode: text})}
-          keyboardType="numeric"
-          leftIcon="mail-open-outline"
-        />
-
-        <View style={styles.inputGroup}>
-          <View style={styles.labelRow}>
-            <Text style={styles.inputLabel}>Maximum Service Radius</Text>
-            <Text style={styles.radiusValue}>{formData.radius} <Text style={styles.radiusUnit}>km</Text></Text>
+        <AppTextInput label="Street Address" placeholder="e.g. 123 Main St" value={formData.streetAddress} onChangeText={(text) => setFormData({...formData, streetAddress: text})} />
+        <AppTextInput label="Province" placeholder="e.g. Metro Manila" value={formData.province} onChangeText={(text) => setFormData({...formData, province: text})} />
+        <View style={styles.row}>
+          <View style={{ flex: 1.5, marginRight: 12 }}>
+            <AppTextInput label="City" placeholder="City" value={formData.city} onChangeText={(text) => setFormData({...formData, city: text})} />
           </View>
-          
-          <View style={styles.sliderContainer}>
-            <View style={styles.sliderTrack}>
-              <View style={[styles.sliderTrackFilled, { width: `${(formData.radius / 50) * 100}%` }]} />
-              <View 
-                style={[styles.sliderThumb, { left: `${(formData.radius / 50) * 100}%` }]} 
-                {...{
-                  onTouchMove: (e: any) => {
-                    const x = e.nativeEvent.locationX;
-                    const val = Math.round((x / (width - 50)) * 50);
-                    if (val >= 1 && val <= 50) setFormData({...formData, radius: val});
-                  }
-                }}
-              />
-            </View>
+          <View style={{ flex: 1 }}>
+            <AppTextInput label="Zip Code" placeholder="Zip" value={formData.zipCode} onChangeText={(text) => setFormData({...formData, zipCode: text})} keyboardType="numeric" maxLength={4} />
           </View>
-          <Text style={styles.helperText}>How far are you willing to travel for service calls?</Text>
         </View>
       </View>
     </View>
@@ -416,262 +566,153 @@ export function ProviderSignupScreen() {
 
   const renderStep4 = () => (
     <View style={styles.stepContent}>
-      <Text style={styles.title}>Verify your identity</Text>
-      <Text style={styles.subtitle}>Upload a valid Philippine government-issued ID.</Text>
-
+      <View style={styles.stepHeader}>
+        <Text style={styles.title}>Verify Identity</Text>
+        <Text style={styles.subtitle}>Upload a valid ID for security verification.</Text>
+      </View>
       <View style={styles.form}>
-        <View style={styles.warningBox}>
-          <Ionicons name="warning-outline" size={20} color={TOKENS.colors.warning.text} style={styles.warningIcon} />
-          <Text style={styles.warningText}>
-            Please ensure your ID is clear, valid, and all details are visible.
-          </Text>
-        </View>
-
         <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Select ID Type <Text style={styles.required}>*</Text></Text>
-          <AppPressable 
-            style={[styles.pickerButton, showIdDropdown && styles.pickerButtonActive]}
-            onPress={() => setShowIdDropdown(!showIdDropdown)}
+          <Text style={styles.inputLabel}>ID Type</Text>
+          <AppPressable
+            style={styles.pickerButton}
+            onPress={() => setShowIdDropdown(true)}
           >
-            <Text style={[styles.pickerText, !formData.idType && { color: TOKENS.colors.text.muted }]}>
-              {formData.idType || "Choose your ID type"}
+            <Text style={[styles.pickerText, !formData.idType && { color: '#94A3B8' }]}>
+              {formData.idType || 'Select ID Type'}
             </Text>
-            <Ionicons name={showIdDropdown ? "chevron-up" : "chevron-down"} size={20} color={TOKENS.colors.text.muted} />
+            <Ionicons name="chevron-down" size={20} color="#64748B" />
           </AppPressable>
-
-          {showIdDropdown && (
-            <View style={styles.dropdownMenu}>
-              {idTypes.map((type, index) => (
-                <AppPressable 
-                  key={index} 
-                  style={styles.dropdownOption}
-                  onPress={() => {
-                    setFormData({...formData, idType: type});
-                    setShowIdDropdown(false);
-                  }}
-                >
-                  <Text style={[styles.dropdownOptionText, formData.idType === type && styles.dropdownOptionTextActive]}>
-                    {type}
-                  </Text>
-                </AppPressable>
-              ))}
-            </View>
-          )}
         </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Upload your selected ID <Text style={styles.required}>*</Text></Text>
+        <View style={styles.idTypesHeader}>
+          <Text style={styles.idTypesTitle}>Accepted IDs:</Text>
+          <Text style={styles.idTypesSubtitle}>UMID, Driver&apos;s License, Passport, PhilID</Text>
+        </View>
+        
+        <AppPressable 
+          style={[styles.uploadCard, formData.idDocument && styles.uploadCardActive]} 
+          onPress={() => handlePicker()}
+        >
           {formData.idDocument ? (
-            <View style={styles.uploadedFileContainer}>
-              <View style={styles.fileIconContainer}>
-                <Ionicons name="document-text" size={24} color={TOKENS.colors.primary} />
+            <View style={styles.uploadCardContent}>
+              <View style={styles.successBadge}>
+                <Ionicons name="checkmark-circle" size={32} color="#10B981" />
               </View>
-              <View style={styles.fileInfo}>
-                <Text style={styles.fileName} numberOfLines={1}>{formData.idDocument}</Text>
-                <Text style={styles.fileSize}>0.02 MB</Text>
-              </View>
-              <AppPressable 
-                style={styles.removeFileButton}
-                onPress={() => setFormData({...formData, idDocument: null})}
-              >
-                <Ionicons name="close-circle" size={24} color={TOKENS.colors.danger.text} />
-              </AppPressable>
+              <Text style={styles.uploadCardTitle}>ID Uploaded Successfully</Text>
+              <Text style={styles.uploadCardSubtitle}>Tap to replace with another photo</Text>
             </View>
           ) : (
-            <View style={styles.uploadArea}>
-              <View style={styles.uploadIconContainer}>
+            <View style={styles.uploadCardContent}>
+              <View style={styles.uploadIconCircle}>
                 <Ionicons name="cloud-upload-outline" size={32} color={TOKENS.colors.primary} />
               </View>
-              <Text style={styles.uploadTitle}>Upload your selected ID</Text>
-              <Text style={styles.uploadSubtitle}>PNG, JPG or PDF • Max 5MB</Text>
-              
-              <View style={styles.uploadActions}>
-                <AppButton
-                  label="Browse"
-                  variant="outline"
-                  size="sm"
-                  onPress={() => setFormData({...formData, idDocument: "image_2026-03-17_062955.png"})}
-                  leftIcon="document-text-outline"
-                />
-                <AppButton
-                  label="Scan"
-                  size="sm"
-                  onPress={() => setFormData({...formData, idDocument: "scanned_id_001.jpg"})}
-                  leftIcon="camera-outline"
-                />
-              </View>
+              <Text style={styles.uploadCardTitle}>Upload ID Photo</Text>
+              <Text style={styles.uploadCardSubtitle}>Maximum file size: 5MB (JPG, PNG)</Text>
             </View>
           )}
-        </View>
+        </AppPressable>
+
+        <Modal visible={showIdDropdown} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Choose ID Type</Text>
+                <AppPressable onPress={() => setShowIdDropdown(false)}>
+                  <Ionicons name="close" size={24} color="#64748B" />
+                </AppPressable>
+              </View>
+              <ScrollView>
+                {idTypes.map((idType) => (
+                  <AppPressable
+                    key={idType}
+                    style={[styles.modalOption, formData.idType === idType && styles.modalOptionSelected]}
+                    onPress={() => {
+                      setFormData({ ...formData, idType });
+                      setShowIdDropdown(false);
+                    }}
+                  >
+                    <Text style={[styles.modalOptionText, formData.idType === idType && styles.modalOptionTextSelected]}>
+                      {idType}
+                    </Text>
+                    {formData.idType === idType && <Ionicons name="checkmark" size={20} color={TOKENS.colors.primary} />}
+                  </AppPressable>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       </View>
     </View>
   );
 
   const renderStep5 = () => (
     <View style={styles.stepContent}>
-      <Text style={styles.title}>Verify your email</Text>
-      <Text style={styles.subtitle}>
-        Sent 6-digit code to <Text style={{ fontWeight: '700' }}>{formData.email}</Text>.
-      </Text>
-
+      <View style={styles.stepHeader}>
+        <Text style={styles.title}>Verification</Text>
+        <Text style={styles.subtitle}>Enter the 6-digit code sent to your email address.</Text>
+      </View>
       <View style={styles.form}>
         <View style={styles.otpContainer}>
-          {formData.otp.map((digit, index) => (
-            <TextInput
-              key={index}
-              style={styles.otpInput}
+          {formData.otp.map((digit, i) => (
+            <TextInput 
+              key={i} 
+              ref={(ref) => { otpRefs.current[i] = ref; }}
+              style={[styles.otpInput, formData.otp[i] !== "" && styles.otpInputActive]} 
+              maxLength={1} 
+              keyboardType="numeric" 
               value={digit}
               onChangeText={(text: string) => {
                 const newOtp = [...formData.otp];
-                newOtp[index] = text.slice(-1);
-                setFormData({...formData, otp: newOtp});
+                newOtp[i] = text;
+                setFormData({ ...formData, otp: newOtp });
+                if (text && i < 5) {
+                  otpRefs.current[i + 1]?.focus();
+                }
               }}
-              keyboardType="numeric"
-              maxLength={1}
+              onKeyPress={({ nativeEvent }: any) => {
+                if (nativeEvent.key === 'Backspace' && !formData.otp[i] && i > 0) {
+                  otpRefs.current[i - 1]?.focus();
+                }
+              }}
             />
           ))}
         </View>
-
-        <View style={styles.timerContainer}>
-          <Text style={styles.timerText}>
-            Code expires in <Text style={{ fontWeight: '700' }}>{formatTime(timeLeft)}</Text>
-          </Text>
-        </View>
-
-        <View style={styles.disclaimerBox}>
-          <Text style={styles.disclaimerText}>
-            The code must be used within its 5-minute validity period.
-          </Text>
-        </View>
+        <AppPressable style={styles.resendButton}>
+          <Text style={styles.resendText}>Didn&apos;t receive a code? <Text style={styles.resendAction}>Resend</Text></Text>
+        </AppPressable>
       </View>
     </View>
   );
 
-  const renderContent = () => {
-    switch (step) {
-      case 1: return renderStep1();
-      case 2: return renderStep2();
-      case 3: return renderStep3();
-      case 4: return renderStep4();
-      case 5: return renderStep5();
-      default: return renderStep1();
-    }
-  };
-
-  const getHeaderTitle = () => {
-    switch (step) {
-      case 1: return "Personal Information";
-      case 2: return "Provider Profile";
-      case 3: return "Service Location";
-      case 4: return "Document Upload";
-      case 5: return "Email Verification";
-      default: return "Provider Profile";
-    }
-  };
-
-  const handleNextStep = async () => {
-    if (step < 5) {
-      if (step === 1 && (!formData.fullName || !formData.email || !formData.phone || !formData.dob || !formData.password || formData.password !== formData.confirmPassword || !Object.values(passwordCriteria).every(Boolean))) {
-        Alert.alert('Invalid Details', 'Please complete all required fields correctly.');
-        return;
-      }
-      if (step === 2 && (!formData.primaryCategory || !formData.subCategory || !formData.experienceLevel)) return;
-      if (step === 3 && (!formData.streetAddress || !formData.city || !formData.province || !formData.zipCode)) return;
-      if (step === 4 && (!formData.idType || !formData.idDocument)) return;
-      setStep(step + 1);
-    } else {
-      if (formData.otp.some(d => !d)) return;
-      setIsSubmitting(true);
-      try {
-        const { data, error } = await supabase.auth.signUp({
-          email: formData.email.trim().toLowerCase(),
-          password: formData.password,
-          options: {
-            data: {
-              role: 'provider',
-              user_type: 'provider',
-              full_name: formData.fullName.trim(),
-              phone: formData.phone.trim(),
-              primary_category: formData.primaryCategory,
-              sub_category: formData.subCategory,
-              experience_level: formData.experienceLevel,
-            },
-          },
-        });
-
-        if (error) throw error;
-
-        if (data.user?.id) {
-          const { error: usersError } = await identityDb.from('users').upsert({
-            id: data.user.id,
-            email: formData.email.trim().toLowerCase(),
-            full_name: formData.fullName.trim(),
-            contact_number: formData.phone.trim(),
-            role: 'provider',
-          });
-          if (usersError) throw usersError;
-          await persistProviderProfile(data.user.id);
-        }
-
-        await persistSignupCategories();
-
-        Alert.alert(
-          'Registration Submitted',
-          'Your account was created. Check your email to confirm before logging in.',
-          [{ text: 'OK', onPress: () => router.replace('/provider-login' as any) }]
-        );
-      } catch (err: any) {
-        Alert.alert('Signup Failed', getErrorMessage(err, 'Unable to create provider account.'));
-      } finally {
-        setIsSubmitting(false);
-      }
-    }
-  };
-
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
+      <SuccessOverlay />
+      
+      <View style={styles.absoluteProgressBar}>
+        <View style={[styles.progressFill, { width: `${(step / 5) * 100}%` }]} />
+      </View>
+
       <View style={styles.header}>
-        <AppPressable 
-          onPress={() => {
-            if (step > 1) setStep(step - 1);
-            else if (router.canGoBack?.()) router.back(); else router.replace('/' as any);
-          }} 
-          style={styles.backButton}
-        >
-          <Ionicons name="arrow-back" size={24} color={TOKENS.colors.text.primary} />
+        <AppPressable onPress={handlePrevStep} style={styles.backButton}>
+          <Ionicons name="chevron-back" size={28} color="#1E293B" />
         </AppPressable>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>{getHeaderTitle()}</Text>
-          <Text style={styles.headerSubtitle}>Step {step} of 5</Text>
-        </View>
-        <View style={{ width: 40 }} />
+        <Text style={styles.stepText}>Step {step} of 5</Text>
       </View>
-
-      <View style={styles.progressBarContainer}>
-        {[1, 2, 3, 4, 5].map((s) => (
-          <View 
-            key={s} 
-            style={[styles.progressBarSegment, s <= step && styles.progressBarActive]} 
-          />
-        ))}
-      </View>
-
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent} 
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {renderContent()}
-        <View style={styles.footerSpacer} />
+      
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        {step === 1 && renderStep1()}
+        {step === 2 && renderStep2()}
+        {step === 3 && renderStep3()}
+        {step === 4 && renderStep4()}
+        {step === 5 && renderStep5()}
       </ScrollView>
 
       <View style={styles.footer}>
-        <AppButton
-          label={step === 5 ? "Complete Registration" : "Next Step"}
-          onPress={handleNextStep}
-          isLoading={isSubmitting}
-          size="lg"
+        <AppButton 
+          label={step === 5 ? "Complete Registration" : "Continue"} 
+          onPress={handleNextStep} 
+          isLoading={isSubmitting} 
         />
       </View>
     </SafeAreaView>
@@ -679,379 +720,205 @@ export function ProviderSignupScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: TOKENS.colors.white,
-  },
-  header: {
-    flexDirection: 'row',
+  container: { flex: 1, backgroundColor: '#FFF' },
+  header: { 
+    paddingHorizontal: 20, 
+    paddingTop: 24,
+    paddingBottom: 16,
+    flexDirection: 'row', 
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    justifyContent: 'space-between'
   },
-  backButton: {
-    padding: 8,
-  },
-  headerTitleContainer: {
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: TOKENS.colors.text.primary,
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: TOKENS.colors.text.secondary,
-    marginTop: 2,
-  },
-  progressBarContainer: {
-    flexDirection: 'row',
-    height: 4,
-    width: '100%',
-    backgroundColor: TOKENS.colors.background,
-    gap: 4,
-  },
-  progressBarSegment: {
-    flex: 1,
-    backgroundColor: TOKENS.colors.background,
-  },
-  progressBarActive: {
-    backgroundColor: TOKENS.colors.primary,
-  },
-  scrollContent: {
-    paddingHorizontal: 25,
-    paddingTop: 30,
-    paddingBottom: 40,
-  },
-  stepContent: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: TOKENS.colors.text.primary,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: TOKENS.colors.text.secondary,
-    marginBottom: 30,
-  },
-  form: {
-    width: '100%',
-  },
-  inputGroup: {
-    marginBottom: TOKENS.spacing.md,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: TOKENS.colors.text.primary,
-    marginBottom: TOKENS.spacing.sm,
-    marginLeft: 4,
-  },
-  required: {
-    color: TOKENS.colors.danger.text,
-  },
-  phoneInputContainer: {
-    flexDirection: 'row',
-    backgroundColor: TOKENS.colors.background,
-    borderRadius: TOKENS.borderRadius.md,
-    alignItems: 'center',
-    height: 56,
-    paddingHorizontal: TOKENS.spacing.md,
-  },
-  countryCode: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  countryCodeText: {
-    fontSize: 15,
-    color: TOKENS.colors.text.secondary,
-    marginRight: 10,
-    fontWeight: '600',
-  },
-  verticalDivider: {
-    width: 1.5,
-    height: 24,
-    backgroundColor: TOKENS.colors.border,
-    marginRight: 12,
-  },
-  phoneTextInput: {
-    flex: 1,
-    fontSize: 15,
-    color: TOKENS.colors.text.primary,
-    fontWeight: '500',
-  },
-  pickerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: TOKENS.colors.background,
-    borderRadius: TOKENS.borderRadius.md,
-    paddingHorizontal: TOKENS.spacing.md,
-    height: 56,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  pickerButtonActive: {
-    borderColor: TOKENS.colors.primary,
-    backgroundColor: TOKENS.colors.white,
-  },
-  pickerText: {
-    fontSize: 15,
-    color: TOKENS.colors.text.primary,
-    fontWeight: '500',
-  },
-  dropdownMenu: {
-    marginTop: 8,
-    backgroundColor: TOKENS.colors.white,
-    borderRadius: TOKENS.borderRadius.md,
-    borderWidth: 1.5,
-    borderColor: TOKENS.colors.border,
-    overflow: 'hidden',
-    ...TOKENS.shadows.medium,
-  },
-  dropdownOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.border,
-  },
-  dropdownOptionText: {
-    fontSize: 15,
-    color: TOKENS.colors.text.primary,
-  },
-  dropdownOptionTextActive: {
-    color: TOKENS.colors.primary,
-    fontWeight: '700',
-  },
-  labelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: TOKENS.spacing.sm,
-  },
-  radiusValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: TOKENS.colors.primary,
-  },
-  radiusUnit: {
-    fontSize: 14,
-    color: TOKENS.colors.text.secondary,
-    fontWeight: '400',
-  },
-  sliderContainer: {
-    height: 40,
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  sliderTrack: {
-    height: 6,
-    backgroundColor: TOKENS.colors.border,
-    borderRadius: 3,
-    position: 'relative',
-  },
-  sliderTrackFilled: {
-    height: '100%',
-    backgroundColor: TOKENS.colors.primary,
-    borderRadius: 3,
-  },
-  sliderThumb: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: TOKENS.colors.white,
-    borderWidth: 2,
-    borderColor: TOKENS.colors.primary,
-    position: 'absolute',
-    top: -9,
-    marginLeft: -12,
-    ...TOKENS.shadows.soft,
-  },
-  warningBox: {
-    flexDirection: 'row',
-    backgroundColor: TOKENS.colors.warning.bg,
-    borderRadius: TOKENS.borderRadius.md,
-    padding: 16,
-    marginBottom: 25,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.warning.border,
-  },
-  warningIcon: {
-    marginRight: 12,
-  },
-  warningText: {
-    flex: 1,
-    fontSize: 13,
-    color: TOKENS.colors.warning.text,
-    lineHeight: 18,
-    fontWeight: '500',
-  },
-  uploadArea: {
-    backgroundColor: TOKENS.colors.white,
-    borderRadius: TOKENS.borderRadius.lg,
-    borderWidth: 2,
-    borderColor: TOKENS.colors.primary,
-    borderStyle: 'dashed',
-    padding: 30,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  uploadIconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: TOKENS.colors.success.bg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  uploadTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: TOKENS.colors.text.primary,
-    marginBottom: 4,
-  },
-  uploadSubtitle: {
-    fontSize: 12,
-    color: TOKENS.colors.text.muted,
-    marginBottom: 20,
-  },
-  uploadActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  uploadedFileContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: TOKENS.colors.white,
-    borderRadius: TOKENS.borderRadius.md,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.primary,
-    marginTop: 10,
-  },
-  fileIconContainer: {
+  backButton: { 
     width: 40,
     height: 40,
-    borderRadius: 8,
-    backgroundColor: TOKENS.colors.success.bg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  fileInfo: {
-    flex: 1,
-  },
-  fileName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: TOKENS.colors.text.primary,
-  },
-  fileSize: {
-    fontSize: 12,
-    color: TOKENS.colors.text.muted,
-  },
-  removeFileButton: {
-    marginLeft: 8,
-  },
-  criteriaContainer: {
-    marginBottom: 25,
-    paddingLeft: 4,
-  },
-  criteriaHeader: {
-    fontSize: 13,
-    color: TOKENS.colors.text.secondary,
-    marginBottom: 12,
-    fontWeight: '600',
-  },
-  criteriaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  checkCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: TOKENS.colors.border,
-    marginRight: 10,
+    borderRadius: 20,
+    backgroundColor: '#F8FAFC',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  checkCircleMet: {
-    backgroundColor: TOKENS.colors.primary,
-    borderColor: TOKENS.colors.primary,
-  },
-  criteriaText: {
-    fontSize: 14,
-    color: TOKENS.colors.text.secondary,
-  },
-  criteriaTextMet: {
-    color: TOKENS.colors.text.primary,
-    fontWeight: '600',
-  },
-  otpContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
-    marginBottom: 40,
-  },
-  otpInput: {
-    width: 50,
-    height: 60,
-    backgroundColor: TOKENS.colors.background,
-    borderRadius: TOKENS.borderRadius.md,
-    borderWidth: 1.5,
-    borderColor: TOKENS.colors.border,
-    textAlign: 'center',
-    fontSize: 24,
-    fontWeight: '700',
-    color: TOKENS.colors.text.primary,
-  },
-  timerContainer: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  timerText: {
-    fontSize: 14,
-    color: TOKENS.colors.primary,
-  },
-  disclaimerBox: {
-    backgroundColor: TOKENS.colors.background,
-    borderRadius: TOKENS.borderRadius.md,
-    padding: 20,
-    alignItems: 'center',
-  },
-  disclaimerText: {
-    fontSize: 13,
-    color: TOKENS.colors.text.muted,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  helperText: {
-    fontSize: 12,
-    color: TOKENS.colors.text.muted,
-    marginTop: 6,
-    marginLeft: 4,
-  },
-  footerSpacer: {
-    height: 80,
-  },
-  footer: {
+  absoluteProgressBar: { 
     position: 'absolute',
-    bottom: 0,
+    top: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 25,
-    paddingVertical: 20,
-    backgroundColor: TOKENS.colors.white,
-    borderTopWidth: 1,
-    borderTopColor: TOKENS.colors.border,
+    height: 4, 
+    backgroundColor: '#F1F5F9', 
+    zIndex: 10,
   },
+  progressFill: { 
+    height: '100%', 
+    backgroundColor: TOKENS.colors.primary,
+    borderBottomRightRadius: 2,
+    borderTopRightRadius: 2,
+  },
+  stepText: { fontSize: 14, fontWeight: '700', color: '#64748B' },
+  scroll: { flex: 1 },
+  scrollContent: { padding: 24, paddingBottom: 100 },
+  stepContent: { flex: 1 },
+  stepHeader: { marginBottom: 24 },
+  title: { fontSize: 32, fontWeight: '900', color: '#1E293B', marginBottom: 8, letterSpacing: -0.5 },
+  subtitle: { fontSize: 16, color: '#64748B', marginBottom: 8, lineHeight: 24 },
+  form: { gap: 20 },
+  criteriaContainer: { 
+    backgroundColor: '#F8FAFC', 
+    padding: 16, 
+    borderRadius: 20, 
+    borderWidth: 1,
+    borderColor: '#F1F5F9'
+  },
+  criteriaHeader: { 
+    fontSize: 12, 
+    fontWeight: '800', 
+    color: '#94A3B8', 
+    textTransform: 'uppercase', 
+    letterSpacing: 1,
+    marginBottom: 12,
+    marginLeft: 4
+  },
+  criteriaGrid: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    gap: 12 
+  },
+  criteriaItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8,
+    minWidth: '45%'
+  },
+  criteriaText: { fontSize: 13, color: '#94A3B8', fontWeight: '500' },
+  criteriaTextMet: { color: '#0F172A', fontWeight: '600' },
+  inputGroup: { gap: 8 },
+  inputLabel: { fontSize: 14, fontWeight: '700', color: '#1E293B', marginLeft: 4 },
+  required: { color: '#EF4444' },
+  pickerButton: { 
+    height: 56, 
+    backgroundColor: '#F8FAFC', 
+    borderRadius: 16, 
+    paddingHorizontal: 16, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    borderWidth: 2, 
+    borderColor: 'transparent' 
+  },
+  pickerButtonDisabled: { opacity: 0.5 },
+  pickerText: { fontSize: 15, color: '#1E293B', fontWeight: '500' },
+  modalOverlay: { 
+    flex: 1, 
+    backgroundColor: 'rgba(15, 23, 42, 0.5)', 
+    justifyContent: 'flex-end' 
+  },
+  modalCard: { 
+    backgroundColor: '#FFF', 
+    borderTopLeftRadius: 32, 
+    borderTopRightRadius: 32, 
+    paddingTop: 24, 
+    paddingBottom: 40,
+    maxHeight: '80%'
+  },
+  modalHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    paddingHorizontal: 24, 
+    marginBottom: 20 
+  },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#1E293B' },
+  modalOption: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    padding: 20, 
+    marginHorizontal: 16,
+    borderRadius: 16,
+    marginBottom: 8
+  },
+  modalOptionSelected: { backgroundColor: '#F0FDF4' },
+  modalOptionText: { fontSize: 16, color: '#475569', fontWeight: '500' },
+  modalOptionTextSelected: { color: '#0F172A', fontWeight: '700' },
+  row: { flexDirection: 'row', alignItems: 'center' },
+  idTypesHeader: { marginBottom: 4, marginLeft: 4 },
+  idTypesTitle: { fontSize: 13, fontWeight: '700', color: '#1E293B' },
+  idTypesSubtitle: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  uploadCard: { 
+    height: 200, 
+    borderRadius: 24, 
+    borderWidth: 2, 
+    borderColor: '#E2E8F0', 
+    borderStyle: 'dashed', 
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20
+  },
+  uploadCardActive: { 
+    borderColor: '#10B981', 
+    backgroundColor: '#F0FDF4',
+    borderStyle: 'solid'
+  },
+  uploadCardContent: { alignItems: 'center', gap: 12 },
+  uploadIconCircle: { 
+    width: 64, 
+    height: 64, 
+    borderRadius: 32, 
+    backgroundColor: '#F0FDF4', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  uploadCardTitle: { fontSize: 16, fontWeight: '700', color: '#1E293B' },
+  uploadCardSubtitle: { fontSize: 13, color: '#64748B', textAlign: 'center' },
+  successBadge: { marginBottom: 4 },
+  footer: { padding: 24, borderTopWidth: 1, borderTopColor: '#F1F5F9', backgroundColor: '#FFF' },
+  otpContainer: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
+  otpInput: { 
+    width: 48, 
+    height: 64, 
+    borderWidth: 2, 
+    borderColor: '#E2E8F0', 
+    borderRadius: 16, 
+    textAlign: 'center', 
+    fontSize: 24, 
+    fontWeight: '800',
+    backgroundColor: '#F8FAFC',
+    color: '#1E293B'
+  },
+  otpInputActive: { 
+    borderColor: TOKENS.colors.primary, 
+    backgroundColor: '#FFF' 
+  },
+  resendButton: { marginTop: 12, alignItems: 'center' },
+  resendText: { fontSize: 14, color: '#64748B' },
+  resendAction: { color: TOKENS.colors.primary, fontWeight: '700' },
+  successContainer: { 
+    flex: 1, 
+    backgroundColor: 'rgba(15, 23, 42, 0.8)', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    padding: 24 
+  },
+  successCard: { 
+    backgroundColor: '#FFF', 
+    borderRadius: 36, 
+    padding: 40, 
+    alignItems: 'center', 
+    width: '100%', 
+    maxWidth: 400,
+    ...TOKENS.shadows.glow
+  },
+  successIconCircle: { 
+    width: 110, 
+    height: 110, 
+    borderRadius: 55, 
+    backgroundColor: '#10B981', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginBottom: 32,
+    ...TOKENS.shadows.soft
+  },
+  successTitle: { fontSize: 32, fontWeight: '900', color: '#1E293B', marginBottom: 12 },
+  successSubtitle: { fontSize: 16, color: '#64748B', textAlign: 'center', lineHeight: 26, fontWeight: '500' },
+  uploadedPreview: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, backgroundColor: '#ECFDF5', borderRadius: 12, marginTop: 10 },
+  uploadedText: { color: '#059669', fontWeight: '600' }
 });
