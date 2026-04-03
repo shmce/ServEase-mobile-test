@@ -11,13 +11,16 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase, identityDb } from '@/lib/db';
+import { api } from '@/lib/apiClient';
+import { identityDb } from '@/lib/db';
 import { getErrorMessage } from '@/lib/error-handling';
+import { getAvatarUrl, pickAndUploadAvatar } from '@/lib/avatar';
 
 export default function CustomerEditProfileScreen() {
   const router = useRouter();
@@ -29,6 +32,7 @@ export default function CustomerEditProfileScreen() {
   const [address, setAddress] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -36,6 +40,7 @@ export default function CustomerEditProfileScreen() {
       return;
     }
     setEmail(user.email || '');
+    setAvatarUri(`${getAvatarUrl(user.id)}?t=${Date.now()}`);
 
     async function loadProfile() {
       try {
@@ -71,6 +76,12 @@ export default function CustomerEditProfileScreen() {
     loadProfile();
   }, [user]);
 
+  const handlePickAvatar = async () => {
+    if (!user) return;
+    const url = await pickAndUploadAvatar(user.id);
+    if (url) setAvatarUri(url);
+  };
+
   const isSaveEnabled =
     fullName.trim().length > 0 &&
     email.trim().length > 0 &&
@@ -85,28 +96,16 @@ export default function CustomerEditProfileScreen() {
     setIsSaving(true);
 
     try {
-      // Upsert users row to handle first-save cases where row doesn't exist yet
-      const { error: userErr } = await identityDb
-        .from('users')
-        .upsert({
-          id: user.id,
-          email: user.email || email.trim(),
-          full_name: fullName.trim(), 
-          contact_number: phone.trim(),
-          role: 'customer',
-        })
-        
-      if (userErr) throw userErr;
+      // 1. Update generic user fields (name, phone)
+      await api.patch('/users/profile', {
+        full_name: fullName.trim(),
+        contact_number: phone.trim(),
+      });
 
-      // Upsert customer profile with compatible address field naming
-      const { error: profileErr } = await supabase
-        .from('customer_profiles')
-        .upsert({ 
-          user_id: user.id, 
-          address: address.trim(),
-        });
-
-      if (profileErr) throw profileErr;
+      // 2. Update customer-specific fields (address)
+      await api.patch('/customer/profile', {
+        address: address.trim(),
+      });
 
       Alert.alert('Profile Updated', 'Your changes have been saved.', [
         { text: 'OK', onPress: () => router.back() },
@@ -153,10 +152,18 @@ export default function CustomerEditProfileScreen() {
               {/* Profile Picture */}
               <View style={styles.avatarSection}>
                 <View style={styles.avatarContainer}>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarInitial}>{fullName.charAt(0).toUpperCase() || 'U'}</Text>
-                  </View>
-                  <TouchableOpacity style={styles.cameraButton}>
+                  {avatarUri ? (
+                    <Image
+                      source={{ uri: avatarUri }}
+                      style={styles.avatar}
+                      onError={() => setAvatarUri(null)}
+                    />
+                  ) : (
+                    <View style={styles.avatar}>
+                      <Text style={styles.avatarInitial}>{fullName.charAt(0).toUpperCase() || 'U'}</Text>
+                    </View>
+                  )}
+                  <TouchableOpacity style={styles.cameraButton} onPress={handlePickAvatar}>
                     <Ionicons name="camera" size={16} color="#fff" />
                   </TouchableOpacity>
                 </View>

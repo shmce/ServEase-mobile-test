@@ -1,6 +1,7 @@
 import { Injectable, Inject, BadRequestException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { IDENTITY_CLIENT, CATALOG_CLIENT, BOOKING_CLIENT, PAYMENT_CLIENT, TRUST_CLIENT } from '../../database/supabase.module';
+import { UpdateProviderProfileDto } from './dto/update-provider-profile.dto';
 import 'multer';
 
 @Injectable()
@@ -34,10 +35,7 @@ export class ProviderService {
 
     if (reviewsErr) throw new InternalServerErrorException(reviewsErr.message);
 
-    return {
-      status: 'success',
-      data: { provider_id: providerId, average_rating: Number(profile.average_rating) || 0, total_reviews: Number(profile.total_reviews) || 0, reviews },
-    };
+    return { provider_id: providerId, average_rating: Number(profile.average_rating) || 0, total_reviews: Number(profile.total_reviews) || 0, reviews };
   }
 
   async getTrustScore(providerId: string) {
@@ -50,7 +48,7 @@ export class ProviderService {
     if (error) throw new InternalServerErrorException(error.message);
     if (!data) throw new NotFoundException('Provider profile not found');
 
-    return { status: 'success', data: { provider_id: providerId, trust_score: Number(data.trust_score) || 0 } };
+    return { provider_id: providerId, trust_score: Number(data.trust_score) || 0 };
   }
 
   async getProviderProfile(userId: string) {
@@ -72,7 +70,7 @@ export class ProviderService {
       }),
     );
 
-    return { status: 'success', data: { provider_id: data.user_id, business_name: data.business_name, verification_status: data.verification_status, provider_documents: documentsWithUrls } };
+    return { ...data, provider_id: data.user_id, provider_documents: documentsWithUrls };
   }
 
   async getProviderDashboard(providerId: string) {
@@ -413,6 +411,21 @@ export class ProviderService {
       .maybeSingle();
 
     if (error) throw new BadRequestException(error.message);
-    return { draft: data };
+    return data;
+  }
+
+  async updateProfile(userId: string, dto: UpdateProviderProfileDto) {
+    const { data, error } = await this.catalogDb
+      .from('provider_profiles')
+      .upsert({
+        user_id: userId,
+        ...dto,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' })
+      .select()
+      .maybeSingle();
+
+    if (error) throw new BadRequestException(error.message);
+    return data;
   }
 }

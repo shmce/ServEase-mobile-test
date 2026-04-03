@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -15,18 +16,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
+import { api } from '@/lib/apiClient';
+import { providerCatalogDb } from '@/lib/db';
 import { getErrorMessage } from '@/lib/error-handling';
-import {
-  getDefaultProviderProfileDraft,
-  getProviderProfileDraft,
-  saveProviderProfileDraft,
-} from '@/services/providerProfileService';
+import { getAvatarUrl, pickAndUploadAvatar } from '@/lib/avatar';
 
 const parseTagInput = (value: string) =>
-  value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
+  value.split(',').map((item) => item.trim()).filter(Boolean);
 
 const formatTagInput = (values: string[]) => values.join(', ');
 
@@ -45,22 +41,23 @@ const ReadonlyChip = ({ label }: { label: string }) => (
 export default function ProviderEditProfileScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [isSaving, setIsSaving] = React.useState(false);
-  const [error, setError] = React.useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
 
-  const [fullName, setFullName] = React.useState('');
-  const [businessName, setBusinessName] = React.useState('');
-  const [bio, setBio] = React.useState('');
-  const [serviceAreasText, setServiceAreasText] = React.useState('');
-  const [languagesText, setLanguagesText] = React.useState('');
-  const [yearsExperience, setYearsExperience] = React.useState('');
-  const [facebookUrl, setFacebookUrl] = React.useState('');
-  const [instagramHandle, setInstagramHandle] = React.useState('');
-  const [websiteUrl, setWebsiteUrl] = React.useState('');
-  const [serviceCategories, setServiceCategories] = React.useState<string[]>([]);
+  const [fullName, setFullName] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [bio, setBio] = useState('');
+  const [serviceAreasText, setServiceAreasText] = useState('');
+  const [languagesText, setLanguagesText] = useState('');
+  const [yearsExperience, setYearsExperience] = useState('');
+  const [facebookUrl, setFacebookUrl] = useState('');
+  const [instagramHandle, setInstagramHandle] = useState('');
+  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [serviceCategories, setServiceCategories] = useState<string[]>([]);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     let mounted = true;
 
     async function load() {
@@ -72,46 +69,54 @@ export default function ProviderEditProfileScreen() {
 
       setIsLoading(true);
       setError('');
+      setAvatarUri(`${getAvatarUrl(user.id)}?t=${Date.now()}`);
 
       try {
-        const draft = await getProviderProfileDraft(user.id);
-        const normalized = {
-          ...getDefaultProviderProfileDraft(),
-          ...draft,
-        };
+        const [userResp, profileResp, servicesResp] = await Promise.all([
+          api.get<any>('/users/profile'),
+          api.get<any>('/provider/profile'),
+          providerCatalogDb
+            .from('provider_services')
+            .select('service_categories(name)')
+            .eq('provider_id', user.id)
+        ]);
 
         if (!mounted) return;
 
-        setFullName(String(normalized.fullName || ''));
-        setBusinessName(String(normalized.businessName || ''));
-        setBio(String(normalized.bio || ''));
-        setServiceAreasText(
-          formatTagInput(Array.isArray(normalized.serviceAreas) ? normalized.serviceAreas : [])
-        );
-        setLanguagesText(
-          formatTagInput(Array.isArray(normalized.languages) ? normalized.languages : [])
-        );
-        setYearsExperience(String(normalized.yearsExperience ?? ''));
-        setFacebookUrl(String(normalized.facebookUrl || ''));
-        setInstagramHandle(String(normalized.instagramHandle || ''));
-        setWebsiteUrl(String(normalized.websiteUrl || ''));
-        setServiceCategories(
-          Array.isArray(normalized.serviceCategories) ? normalized.serviceCategories : []
-        );
+        const userData = userResp;
+        const profile = profileResp;
+        const services = servicesResp.data;
+
+        setFullName(userData?.full_name || '');
+        setBusinessName(profile?.business_name || '');
+        setBio(profile?.bio || '');
+        setServiceAreasText(formatTagInput(profile?.service_areas || []));
+        setLanguagesText(formatTagInput(profile?.languages || []));
+        setYearsExperience(String(profile?.years_experience ?? ''));
+        setFacebookUrl(profile?.facebook_url || '');
+        setInstagramHandle(profile?.instagram_handle || '');
+        setWebsiteUrl(profile?.website_url || '');
+
+        const cats = (services || [])
+          .map((s: any) => s.service_categories?.name)
+          .filter(Boolean);
+        setServiceCategories([...new Set(cats)] as string[]);
       } catch (err) {
-        if (mounted) {
-          setError(getErrorMessage(err, 'Failed to load provider profile.'));
-        }
+        if (mounted) setError(getErrorMessage(err, 'Failed to load provider profile.'));
       } finally {
         if (mounted) setIsLoading(false);
       }
     }
 
     void load();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [user?.id]);
+
+  const handlePickAvatar = async () => {
+    if (!user) return;
+    const url = await pickAndUploadAvatar(user.id);
+    if (url) setAvatarUri(url);
+  };
 
   const onSave = async () => {
     if (!user?.id) {
@@ -126,20 +131,26 @@ export default function ProviderEditProfileScreen() {
 
     setIsSaving(true);
     try {
-      await saveProviderProfileDraft(user.id, {
-        fullName: fullName.trim(),
-        businessName: businessName.trim(),
-        bio: bio.trim(),
-        serviceAreas: parseTagInput(serviceAreasText),
-        languages: parseTagInput(languagesText),
-        yearsExperience: yearsExperience.trim(),
-        facebookUrl: facebookUrl.trim(),
-        instagramHandle: instagramHandle.trim(),
-        websiteUrl: websiteUrl.trim(),
-        serviceCategories,
+      // 1. Update generic user fields (name, phone)
+      await api.patch('/users/profile', {
+        full_name: fullName.trim(),
       });
 
-      router.back();
+      // 2. Update provider-specific fields
+      await api.patch('/provider/profile', {
+        business_name: businessName.trim(),
+        bio: bio.trim(),
+        service_areas: parseTagInput(serviceAreasText),
+        languages: parseTagInput(languagesText),
+        years_experience: yearsExperience.trim() ? Number(yearsExperience.trim()) : null,
+        facebook_url: facebookUrl.trim() || null,
+        instagram_handle: instagramHandle.trim() || null,
+        website_url: websiteUrl.trim() || null,
+      });
+
+      Alert.alert('Profile Updated', 'Your changes have been saved.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
     } catch (err) {
       Alert.alert('Save Failed', getErrorMessage(err, 'Could not save provider profile.'));
     } finally {
@@ -155,7 +166,7 @@ export default function ProviderEditProfileScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit Profile</Text>
         <TouchableOpacity onPress={() => void onSave()} disabled={isSaving || isLoading}>
-          <Text style={[styles.headerButtonText, styles.saveButtonText, (isSaving || isLoading) && styles.disabledText]}>
+          <Text style={[styles.headerButtonText, styles.saveText, (isSaving || isLoading) && styles.disabledText]}>
             Save
           </Text>
         </TouchableOpacity>
@@ -174,6 +185,22 @@ export default function ProviderEditProfileScreen() {
         {!isLoading ? (
           <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
             <View style={styles.formContent}>
+              {/* Avatar */}
+              <View style={styles.avatarSection}>
+                <View style={styles.avatarContainer}>
+                  {avatarUri ? (
+                    <Image source={{ uri: avatarUri }} style={styles.avatarImage} onError={() => setAvatarUri(null)} />
+                  ) : (
+                    <View style={styles.avatarFallback}>
+                      <Text style={styles.avatarInitial}>{fullName.charAt(0).toUpperCase() || 'P'}</Text>
+                    </View>
+                  )}
+                  <TouchableOpacity style={styles.cameraButton} onPress={handlePickAvatar}>
+                    <Ionicons name="camera" size={16} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
               <SectionHeader title="Basic Information" />
 
               <View style={styles.inputGroup}>
@@ -206,34 +233,19 @@ export default function ProviderEditProfileScreen() {
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Service Areas</Text>
-                <TextInput
-                  style={styles.input}
-                  value={serviceAreasText}
-                  onChangeText={setServiceAreasText}
-                  placeholder="Makati, Pasig, Quezon City"
-                />
+                <TextInput style={styles.input} value={serviceAreasText} onChangeText={setServiceAreasText} placeholder="Makati, Pasig, Quezon City" />
                 <Text style={styles.helperText}>Separate multiple areas with commas.</Text>
               </View>
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Languages Spoken</Text>
-                <TextInput
-                  style={styles.input}
-                  value={languagesText}
-                  onChangeText={setLanguagesText}
-                  placeholder="English, Tagalog"
-                />
+                <TextInput style={styles.input} value={languagesText} onChangeText={setLanguagesText} placeholder="English, Tagalog" />
                 <Text style={styles.helperText}>Separate multiple languages with commas.</Text>
               </View>
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Years of Experience</Text>
-                <TextInput
-                  style={styles.input}
-                  value={yearsExperience}
-                  onChangeText={setYearsExperience}
-                  placeholder="5-10 years"
-                />
+                <TextInput style={styles.input} value={yearsExperience} onChangeText={setYearsExperience} placeholder="e.g. 5" keyboardType="numeric" />
               </View>
 
               <SectionHeader title="Services" />
@@ -255,35 +267,17 @@ export default function ProviderEditProfileScreen() {
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Facebook</Text>
-                <TextInput
-                  style={styles.input}
-                  value={facebookUrl}
-                  onChangeText={setFacebookUrl}
-                  placeholder="facebook.com/yourbusiness"
-                  autoCapitalize="none"
-                />
+                <TextInput style={styles.input} value={facebookUrl} onChangeText={setFacebookUrl} placeholder="facebook.com/yourbusiness" autoCapitalize="none" />
               </View>
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Instagram</Text>
-                <TextInput
-                  style={styles.input}
-                  value={instagramHandle}
-                  onChangeText={setInstagramHandle}
-                  placeholder="@yourbusiness"
-                  autoCapitalize="none"
-                />
+                <TextInput style={styles.input} value={instagramHandle} onChangeText={setInstagramHandle} placeholder="@yourbusiness" autoCapitalize="none" />
               </View>
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Website</Text>
-                <TextInput
-                  style={styles.input}
-                  value={websiteUrl}
-                  onChangeText={setWebsiteUrl}
-                  placeholder="www.yourbusiness.com"
-                  autoCapitalize="none"
-                />
+                <TextInput style={styles.input} value={websiteUrl} onChangeText={setWebsiteUrl} placeholder="www.yourbusiness.com" autoCapitalize="none" />
               </View>
 
               <TouchableOpacity
@@ -316,13 +310,38 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#0D1B2A' },
   headerButtonText: { fontSize: 15, color: '#8E8E93', fontWeight: '500' },
-  saveButtonText: { color: '#00B761', fontWeight: '700' },
+  saveText: { color: '#00B761', fontWeight: '700' },
   disabledText: { opacity: 0.5 },
   stateWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingTop: 20 },
   stateText: { color: '#64748B' },
   errorText: { color: '#C62828', paddingHorizontal: 20, paddingTop: 16 },
   scrollContainer: { flex: 1 },
   formContent: { paddingHorizontal: 20 },
+  avatarSection: { alignItems: 'center', marginTop: 24, marginBottom: 8 },
+  avatarContainer: { position: 'relative' },
+  avatarImage: { width: 100, height: 100, borderRadius: 50 },
+  avatarFallback: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#00B761',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: { fontSize: 40, fontWeight: 'bold', color: '#fff' },
+  cameraButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#00B761',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 3,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sectionHeader: {
     marginTop: 28,
     marginBottom: 18,

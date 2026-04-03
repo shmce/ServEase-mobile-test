@@ -1,7 +1,7 @@
-import { Injectable, Inject, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Inject, InternalServerErrorException, BadRequestException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { BOOKING_CLIENT, IDENTITY_CLIENT, CATALOG_CLIENT } from '../../database/supabase.module';
-import { CustomerDashboardResponseDto } from './dto/customer-dashboard.dto';
+import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
 
 @Injectable()
 export class CustomerService {
@@ -53,5 +53,20 @@ export class CustomerService {
         },
       };
     });
+  }
+
+  async updateProfile(userId: string, dto: UpdateCustomerProfileDto) {
+    const { data, error } = await this.identityDb
+      .from('customer_profiles')
+      .upsert({
+        user_id: userId,
+        ...dto,
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .maybeSingle();
+
+    if (error) throw new BadRequestException(error.message);
+    return { status: 'success', data };
   }
 }

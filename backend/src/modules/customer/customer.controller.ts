@@ -1,6 +1,8 @@
-import { Controller, Get, Param, ParseUUIDPipe, Version } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Version, Patch, Body, UseGuards, Req } from '@nestjs/common';
 import { CustomerService } from './customer.service';
 import { CustomerDashboardResponseDto } from './dto/customer-dashboard.dto';
+import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
+import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 
 @Controller('customer')
 export class CustomerController {
@@ -12,5 +14,12 @@ export class CustomerController {
         @Param('id', ParseUUIDPipe) customerId: string
     ): Promise<CustomerDashboardResponseDto[]> {
         return this.customerService.getDashboardData(customerId);
+    }
+
+    @Version('1')
+    @Patch('profile')
+    @UseGuards(SupabaseAuthGuard)
+    async updateProfile(@Req() req: any, @Body() body: UpdateCustomerProfileDto) {
+        return this.customerService.updateProfile(req.user.id, body);
     }
 }

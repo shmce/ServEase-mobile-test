@@ -1,6 +1,8 @@
-import { Controller, Query, Patch, Get, Post, Body, Param, UseInterceptors, UploadedFile, ParseUUIDPipe, Version } from '@nestjs/common';
+import { Controller, Query, Patch, Get, Post, Body, Param, UseInterceptors, UploadedFile, ParseUUIDPipe, Version, UseGuards, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ProviderService } from './provider.service';
+import { UpdateProviderProfileDto } from './dto/update-provider-profile.dto';
+import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 
 @Controller('provider')
 export class ProviderController {
@@ -109,6 +111,13 @@ export class ProviderController {
   @Patch(':userId/profile-draft')
   saveProviderProfileDraft(@Param('userId') userId: string, @Body() body: Record<string, any>) {
     return this.providerService.saveProviderProfileDraft(userId, body);
+  }
+
+  @Version('1')
+  @Patch('profile')
+  @UseGuards(SupabaseAuthGuard)
+  updateProfile(@Req() req: any, @Body() body: UpdateProviderProfileDto) {
+    return this.providerService.updateProfile(req.user.id, body);
   }
 
   @Version('1')
