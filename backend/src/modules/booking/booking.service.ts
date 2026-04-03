@@ -88,6 +88,16 @@ export class BookingService {
 
     if (bookingError) handleSupabaseError(bookingError, 'Booking');
 
+    // Auto-create conversation for this booking
+    await this.bookingDb.from('conversations').insert([{
+      booking_id: newBooking.id,
+      customer_id: customerId,
+      provider_id: dto.provider_id,
+      service_id: dto.service_id,
+      last_message_text: 'Booking created. Start a conversation.',
+      last_message_at: new Date().toISOString(),
+    }]).select().maybeSingle();
+
     // Create payment record
     await this.paymentDb.from('payments').insert([{
       booking_id: newBooking.id,

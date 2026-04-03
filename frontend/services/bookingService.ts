@@ -10,48 +10,18 @@ export const getCustomerBookings = async (customerId: string) => {
 
 
 export const createBooking = async (bookingData: any) => {
-  // Resolve service_id locally if not provided as UUID
-  const requestedServiceId = String(bookingData.service_id || '').trim();
-  const serviceTitle = String(bookingData.service_name || '').trim();
-  let providerId = bookingData.provider_id;
-  let serviceRow: any = null;
-
-  if (requestedServiceId) {
-    const { data } = await providerCatalogDb.from('provider_services').select('id,price,provider_id,title').eq('id', requestedServiceId).maybeSingle();
-    serviceRow = data;
-  }
-  if (!serviceRow && providerId) {
-    const { data } = await providerCatalogDb.from('provider_services').select('id,price,provider_id').eq('provider_id', providerId).eq('title', serviceTitle).limit(1).maybeSingle();
-    serviceRow = data;
-  }
-  if (!serviceRow) {
-    const { data } = await providerCatalogDb.from('provider_services').select('id,price,provider_id').eq('title', serviceTitle).limit(1).maybeSingle();
-    serviceRow = data;
-  }
-  if (!serviceRow?.id) throw new Error('Selected service is not available for this provider.');
-
-  providerId = providerId || serviceRow.provider_id;
-
-  // Build scheduled_at ISO string
-  const dateInput = String(bookingData.scheduled_date_key || bookingData.scheduled_date || '').trim();
-  const timeInput = String(bookingData.scheduled_time || '').trim();
-  const scheduledAt = parseScheduleLocal(dateInput, timeInput);
-  if (!scheduledAt) throw new Error('Invalid date/time selected.');
-
-  const pricingMode = bookingData.pricing_mode || 'hourly';
-  const hourlyRate = bookingData.hourly_rate;
-  const flatRate = bookingData.flat_rate;
-  const hoursRequired = bookingData.hours_required;
-
   const inserted = await api.post<any>('/booking/create', {
-    provider_id: providerId,
-    service_id: serviceRow.id,
+    provider_id: bookingData.provider_id,
+    service_id: bookingData.service_id,
     service_address: bookingData.service_address || bookingData.address || '',
-    scheduled_at: scheduledAt.toISOString(),
-    pricing_mode: pricingMode,
-    hourly_rate: hourlyRate,
-    flat_rate: flatRate,
-    hours_required: hoursRequired,
+    scheduled_at: parseScheduleLocal(
+      String(bookingData.scheduled_date_key || bookingData.scheduled_date || '').trim(),
+      String(bookingData.scheduled_time || '').trim()
+    )?.toISOString(),
+    pricing_mode: bookingData.pricing_mode || 'flat',
+    hourly_rate: bookingData.hourly_rate,
+    flat_rate: bookingData.flat_rate,
+    hours_required: bookingData.hours_required,
   });
 
   const booking = inserted.booking ?? inserted;

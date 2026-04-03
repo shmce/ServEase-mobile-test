@@ -324,6 +324,74 @@ export class ProviderService {
     return { charges: updatedCharges || [] };
   }
 
+  // ── Reviews ───────────────────────────────────────────────────────────────
+
+  async submitReview(input: {
+    booking_id: string;
+    reviewer_id: string;
+    reviewee_id: string;
+    rating: number;
+    review_text?: string;
+  }) {
+    if (input.rating < 1 || input.rating > 5) {
+      throw new BadRequestException('Rating must be between 1 and 5.');
+    }
+
+    const { data: booking } = await this.bookingDb
+      .from('bookings')
+      .select('id, status, customer_id, provider_id')
+      .eq('id', input.booking_id)
+      .maybeSingle();
+
+    if (!booking) throw new NotFoundException('Booking not found.');
+    if (booking.status !== 'completed') {
+      throw new BadRequestException('Reviews can only be submitted for completed bookings.');
+    }
+
+    const { data: existing } = await this.trustDb
+      .from('reviews')
+      .select('id')
+      .eq('booking_id', input.booking_id)
+      .eq('reviewer_id', input.reviewer_id)
+      .maybeSingle();
+
+    if (existing) throw new BadRequestException('You have already reviewed this booking.');
+
+    const { data: review, error } = await this.trustDb
+      .from('reviews')
+      .insert([{
+        booking_id: input.booking_id,
+        reviewer_id: input.reviewer_id,
+        reviewee_id: input.reviewee_id,
+        rating: input.rating,
+        review_text: input.review_text || null,
+      }])
+      .select('*')
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+
+    const { data: allReviews } = await this.trustDb
+      .from('reviews')
+      .select('rating')
+      .eq('reviewee_id', input.reviewee_id);
+
+    const total = (allReviews || []).length;
+    const average = total
+      ? (allReviews || []).reduce((sum: number, r: any) => sum + Number(r.rating), 0) / total
+      : input.rating;
+
+    await this.catalogDb
+      .from('provider_profiles')
+      .update({
+        average_rating: Math.round(average * 10) / 10,
+        total_reviews: total,
+      })
+      .eq('user_id', input.reviewee_id);
+
+    return { message: 'Review submitted successfully.', review };
+  }
+
   // ── Provider Profile Draft ────────────────────────────────────────────────
 
   async getProviderProfileDraft(userId: string) {

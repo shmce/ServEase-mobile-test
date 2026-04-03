@@ -111,6 +111,20 @@ export class ProviderController {
     return this.providerService.saveProviderProfileDraft(userId, body);
   }
 
+  @Version('1')
+  @Post('reviews')
+  submitReview(
+    @Body() body: {
+      booking_id: string;
+      reviewer_id: string;
+      reviewee_id: string;
+      rating: number;
+      review_text?: string;
+    }
+  ) {
+    return this.providerService.submitReview(body);
+  }
+
   // ── Generic profile (must be LAST to avoid shadowing specific routes) ─────
 
   @Version('1')

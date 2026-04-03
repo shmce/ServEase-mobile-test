@@ -1,5 +1,6 @@
 import { bookingDb, trustDb, providerCatalogDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
+import { api } from '../lib/apiClient';
 
 const formatDbError = (error: any, fallback: string) => {
   const base = getErrorMessage(error, fallback);
@@ -144,4 +145,14 @@ export const submitProviderProfileReport = async (input: {
   }
 
   return data;
+};
+
+export const submitProviderReview = async (input: {
+  booking_id: string;
+  reviewer_id: string;
+  reviewee_id: string;
+  rating: number;
+  review_text?: string;
+}) => {
+  return api.post('/provider/reviews', input);
 };
