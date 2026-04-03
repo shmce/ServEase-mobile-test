@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Storage } from './storage';
 
 export type NotificationRole = 'customer' | 'provider';
 
@@ -46,21 +46,13 @@ const defaultProviderPreferences: ProviderNotificationPreferences = {
 };
 
 const readJson = async <T>(key: string, fallback: T): Promise<T> => {
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    if (!raw) return fallback;
-    return { ...fallback, ...JSON.parse(raw) } as T;
-  } catch {
-    return fallback;
-  }
+  const data = await Storage.getJson<T>(key);
+  if (!data) return fallback;
+  return { ...fallback, ...data };
 };
 
 const writeJson = async <T>(key: string, value: T) => {
-  try {
-    await AsyncStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Keep UI responsive even if local persistence is unavailable.
-  }
+  await Storage.setJson(key, value);
 };
 
 export const loadCustomerNotificationPreferences = async (userId: string) =>

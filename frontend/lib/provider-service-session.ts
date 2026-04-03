@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Storage } from './storage';
 
 const STORAGE_PREFIX = 'provider-service-session:';
 
@@ -13,15 +13,7 @@ export type ProviderServiceSession = {
 const keyForBooking = (bookingId: string) => `${STORAGE_PREFIX}${bookingId}`;
 
 export const getProviderServiceSession = async (bookingId: string) => {
-  const raw = await AsyncStorage.getItem(keyForBooking(bookingId));
-  if (!raw) return null;
-
-  try {
-    return JSON.parse(raw) as ProviderServiceSession;
-  } catch {
-    await AsyncStorage.removeItem(keyForBooking(bookingId));
-    return null;
-  }
+  return await Storage.getJson<ProviderServiceSession>(keyForBooking(bookingId));
 };
 
 export const startProviderServiceSession = async (bookingId: string, providerId: string) => {
@@ -36,7 +28,7 @@ export const startProviderServiceSession = async (bookingId: string, providerId:
     totalPausedMs: 0,
   };
 
-  await AsyncStorage.setItem(keyForBooking(bookingId), JSON.stringify(session));
+  await Storage.setJson(keyForBooking(bookingId), session);
   return session;
 };
 
@@ -61,12 +53,12 @@ export const setProviderServiceSessionPaused = async (bookingId: string, paused:
     };
   }
 
-  await AsyncStorage.setItem(keyForBooking(bookingId), JSON.stringify(next));
+  await Storage.setJson(keyForBooking(bookingId), next);
   return next;
 };
 
 export const clearProviderServiceSession = async (bookingId: string) => {
-  await AsyncStorage.removeItem(keyForBooking(bookingId));
+  await Storage.removeItem(keyForBooking(bookingId));
 };
 
 export const getProviderServiceElapsedSeconds = (

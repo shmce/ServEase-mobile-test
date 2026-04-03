@@ -1,8 +1,8 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSyncExternalStore } from 'react';
 import { supabase, identityDb } from './db';
 import { useAuth } from '../hooks/useAuth';
 import { getErrorMessage } from './error-handling';
+import { Storage } from './storage';
 
 export type CustomerProfile = {
   fullName: string;
@@ -53,9 +53,7 @@ async function loadPendingDraft() {
   hasLoadedDraft = true;
 
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as PendingCustomerDraft;
+    const parsed = await Storage.getJson<PendingCustomerDraft>(STORAGE_KEY);
     if (parsed?.email && parsed?.profile) {
       snapshot = { pendingCustomer: parsed };
     }
@@ -66,12 +64,12 @@ async function loadPendingDraft() {
 
 async function persistPendingDraft(nextDraft: PendingCustomerDraft | null) {
   if (!nextDraft) {
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    await Storage.removeItem(STORAGE_KEY);
     setSnapshot({ pendingCustomer: null });
     return;
   }
 
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextDraft));
+  await Storage.setJson(STORAGE_KEY, nextDraft);
   setSnapshot({ pendingCustomer: nextDraft });
 }
 

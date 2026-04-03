@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Storage } from '../lib/storage';
 import { providerCatalogDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
 
@@ -112,22 +112,11 @@ export const assessProviderVerification = (
 };
 
 const readLocalDraft = async (userId: string) => {
-  try {
-    const raw = await AsyncStorage.getItem(getStorageKey(userId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<ProviderVerificationDraft>;
-    return parsed;
-  } catch {
-    return null;
-  }
+  return await Storage.getJson<Partial<ProviderVerificationDraft>>(getStorageKey(userId));
 };
 
 const writeLocalDraft = async (userId: string, draft: ProviderVerificationDraft) => {
-  try {
-    await AsyncStorage.setItem(getStorageKey(userId), JSON.stringify(draft));
-  } catch {
-    // Ignore cache failures so the flow still works with remote state.
-  }
+  await Storage.setJson(getStorageKey(userId), draft);
 };
 
 export const getProviderVerificationDraft = async (userId: string) => {
