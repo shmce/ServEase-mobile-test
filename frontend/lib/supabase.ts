@@ -1,5 +1,5 @@
 import 'react-native-url-polyfill/auto';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
@@ -7,59 +7,42 @@ import { Platform } from 'react-native';
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://strtoeeidqnsmbszhjhe.supabase.co';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN0cnRvZWVpZHFuc21ic3poamhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzNTc2MzksImV4cCI6MjA4OTkzMzYzOX0.nlyLYzTvpw1bUZy8hdK4WDmdsbr86vAcaINAQ8wvPoE';
 
-// SSR-safe storage wrapper for Web and resilient fallback for Expo Go/native module issues.
+// SecureStore has a 2048-byte limit per key. We use a memory store as a fallback for SSR or restricted environments.
 const isWebSSR = Platform.OS === 'web' && (typeof window === 'undefined' || !window.localStorage);
 const memoryStore = new Map<string, string>();
 
-const hasAsyncStorage =
-  !!AsyncStorage &&
-  typeof (AsyncStorage as any).getItem === 'function' &&
-  typeof (AsyncStorage as any).setItem === 'function' &&
-  typeof (AsyncStorage as any).removeItem === 'function';
-
-const readMemory = (key: string) => Promise.resolve(memoryStore.get(key) ?? null);
-const writeMemory = (key: string, value: string) => {
-  memoryStore.set(key, value);
-  return Promise.resolve();
-};
-const removeMemory = (key: string) => {
-  memoryStore.delete(key);
-  return Promise.resolve();
-};
-
-const customStorage = {
+const SecureStoreAdapter = {
   getItem: async (key: string) => {
     if (isWebSSR) return Promise.resolve(null);
-    if (!hasAsyncStorage) return readMemory(key);
     try {
-      return await AsyncStorage.getItem(key);
+      return await SecureStore.getItemAsync(key);
     } catch {
-      return readMemory(key);
+      return memoryStore.get(key) || null;
     }
   },
   setItem: async (key: string, value: string) => {
     if (isWebSSR) return Promise.resolve();
-    if (!hasAsyncStorage) return writeMemory(key, value);
+    
+    // SecureStore Limit (2048 bytes). Most sessions fit, but we fallback if it fails.
     try {
-      return await AsyncStorage.setItem(key, value);
-    } catch {
-      return writeMemory(key, value);
+      await SecureStore.setItemAsync(key, value);
+    } catch (err) {
+      memoryStore.set(key, value);
     }
   },
   removeItem: async (key: string) => {
     if (isWebSSR) return Promise.resolve();
-    if (!hasAsyncStorage) return removeMemory(key);
     try {
-      return await AsyncStorage.removeItem(key);
+      await SecureStore.deleteItemAsync(key);
     } catch {
-      return removeMemory(key);
+      memoryStore.delete(key);
     }
   },
 };
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: customStorage,
+    storage: SecureStoreAdapter,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
