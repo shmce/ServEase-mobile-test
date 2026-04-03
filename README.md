@@ -4,63 +4,75 @@ ServEase is a comprehensive platform for on-demand services in the Philippines, 
 
 ## 📂 Repository Structure
 
-This workspace is a monorepo containing the following sub-projects:
+This workspace is a monorepo organized into specialized directories:
 
 | Directory | Component | Technology Stack |
 | :--- | :--- | :--- |
-| [`ServEase-BE-API-main/`](./ServEase-BE-API-main) | **Backend API** | NestJS, TypeScript, Supabase (Service Role) |
-| [`ServEase-mobile-test-expov3/`](./ServEase-mobile-test-expov3) | **Mobile App** | Expo, React Native, Supabase, Expo Router |
+| [`backend/`](./backend) | **NestJS API** | NestJS, TypeScript, Supabase (Service Role) |
+| [`frontend/`](./frontend) | **Mobile App** | Expo, React Native, Supabase, Expo Router |
 
 ## 🚀 Getting Started
 
 ### 1. Backend Setup
 The backend is a NestJS API that communicates with the Supabase microservice schemas.
 ```bash
-cd ServEase-BE-API-main
+cd backend
 npm install
 npm run start:dev  # Runs on http://localhost:3001
 ```
 
 ### 2. Backend Connectivity (ngrok)
-To allow the mobile app to talk to the local backend:
+To allow the mobile app to talk to the local backend during development:
 1. Run `ngrok http 3001`.
 2. Copy the forwarding URL.
-3. Update `EXPO_PUBLIC_API_URL` in `ServEase-mobile-test-expov3/.env`.
+3. Update `EXPO_PUBLIC_API_URL` in `frontend/.env`.
 
 ### 3. Mobile Frontend Setup
 The mobile app uses Expo Router and a feature-based architecture.
 ```bash
-cd ServEase-mobile-test-expov3
+cd frontend
 npm install
 npx expo start     # Runs via Expo / Metro Bundler
 ```
 
 ---
 
-## 🛠 Architectural Highlights
+## 🔥 Key Features & Recent Updates
 
-### Mobile Feature-Based Architecture
-We have recently refactored the mobile app to follow a **Feature-Based Module** approach:
-- **`app/`**: Contains only "Thin Routes" (Expo Router entry points).
-- **`src/features/`**: Contains the core business logic, organized by domain (Auth, Bookings, etc.).
-- **`src/components/common/`**: A standardized UI library (`AppButton`, `AppTextInput`, `AppPressable`) driven by Design Tokens.
+### 📍 Smart Location & Address Management
+We have integrated a robust, Philippines-specific location system:
+- **PSGC v2 API Integration**: Hierarchical fetching of Provinces, Cities, and Barangays to ensure data accuracy and minimal payload size.
+- **Manila City Specialized Handling**: Implemented custom regional filtering to handle Manila's unique district-based PSGC structure.
+- **Unified Address System**: A shared `AddressForm` component used across Onboarding, Add Address, and Edit Address flows.
+- **Expanded Schema**: Added `label`, `is_default`, and `barangay` columns to the `user_addresses` table in the `identity_svc` schema.
 
-### Database Schema (Microservices)
-The project utilizes a microservice-inspired schema design in Supabase:
-- `identity_svc`: User profiles and authentication metadata.
-- `provider_catalog_svc`: Service categories, provider profiles, and verifications.
-- `booking_svc`: Real-time bookings, chat messages, and availability.
-- `payment_svc`: Transactions and provider payouts.
-- `trust_svc`: Reviews and trust scores.
+### 🛡️ Provider Verification & Trust
+- **Enhanced Onboarding**: A step-aware signup process for providers, including secure ID verification.
+- **ID Type Selection**: Support for standard Philippine IDs (PhilID, Driver's License, UMID, Passport) with specific validation flows.
 
 ---
 
-## 📄 Documentation & Handover
-For detailed technical notes on the recent refactor and current development status, please refer to:
-- **[Microservices Architecture](./docs/architecture/microservices-data-map.md)**: Detailed mapping of schemas and tables.
-- **[SQL Migration Inventory](./docs/supabase/migration-inventory.md)**: Tracking of schema changes and migrations.
-- **[PROJECT_HANDOVER.md](./ServEase-mobile-test-expov3/docs/PROJECT_HANDOVER.md)**: Vital for new developers.
-- **[CLAUDE.md](./CLAUDE.md)**: Developer guide for build commands and environment settings.
+## 🛠 Architectural Highlights
+
+### Mobile Feature-Based Architecture
+The mobile app follows a **Feature-Based Module** approach to ensure scalability:
+- **`app/`**: Thin Routes (Expo Router entry points).
+- **`src/features/`**: Core business logic organized by domain (Auth, Booking, Locations).
+- **`src/components/common/`**: Standardized UI library driven by design tokens.
+
+### Database Schema (Microservices)
+The project utilizes a microservice-inspired schema design in Supabase:
+- `identity_svc`: User profiles and address management.
+- `provider_catalog_svc`: Service categories, provider profiles, and internal location metadata.
+- `booking_svc`: Real-time bookings and scheduling.
+- `payment_svc`: Transactions and payouts.
+- `trust_svc`: Reviews, ratings, and verification status.
+
+---
+
+## 📄 Documentation
+- **[PROJECT_HANDOVER.md](./frontend/docs/PROJECT_HANDOVER.md)**: Vital for new developers.
+- **[SQL Schema](./frontend/supabase/addresses_schema.sql)**: Latest address management schema definition.
 
 ---
 *Developed for the ServEase platform.*
