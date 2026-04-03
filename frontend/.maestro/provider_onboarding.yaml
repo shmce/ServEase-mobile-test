@@ -1,0 +1,22 @@
+appId: com.serverse.app
+---
+- launchApp
+- tapOn: "Sign up to ServEase"
+- tapOn: "Service Provider"
+- assertVisible: "Provider Registration"
+- tapOn: "Full Name"
+- inputText: "Test Provider"
+- tapOn: "Email"
+- inputText: "newprovider@example.com"
+- tapOn: "Contact Number"
+- inputText: "09123456789"
+- tapOn: "Password"
+- inputText: "Password123!"
+- tapOn: "Next"
+- assertVisible: "Business Details"
+- tapOn: "Business Name"
+- inputText: "Test Services Inc"
+- tapOn: "Register"
+- assertVisible: "Verification Required"
+- tapOn: "Upload Document"
+- assertVisible: "Select Document Type"

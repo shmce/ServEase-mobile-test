@@ -1,0 +1,10 @@
+appId: com.serverse.app
+---
+- launchApp
+- tapOn: "Manage Addresses"
+- assertVisible: "Manage Addresses"
+- tapOn: "Add New Address"
+- assertVisible: "Add Address"
+- back
+- tapOn: "Edit"
+- assertVisible: "Edit Address"

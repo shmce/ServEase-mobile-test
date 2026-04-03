@@ -1,0 +1,13 @@
+appId: com.serverse.app
+---
+- launchApp
+- tapOn:
+    id: "checkbox" # I need to verify if it has an id, or use descriptive tap
+- tapOn: "Log In"
+- assertVisible: "Welcome!"
+- tapOn: "Email Address"
+- inputText: "test@example.com"
+- tapOn: "Password"
+- inputText: "password123"
+- tapOn: "Login"
+- assertVisible: "Manage Addresses"
