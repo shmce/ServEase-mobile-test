@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-const isWebSSR = Platform.OS === 'web' && (globalThis.window === undefined || !globalThis.window?.localStorage);
+const isWebSSR = Platform.OS === 'web' && !globalThis.window?.localStorage;
 const memoryStore = new Map<string, string>();
 
 /**
@@ -15,7 +15,7 @@ export const Storage = {
     try {
       return await SecureStore.getItemAsync(key);
     } catch {
-      return memoryStore.get(key) || null;
+      return memoryStore.get(key) ?? null;
     }
   },
   

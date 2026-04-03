@@ -65,7 +65,7 @@ const normalizeStatus = (statusRaw?: string | null): VerificationStatus => {
   return 'not_started';
 };
 
-export const formatVerificationStatusLabel = (statusRaw: VerificationStatus | string) => {
+export const formatVerificationStatusLabel = (statusRaw: string | null | undefined) => {
   const status = normalizeStatus(statusRaw);
   if (status === 'approved') return 'Approved';
   if (status === 'rejected') return 'Needs attention';
@@ -81,34 +81,41 @@ export const formatVerificationLevelLabel = (level: VerificationLevel) => {
   return 'Unverified';
 };
 
+const calculateVerificationScore = (draft: Partial<ProviderVerificationDraft>): number => {
+  let score = 0;
+  if (draft.governmentIdType && draft.governmentIdNumber) score += 20;
+  if (draft.nbiClearanceNumber) score += 20;
+  if (draft.prcLicenseNumber) score += 10;
+  if (draft.businessPermitNumber) score += 10;
+  if (draft.tinNumber) score += 10;
+  if ((draft.serviceAreas || []).length > 0) score += 5;
+  if ((draft.languages || []).length > 0) score += 5;
+  if (draft.yearsExperience) score += 8;
+  if (draft.portfolioSummary) score += 5;
+  if (draft.referenceContacts) score += 5;
+  if (draft.proofOfAddressNotes) score += 2;
+  if (draft.hasInsurance) score += 5;
+  return score;
+};
+
+const determineVerificationLevel = (draft: Partial<ProviderVerificationDraft>): VerificationLevel => {
+  const hasBasic = Boolean(draft.governmentIdType && draft.governmentIdNumber && draft.nbiClearanceNumber);
+  const hasFull = hasBasic && Boolean(draft.businessPermitNumber && draft.tinNumber);
+  const hasPremium = hasFull && Boolean(draft.hasInsurance && draft.portfolioSummary);
+
+  if (hasPremium) return 'premium_verified';
+  if (hasFull) return 'fully_verified';
+  if (hasBasic) return 'basic_verified';
+  return 'unverified';
+};
+
 export const assessProviderVerification = (
   draftInput: Partial<ProviderVerificationDraft>
 ): Pick<ProviderVerificationDraft, 'score' | 'verificationLevel'> => {
-  let score = 0;
-
-  if (draftInput.governmentIdType && draftInput.governmentIdNumber) score += 20;
-  if (draftInput.nbiClearanceNumber) score += 20;
-  if (draftInput.prcLicenseNumber) score += 10;
-  if (draftInput.businessPermitNumber) score += 10;
-  if (draftInput.tinNumber) score += 10;
-  if ((draftInput.serviceAreas || []).length > 0) score += 5;
-  if ((draftInput.languages || []).length > 0) score += 5;
-  if (draftInput.yearsExperience) score += 8;
-  if (draftInput.portfolioSummary) score += 5;
-  if (draftInput.referenceContacts) score += 5;
-  if (draftInput.proofOfAddressNotes) score += 2;
-  if (draftInput.hasInsurance) score += 5;
-
-  let verificationLevel: VerificationLevel = 'unverified';
-  const hasBasic = Boolean(draftInput.governmentIdType && draftInput.governmentIdNumber && draftInput.nbiClearanceNumber);
-  const hasFull = hasBasic && Boolean(draftInput.businessPermitNumber && draftInput.tinNumber);
-  const hasPremium = hasFull && Boolean(draftInput.hasInsurance && draftInput.portfolioSummary);
-
-  if (hasPremium) verificationLevel = 'premium_verified';
-  else if (hasFull) verificationLevel = 'fully_verified';
-  else if (hasBasic) verificationLevel = 'basic_verified';
-
-  return { score, verificationLevel };
+  return {
+    score: calculateVerificationScore(draftInput),
+    verificationLevel: determineVerificationLevel(draftInput),
+  };
 };
 
 const readLocalDraft = async (userId: string) => {
@@ -191,7 +198,11 @@ export const saveProviderVerificationDraft = async (
     portfolioSummary: String(input.portfolioSummary ?? existing.portfolioSummary).trim(),
     referenceContacts: String(input.referenceContacts ?? existing.referenceContacts).trim(),
     hasInsurance: Boolean(input.hasInsurance ?? existing.hasInsurance),
-    status: options?.submit ? 'submitted' : existing.status === 'not_started' ? 'draft' : existing.status,
+    status: options?.submit
+      ? 'submitted'
+      : existing.status === 'not_started'
+      ? 'draft'
+      : existing.status,
     submittedAt: options?.submit ? now : existing.submittedAt,
     lastUpdatedAt: now,
     score: 0,
