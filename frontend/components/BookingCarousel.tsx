@@ -90,15 +90,15 @@ export const BookingCarousel = ({ bookings, chatSummaryMap, onPress }: BookingCa
 
   return (
     <View style={styles.container}>
-      <FlatList
+      <FlatList<BookingItem>
         data={bookings}
         horizontal
         showsHorizontalScrollIndicator={false}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item: BookingItem) => item.id}
         snapToInterval={CARD_WIDTH + 16}
         decelerationRate="fast"
         contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
+        renderItem={({ item }: { item: BookingItem }) => (
           <BookingCarouselCard
             item={item}
             chatSummary={chatSummaryMap.get(item.id)}

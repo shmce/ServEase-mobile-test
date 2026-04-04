@@ -5,7 +5,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  SafeAreaView,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
@@ -13,12 +12,12 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/apiClient';
-import { identityDb } from '@/lib/db';
 import { getErrorMessage } from '@/lib/error-handling';
 import { getAvatarUrl, pickAndUploadAvatar } from '@/lib/avatar';
 
@@ -44,25 +43,16 @@ export default function CustomerEditProfileScreen() {
 
     async function loadProfile() {
       try {
-        // Fetch base user data
-        const { data: userData } = await identityDb
-          .from('users')
-          .select('*')
-          .eq('id', user!.id)
-          .single();
-          
+        const [userData, profileData] = await Promise.all([
+          api.get<any>('/users/profile'),
+          api.get<any>('/customer/profile'),
+        ]);
+        
         if (userData) {
           setFullName(userData.full_name || '');
           setPhone(userData.contact_number || '');
         }
-
-        // Fetch customer profile (for the address)
-        const { data: profileData } = await identityDb
-          .from('customer_profiles')
-          .select('*')
-          .eq('user_id', user!.id)
-          .single();
-          
+        
         if (profileData) {
           setAddress(profileData.address || '');
         }
@@ -117,6 +107,119 @@ export default function CustomerEditProfileScreen() {
     }
   };
 
+  const renderContent = () => {
+    if (isLoading) {
+      return <ActivityIndicator size="large" color="#00C853" style={{ marginTop: 40 }} />;
+    }
+
+    if (!user) {
+      return (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyStateTitle}>Login Required</Text>
+          <Text style={styles.emptyStateText}>Please sign in before editing your profile.</Text>
+          <TouchableOpacity style={styles.saveButton} onPress={() => router.replace('/customer-login' as any)}>
+            <Text style={styles.saveButtonText}>Go To Login</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <>
+        {/* Profile Picture */}
+        <View style={styles.avatarSection}>
+          <View style={styles.avatarContainer}>
+            {avatarUri ? (
+              <Image
+                source={{ uri: avatarUri }}
+                style={styles.avatar}
+                onError={() => setAvatarUri(null)}
+              />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarInitial}>{fullName.charAt(0).toUpperCase() || 'U'}</Text>
+              </View>
+            )}
+            <TouchableOpacity style={styles.cameraButton} onPress={handlePickAvatar}>
+              <Ionicons name="camera" size={16} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Form Fields */}
+        <View style={styles.form}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Full Name</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="Enter your full name"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Email Address (Read-Only)</Text>
+            <View style={[styles.inputWrapper, { backgroundColor: '#F0F0F0' }]}>
+              <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                value={email}
+                editable={false}
+                placeholder="Enter your email"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Phone Number</Text>
+            <View style={styles.inputWrapper}>
+              <Ionicons name="call-outline" size={20} color="#999" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="Enter your phone number"
+                keyboardType="phone-pad"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Address</Text>
+            <View style={[styles.inputWrapper, { alignItems: 'flex-start', paddingTop: 12 }]}>
+              <Ionicons name="location-outline" size={20} color="#999" style={[styles.inputIcon, { marginTop: 2 }]} />
+              <TextInput
+                style={[styles.input, { height: 'auto', textAlignVertical: 'top' }]}
+                value={address}
+                onChangeText={setAddress}
+                placeholder="Enter your address"
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.saveButton, (!isSaveEnabled || isSaving) && styles.saveButtonDisabled]}
+            onPress={handleSave}
+            disabled={!isSaveEnabled || isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save Changes</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
@@ -137,110 +240,7 @@ export default function CustomerEditProfileScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-          {isLoading ? (
-            <ActivityIndicator size="large" color="#00C853" style={{ marginTop: 40 }} />
-          ) : !user ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateTitle}>Login Required</Text>
-              <Text style={styles.emptyStateText}>Please sign in before editing your profile.</Text>
-              <TouchableOpacity style={styles.saveButton} onPress={() => router.replace('/customer-login' as any)}>
-                <Text style={styles.saveButtonText}>Go To Login</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              {/* Profile Picture */}
-              <View style={styles.avatarSection}>
-                <View style={styles.avatarContainer}>
-                  {avatarUri ? (
-                    <Image
-                      source={{ uri: avatarUri }}
-                      style={styles.avatar}
-                      onError={() => setAvatarUri(null)}
-                    />
-                  ) : (
-                    <View style={styles.avatar}>
-                      <Text style={styles.avatarInitial}>{fullName.charAt(0).toUpperCase() || 'U'}</Text>
-                    </View>
-                  )}
-                  <TouchableOpacity style={styles.cameraButton} onPress={handlePickAvatar}>
-                    <Ionicons name="camera" size={16} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Form Fields */}
-              <View style={styles.form}>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Full Name</Text>
-                  <View style={styles.inputWrapper}>
-                    <TextInput
-                      style={styles.input}
-                      value={fullName}
-                      onChangeText={setFullName}
-                      placeholder="Enter your full name"
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Email Address (Read-Only)</Text>
-                  <View style={[styles.inputWrapper, { backgroundColor: '#F0F0F0' }]}>
-                    <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      value={email}
-                      editable={false}
-                      placeholder="Enter your email"
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Phone Number</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="call-outline" size={20} color="#999" style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      value={phone}
-                      onChangeText={setPhone}
-                      placeholder="Enter your phone number"
-                      keyboardType="phone-pad"
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Address</Text>
-                  <View style={[styles.inputWrapper, { alignItems: 'flex-start', paddingTop: 12 }]}>
-                    <Ionicons name="location-outline" size={20} color="#999" style={[styles.inputIcon, { marginTop: 2 }]} />
-                    <TextInput
-                      style={[styles.input, { height: 'auto', textAlignVertical: 'top' }]}
-                      value={address}
-                      onChangeText={setAddress}
-                      placeholder="Enter your address"
-                      multiline
-                      numberOfLines={3}
-                    />
-                  </View>
-                </View>
-
-                <TouchableOpacity
-                  style={[styles.saveButton, (!isSaveEnabled || isSaving) && styles.saveButtonDisabled]}
-                  onPress={handleSave}
-                  disabled={!isSaveEnabled || isSaving}
-                >
-                  {isSaving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.saveButtonText}>Save Changes</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
+          {renderContent()}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -252,6 +252,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
+  safeArea: { flex: 1, backgroundColor: '#FFF' },
+  scrollContainer: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -5,11 +5,10 @@ import {
   Text, 
   ScrollView, 
   TouchableOpacity, 
-  SafeAreaView, 
   ActivityIndicator,
-  TextInput,
   Dimensions
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -54,16 +53,12 @@ export default function HomeScreen() {
     setIsLoading(true);
     setError('');
     try {
-      const [categoryRows, bookingRows] = await Promise.all([
+      const [, bookingRows] = await Promise.all([
         getServiceCategories(),
         user ? getCustomerBookings(user.id) : Promise.resolve([]),
       ]);
 
-      const hasKnownTopLevelCategories = (categoryRows || []).some((row: any) =>
-        TOP_LEVEL_CATEGORY_ITEMS.some((item) => item.name.toLowerCase() === String(row?.name || '').toLowerCase())
-      );
-
-      setCategories(hasKnownTopLevelCategories ? TOP_LEVEL_CATEGORY_ITEMS : TOP_LEVEL_CATEGORY_ITEMS);
+      setCategories(TOP_LEVEL_CATEGORY_ITEMS);
       setRecentBookings((bookingRows || []).slice(0, 5));
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to load home data.'));
@@ -98,7 +93,7 @@ export default function HomeScreen() {
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(channel);
+      supabase.removeChannel(channel);
     };
   }, [loadHomeData, user?.id]);
 

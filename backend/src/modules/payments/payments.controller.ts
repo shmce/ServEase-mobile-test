@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Patch, Body, Param, Version } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  Param,
+  Version,
+} from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 
@@ -38,13 +46,31 @@ export class PaymentsController {
 
   @Version('1')
   @Post('booking/ensure')
-  ensureBookingPayment(@Body() body: { bookingId: string; customerId: string; providerId: string; amount: number; method?: string }) {
+  ensureBookingPayment(
+    @Body()
+    body: {
+      bookingId: string;
+      customerId: string;
+      providerId: string;
+      amount: number;
+      method?: string;
+    },
+  ) {
     return this.paymentsService.ensureBookingPayment(body);
   }
 
   @Version('1')
   @Patch('booking/mark-paid')
-  markBookingPaymentPaid(@Body() body: { bookingId: string; amount?: number; customerId?: string; providerId?: string; method?: string }) {
+  markBookingPaymentPaid(
+    @Body()
+    body: {
+      bookingId: string;
+      amount?: number;
+      customerId?: string;
+      providerId?: string;
+      method?: string;
+    },
+  ) {
     return this.paymentsService.markBookingPaymentPaid(body);
   }
 
@@ -56,8 +82,13 @@ export class PaymentsController {
 
   @Version('1')
   @Patch('booking/:bookingId/amount')
-  updateBookingPaymentAmount(@Param('bookingId') bookingId: string, @Body() body: { amount: number }) {
-    return this.paymentsService.updateBookingPaymentAmount(bookingId, body.amount);
+  updateBookingPaymentAmount(
+    @Param('bookingId') bookingId: string,
+    @Body() body: { amount: number },
+  ) {
+    return this.paymentsService.updateBookingPaymentAmount(
+      bookingId,
+      body.amount,
+    );
   }
 }
-

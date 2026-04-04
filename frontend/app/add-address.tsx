@@ -2,10 +2,9 @@ import React, { useState } from 'react';
 import { 
   StyleSheet, 
   View, 
-  Text, 
-  ScrollView, 
-  TouchableOpacity, 
-  SafeAreaView, 
+  Text,
+  ScrollView,
+  TouchableOpacity,
   StatusBar, 
   TextInput,
   Alert,
@@ -13,6 +12,7 @@ import {
   KeyboardAvoidingView,
   ActivityIndicator
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
@@ -70,8 +70,10 @@ export default function AddAddressScreen() {
             }),
           },
         });
+      } else if (router.canGoBack?.()) {
+        router.back();
       } else {
-        if (router.canGoBack?.()) router.back(); else router.replace('/' as any);
+        router.replace('/' as any);
       }
     } catch (error: any) {
       Alert.alert('Error', getErrorMessage(error, 'Failed to save address.'));

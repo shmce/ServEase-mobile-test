@@ -5,11 +5,11 @@ import {
   Text, 
   ScrollView, 
   TouchableOpacity, 
-  SafeAreaView, 
   ActivityIndicator, 
   Dimensions, 
   Animated 
 } from 'react-native';
+import { SafeAreaView as SafeAreaViewContext } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -97,7 +97,7 @@ export default function CategoryDetailsScreen() {
     <View style={styles.container}>
       <StatusBar style="dark" />
       <View style={styles.header}>
-        <SafeAreaView>
+        <SafeAreaViewContext>
           <View style={styles.headerContent}>
             <TouchableOpacity 
               onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} 
@@ -114,7 +114,7 @@ export default function CategoryDetailsScreen() {
               </Text>
             </View>
           </View>
-        </SafeAreaView>
+        </SafeAreaViewContext>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>

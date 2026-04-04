@@ -1,7 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BookingService } from './booking.service';
 import { SupabaseClient } from '@supabase/supabase-js';
-import { BOOKING_CLIENT, IDENTITY_CLIENT, CATALOG_CLIENT, PAYMENT_CLIENT } from '../../database/supabase.module';
+import {
+  BOOKING_CLIENT,
+  IDENTITY_CLIENT,
+  CATALOG_CLIENT,
+  PAYMENT_CLIENT,
+} from '../../database/supabase.module';
 import { BadRequestException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BOOKING_EVENTS } from './events/booking.events';
@@ -67,23 +72,34 @@ describe('BookingService', () => {
       (identityDb.from as jest.Mock).mockReturnValueOnce({
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: { role: 'provider', status: 'active' }, error: null }),
+        single: jest.fn().mockResolvedValue({
+          data: { role: 'provider', status: 'active' },
+          error: null,
+        }),
       });
 
       // Mock catalog profile check
       (catalogDb.from as jest.Mock).mockReturnValueOnce({
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: { verification_status: 'approved' }, error: null }),
+        single: jest.fn().mockResolvedValue({
+          data: { verification_status: 'approved' },
+          error: null,
+        }),
       });
 
       // Mock service check
       (catalogDb.from as jest.Mock).mockReturnValueOnce({
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ 
-          data: { id: 'service-456', provider_id: 'provider-123', supports_flat: true, flat_rate: 500 }, 
-          error: null 
+        single: jest.fn().mockResolvedValue({
+          data: {
+            id: 'service-456',
+            provider_id: 'provider-123',
+            supports_flat: true,
+            flat_rate: 500,
+          },
+          error: null,
         }),
       });
 
@@ -91,27 +107,43 @@ describe('BookingService', () => {
       (bookingDb.from as jest.Mock).mockReturnValueOnce({
         insert: jest.fn().mockReturnThis(),
         select: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ 
-          data: { id: 'bkg-1', booking_reference: 'BKG-123', status: 'pending', total_amount: 500 }, 
-          error: null 
+        single: jest.fn().mockResolvedValue({
+          data: {
+            id: 'bkg-1',
+            booking_reference: 'BKG-123',
+            status: 'pending',
+            total_amount: 500,
+          },
+          error: null,
         }),
       });
 
-      const result = await service.createBooking(mockDto as any, 'customer-789');
+      const result = await service.createBooking(
+        mockDto as any,
+        'customer-789',
+      );
 
       expect(result.message).toBe('Booking created successfully.');
       expect(result.booking.total_amount).toBe(500);
-      expect(eventEmitter.emit).toHaveBeenCalledWith(BOOKING_EVENTS.CREATED, expect.any(Object));
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        BOOKING_EVENTS.CREATED,
+        expect.any(Object),
+      );
     });
 
     it('should throw BadRequestException if provider is not verified', async () => {
       (identityDb.from as jest.Mock).mockReturnValueOnce({
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: { role: 'provider', status: 'pending' }, error: null }),
+        single: jest.fn().mockResolvedValue({
+          data: { role: 'provider', status: 'pending' },
+          error: null,
+        }),
       });
 
-      await expect(service.createBooking(mockDto as any, 'customer-789')).rejects.toThrow(BadRequestException);
+      await expect(
+        service.createBooking(mockDto as any, 'customer-789'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -124,10 +156,18 @@ describe('BookingService', () => {
         update: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
         select: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockResolvedValue({ data: { id: bookingId, status: 'cancelled' }, error: null }),
+        maybeSingle: jest.fn().mockResolvedValue({
+          data: { id: bookingId, status: 'cancelled' },
+          error: null,
+        }),
       });
 
-      const result = await service.cancelBooking(bookingId, customerId, 'Change of plans', 'No longer need it');
+      const result = await service.cancelBooking(
+        bookingId,
+        customerId,
+        'Change of plans',
+        'No longer need it',
+      );
 
       expect(result.booking.status).toBe('cancelled');
       expect(paymentDb.from).toHaveBeenCalledWith('payments');

@@ -1,4 +1,11 @@
-import { IsIn, IsNumber, IsString, IsNotEmpty, IsOptional, IsUUID, } from 'class-validator';
+import {
+  IsIn,
+  IsNumber,
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsUUID,
+} from 'class-validator';
 
 export class CreatePaymentDto {
   @IsUUID()
@@ -7,11 +14,11 @@ export class CreatePaymentDto {
 
   @IsUUID()
   @IsNotEmpty()
-  customer_id: string; 
+  customer_id: string;
 
   @IsUUID()
   @IsNotEmpty()
-  provider_id: string; 
+  provider_id: string;
 
   @IsNumber()
   @IsNotEmpty()
@@ -19,15 +26,14 @@ export class CreatePaymentDto {
 
   @IsString()
   @IsNotEmpty()
-  method: string; 
+  method: string;
 
   @IsString()
   @IsOptional()
   @IsIn(['pending', 'completed', 'failed', 'refunded'])
-  status?: string; 
+  status?: string;
 
   @IsString()
   @IsOptional()
   transaction_reference?: string;
- 
 }

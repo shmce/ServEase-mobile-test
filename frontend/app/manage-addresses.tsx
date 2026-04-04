@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
@@ -112,19 +113,17 @@ export default function ManageAddressesScreen() {
           <Text style={styles.addAddressText}>Add New Address</Text>
         </TouchableOpacity>
 
-        {isLoading ? (
-          <ActivityIndicator size="large" color="#00B761" style={{ marginTop: 40 }} />
-        ) : addresses.length === 0 ? (
+        {isLoading && <ActivityIndicator size="large" color="#00B761" style={{ marginTop: 40 }} />}
+        {!isLoading && addresses.length === 0 && (
           <Text style={{ textAlign: 'center', color: '#999', marginTop: 40 }}>No addresses saved yet.</Text>
-        ) : (
-          addresses.map(address => (
+        )}
+        {!isLoading && addresses.length > 0 && addresses.map(address => (
             <AddressCard 
               key={address.id} 
               address={address} 
               onEdit={handleEdit}
             />
-          ))
-        )}
+        ))}
 
         <View style={styles.footerSpacer} />
       </ScrollView>

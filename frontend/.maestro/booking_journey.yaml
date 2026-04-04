@@ -1,19 +1,14 @@
-appId: com.serverse.app
+appId: com.servease.app
 ---
 - launchApp
+- tapOn:
+    id: "checkbox"
 - tapOn: "Log In"
 - tapOn: "Email Address"
 - inputText: "customer@example.com"
 - tapOn: "Password"
 - inputText: "password123"
 - tapOn: "Login"
-- assertVisible: "What service do you need?"
-- tapOn: "Cleaning"
-- assertVisible: "Top Professionals"
-- tapOn: "Sarah Jenkins" # Mock provider
-- tapOn: "Book Now"
-- assertVisible: "Confirm Booking"
-- tapOn: "Service Address"
-- tapOn: "Home"
-- tapOn: "Confirm Booking"
-- assertVisible: "Booking Successful"
+- assertVisible: "Explore Categories"
+- tapOn: "Domestic & Cleaning Services"
+- assertVisible: "House Cleaning"

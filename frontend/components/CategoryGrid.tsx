@@ -8,7 +8,7 @@ import {
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+
 
 const { width } = Dimensions.get('window');
 // Recalculated to fit perfectly in HomeScreen (20px padding) + Grid (4px padding) + 16px gap

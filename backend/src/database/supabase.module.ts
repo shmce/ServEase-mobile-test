@@ -19,9 +19,10 @@ export const NOTIFICATION_CLIENT = 'NOTIFICATION_CLIENT';
       useFactory: (configService: ConfigService) => {
         const url = configService.get<string>('SUPABASE_URL');
         const key = configService.get<string>('SUPABASE_SECRET_KEY');
-        if (!url || !key) throw new Error('Supabase URL or Secret Key not found in config.');
+        if (!url || !key)
+          throw new Error('Supabase URL or Secret Key not found in config.');
         return createClient(url, key, {
-          auth: { persistSession: false, autoRefreshToken: false }
+          auth: { persistSession: false, autoRefreshToken: false },
         });
       },
       inject: [ConfigService],
@@ -38,7 +39,10 @@ export const NOTIFICATION_CLIENT = 'NOTIFICATION_CLIENT';
       provide: CATALOG_CLIENT,
       useFactory: (client: SupabaseClient) => {
         const breaker = new CircuitBreaker('CATALOG_SERVICE');
-        return createResilientProxy(client.schema('provider_catalog_svc'), breaker);
+        return createResilientProxy(
+          client.schema('provider_catalog_svc'),
+          breaker,
+        );
       },
       inject: [SupabaseClient],
     },
@@ -113,8 +117,17 @@ function createResilientProxy(client: any, breaker: CircuitBreaker): any {
  * Proxy for Supabase Query Builder to intercept execution methods like then, single, maybeSingle, etc.
  */
 function createBuilderProxy(builder: any, breaker: CircuitBreaker): any {
-  const executionMethods = new Set(['then', 'single', 'maybeSingle', 'select', 'insert', 'update', 'delete', 'upsert']);
-  
+  const executionMethods = new Set([
+    'then',
+    'single',
+    'maybeSingle',
+    'select',
+    'insert',
+    'update',
+    'delete',
+    'upsert',
+  ]);
+
   return new Proxy(builder, {
     get(target, prop, receiver) {
       const originalValue = Reflect.get(target, prop, receiver);
@@ -134,7 +147,8 @@ function createBuilderProxy(builder: any, breaker: CircuitBreaker): any {
         // Intercept 'then' to wrap the actual database call with the circuit breaker
         if (prop === 'then') {
           return (onFulfilled: any, onRejected: any) => {
-            return breaker.execute(() => originalValue.call(target))
+            return breaker
+              .execute(() => originalValue.call(target))
               .then(onFulfilled, onRejected);
           };
         }

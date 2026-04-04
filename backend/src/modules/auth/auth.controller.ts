@@ -1,6 +1,14 @@
 import {
-  Controller, Post, Body, HttpCode, ParseFilePipe, MaxFileSizeValidator,
-  FileTypeValidator, UseInterceptors, UploadedFile, Version
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
+  UseInterceptors,
+  UploadedFile,
+  Version,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -11,7 +19,7 @@ import 'multer';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) { }
+  constructor(private readonly authService: AuthService) {}
 
   @Version('1')
   @Post('register/customer')
@@ -38,7 +46,8 @@ export class AuthController {
           new FileTypeValidator({ fileType: 'image/(jpeg|jpg|png)' }),
         ],
       }),
-    ) file: Express.Multer.File,
+    )
+    file: Express.Multer.File,
   ) {
     return this.authService.registerProvider(dto, file);
   }

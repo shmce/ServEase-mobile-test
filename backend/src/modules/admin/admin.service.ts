@@ -1,6 +1,14 @@
-import { Injectable, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
-import { IDENTITY_CLIENT, CATALOG_CLIENT } from '../../database/supabase.module';
+import {
+  IDENTITY_CLIENT,
+  CATALOG_CLIENT,
+} from '../../database/supabase.module';
 import { UpdateDocumentStatusDto } from './dto/update-document-status.dto';
 import { handleSupabaseError } from '../../common/utils/supabase-error.handler';
 
@@ -13,8 +21,13 @@ export class AdminService {
 
   async updateDocumentStatus(documentId: string, dto: UpdateDocumentStatusDto) {
     //  Strict Validation
-    if (dto.status === 'rejected' && (!dto.reject_reason || dto.reject_reason.trim() === '')) {
-      throw new BadRequestException('A rejection reason must be provided when rejecting a KYC application.');
+    if (
+      dto.status === 'rejected' &&
+      (!dto.reject_reason || dto.reject_reason.trim() === '')
+    ) {
+      throw new BadRequestException(
+        'A rejection reason must be provided when rejecting a KYC application.',
+      );
     }
 
     // Check if document exists and retrieve the provider_id
@@ -38,7 +51,7 @@ export class AdminService {
       reviewed_at: new Date().toISOString(),
     };
 
-    // Include admin ID 
+    // Include admin ID
     if (dto.admin_id) {
       docUpdatePayload.reviewed_by = dto.admin_id;
     }
@@ -59,13 +72,16 @@ export class AdminService {
       .eq('user_id', providerId);
 
     if (profileError) {
-      console.error(`Error updating provider profile for ${providerId}:`, profileError);
-      // Don't throw, just log 
+      console.error(
+        `Error updating provider profile for ${providerId}:`,
+        profileError,
+      );
+      // Don't throw, just log
     }
 
-    // 5. Update users table account_status 
+    // 5. Update users table account_status
     const userStatus = dto.status === 'approved' ? 'active' : 'rejected';
-    
+
     const { error: userError } = await this.identityDb
       .from('users')
       .update({ status: userStatus })
@@ -83,8 +99,8 @@ export class AdminService {
         document_id: updatedDoc.document_id,
         provider_id: updatedDoc.provider_id,
         new_status: updatedDoc.status,
-        reviewed_at: updatedDoc.reviewed_at
-      }
+        reviewed_at: updatedDoc.reviewed_at,
+      },
     };
   }
 }

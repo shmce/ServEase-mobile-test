@@ -198,16 +198,20 @@ export const saveProviderVerificationDraft = async (
     portfolioSummary: String(input.portfolioSummary ?? existing.portfolioSummary).trim(),
     referenceContacts: String(input.referenceContacts ?? existing.referenceContacts).trim(),
     hasInsurance: Boolean(input.hasInsurance ?? existing.hasInsurance),
-    status: options?.submit
-      ? 'submitted'
-      : existing.status === 'not_started'
-      ? 'draft'
-      : existing.status,
+    status: existing.status,
     submittedAt: options?.submit ? now : existing.submittedAt,
     lastUpdatedAt: now,
     score: 0,
     verificationLevel: 'unverified',
   };
+
+  let newStatus = existing.status;
+  if (options?.submit) {
+    newStatus = 'submitted';
+  } else if (existing.status === 'not_started') {
+    newStatus = 'draft';
+  }
+  merged.status = newStatus;
 
   const assessment = assessProviderVerification(merged);
   const nextDraft = {

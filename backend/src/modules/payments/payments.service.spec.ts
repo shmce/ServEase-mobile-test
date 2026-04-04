@@ -1,12 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PaymentsService } from './payments.service';
 import { SupabaseClient } from '@supabase/supabase-js';
-import { PAYMENT_CLIENT, BOOKING_CLIENT, IDENTITY_CLIENT, CATALOG_CLIENT } from '../../database/supabase.module';
+import {
+  PAYMENT_CLIENT,
+  BOOKING_CLIENT,
+  IDENTITY_CLIENT,
+  CATALOG_CLIENT,
+} from '../../database/supabase.module';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
   let paymentDb: jest.Mocked<SupabaseClient>;
-  let bookingDb: jest.Mocked<SupabaseClient>;
 
   beforeEach(async () => {
     const mockDb = {
@@ -35,7 +39,6 @@ describe('PaymentsService', () => {
 
     service = module.get<PaymentsService>(PaymentsService);
     paymentDb = module.get(PAYMENT_CLIENT);
-    bookingDb = module.get(BOOKING_CLIENT);
   });
 
   describe('createPayment', () => {
@@ -51,9 +54,9 @@ describe('PaymentsService', () => {
       (paymentDb.from as jest.Mock).mockReturnValueOnce({
         insert: jest.fn().mockReturnThis(),
         select: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ 
-          data: { id: 'pay-1', amount: 1000, status: 'pending' }, 
-          error: null 
+        single: jest.fn().mockResolvedValue({
+          data: { id: 'pay-1', amount: 1000, status: 'pending' },
+          error: null,
         }),
       });
 
@@ -67,7 +70,13 @@ describe('PaymentsService', () => {
     it('should calculate net earnings correctly with 10% platform fee', async () => {
       const providerId = 'prov-1';
       const mockPayments = [
-        { id: 'p1', amount: 1000, status: 'completed', method: 'cash', booking_id: 'b1' },
+        {
+          id: 'p1',
+          amount: 1000,
+          status: 'completed',
+          method: 'cash',
+          booking_id: 'b1',
+        },
       ];
 
       // Mock getProviderPaymentHistory call within service
@@ -78,7 +87,7 @@ describe('PaymentsService', () => {
             net_earnings: 900,
             platform_fee: 100,
           },
-        ]
+        ],
       } as any);
 
       const result = await service.getProviderEarningsSummary(providerId);
@@ -92,18 +101,24 @@ describe('PaymentsService', () => {
   describe('markBookingPaymentPaid', () => {
     it('should update status to completed and set paid_at', async () => {
       const bookingId = 'bkg-123';
-      
+
       (paymentDb.from as jest.Mock).mockReturnValueOnce({
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockResolvedValue({ data: { id: 'pay-1', method: 'cash' }, error: null }),
+        maybeSingle: jest.fn().mockResolvedValue({
+          data: { id: 'pay-1', method: 'cash' },
+          error: null,
+        }),
       });
 
       (paymentDb.from as jest.Mock).mockReturnValueOnce({
         update: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
         select: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockResolvedValue({ data: { id: 'pay-1', status: 'completed' }, error: null }),
+        maybeSingle: jest.fn().mockResolvedValue({
+          data: { id: 'pay-1', status: 'completed' },
+          error: null,
+        }),
       });
 
       const result = await service.markBookingPaymentPaid({ bookingId });

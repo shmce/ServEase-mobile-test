@@ -1,15 +1,28 @@
-import { Injectable, Inject, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { IDENTITY_CLIENT } from '../../../database/supabase.module';
-import { handleSupabaseError, isNotFound } from '../../../common/utils/supabase-error.handler';
+import {
+  handleSupabaseError,
+  isNotFound,
+} from '../../../common/utils/supabase-error.handler';
 
 @Injectable()
 export class UserRepository {
-  constructor(@Inject(IDENTITY_CLIENT) private readonly supabase: SupabaseClient) {}
+  constructor(
+    @Inject(IDENTITY_CLIENT) private readonly supabase: SupabaseClient,
+  ) {}
 
   private readonly tableName = 'users';
 
-  async findById<T = any>(id: string, select = 'id,full_name,email,role,status'): Promise<T> {
+  async findById<T = any>(
+    id: string,
+    select = 'id,full_name,email,role,status',
+  ): Promise<T> {
     const { data, error } = await this.supabase
       .from(this.tableName)
       .select(select)
@@ -20,7 +33,11 @@ export class UserRepository {
     return data as T;
   }
 
-  async update<T = any>(id: string, updates: any, select = 'id,full_name,email,role,status'): Promise<T> {
+  async update<T = any>(
+    id: string,
+    updates: any,
+    select = 'id,full_name,email,role,status',
+  ): Promise<T> {
     const { data, error } = await this.supabase
       .from(this.tableName)
       .update(updates)
@@ -69,5 +86,3 @@ export class UserRepository {
     return data as T;
   }
 }
-
-

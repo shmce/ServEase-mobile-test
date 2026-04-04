@@ -1,16 +1,6 @@
-import { 
-  ServiceUnavailableException, 
-  Logger 
-} from '@nestjs/common';
-import { 
-  timer, 
-  from,
-  firstValueFrom
-} from 'rxjs';
-import { 
-  retry, 
-  tap 
-} from 'rxjs/operators';
+import { ServiceUnavailableException, Logger } from '@nestjs/common';
+import { timer, from, firstValueFrom } from 'rxjs';
+import { retry, tap } from 'rxjs/operators';
 
 export enum CircuitState {
   CLOSED = 'CLOSED',
@@ -40,9 +30,13 @@ export class CircuitBreaker {
     if (this.state === CircuitState.OPEN) {
       if (Date.now() - (this.lastFailureTime || 0) > this.resetTimeoutMs) {
         this.state = CircuitState.HALF_OPEN;
-        this.logger.log(`Circuit [${this.name}] shifted to HALF_OPEN. Testing...`);
+        this.logger.log(
+          `Circuit [${this.name}] shifted to HALF_OPEN. Testing...`,
+        );
       } else {
-        throw new ServiceUnavailableException(`Circuit [${this.name}] is OPEN.`);
+        throw new ServiceUnavailableException(
+          `Circuit [${this.name}] is OPEN.`,
+        );
       }
     }
 
@@ -60,7 +54,9 @@ export class CircuitBreaker {
     if (this.state === CircuitState.HALF_OPEN) {
       this.state = CircuitState.CLOSED;
       this.failureCount = 0;
-      this.logger.log(`Circuit [${this.name}] shifted back to CLOSED. Recovery successful.`);
+      this.logger.log(
+        `Circuit [${this.name}] shifted back to CLOSED. Recovery successful.`,
+      );
     }
     this.failureCount = 0;
   }
@@ -69,9 +65,14 @@ export class CircuitBreaker {
     this.failureCount++;
     this.lastFailureTime = Date.now();
 
-    if (this.state === CircuitState.HALF_OPEN || this.failureCount >= this.failureThreshold) {
+    if (
+      this.state === CircuitState.HALF_OPEN ||
+      this.failureCount >= this.failureThreshold
+    ) {
       this.state = CircuitState.OPEN;
-      this.logger.warn(`Circuit [${this.name}] tripped to OPEN. Threshold: ${this.failureThreshold} failures.`);
+      this.logger.warn(
+        `Circuit [${this.name}] tripped to OPEN. Threshold: ${this.failureThreshold} failures.`,
+      );
     }
   }
 
@@ -104,6 +105,6 @@ export function withRetry<T>(
           );
         },
       }),
-    ) as any
+    ) as any,
   );
 }

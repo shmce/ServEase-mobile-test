@@ -1,4 +1,14 @@
-import { Controller, Post, Get, Patch, Param, Body, Req, UnauthorizedException, Version } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Param,
+  Body,
+  Req,
+  UnauthorizedException,
+  Version,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { BookingService } from './booking.service';
@@ -16,8 +26,12 @@ export class BookingController {
     const authHeader = req.headers.authorization;
     if (!authHeader) throw new UnauthorizedException('No token provided.');
     const token = authHeader.split(' ')[1];
-    const { data: { user }, error } = await this.supabase.auth.getUser(token);
-    if (error || !user) throw new UnauthorizedException('Invalid or expired token.');
+    const {
+      data: { user },
+      error,
+    } = await this.supabase.auth.getUser(token);
+    if (error || !user)
+      throw new UnauthorizedException('Invalid or expired token.');
     return user;
   }
 
@@ -54,7 +68,10 @@ export class BookingController {
 
   @Version('1')
   @Patch(':id/status')
-  async updateStatus(@Param('id') id: string, @Body() dto: UpdateBookingStatusDto) {
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateBookingStatusDto,
+  ) {
     return this.bookingService.updateStatus(id, dto.status);
   }
 
@@ -66,7 +83,22 @@ export class BookingController {
     @Req() req: Request,
   ) {
     const user = await this.getUserFromRequest(req);
-    return this.bookingService.cancelBooking(id, user.id, body.reason || '', body.explanation || '');
+    return this.bookingService.cancelBooking(
+      id,
+      user.id,
+      body.reason || '',
+      body.explanation || '',
+    );
+  }
+
+  @Version('1')
+  @Post(':id/disputes')
+  async createDispute(
+    @Param('id') id: string,
+    @Body() body: { reason: string },
+    @Req() req: Request,
+  ) {
+    const user = await this.getUserFromRequest(req);
+    return this.bookingService.createDispute(id, user.id, body.reason);
   }
 }
-

@@ -1,10 +1,26 @@
-import { Injectable, Inject, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
-import { BOOKING_CLIENT, IDENTITY_CLIENT, CATALOG_CLIENT, PAYMENT_CLIENT } from '../../database/supabase.module';
+import {
+  BOOKING_CLIENT,
+  IDENTITY_CLIENT,
+  CATALOG_CLIENT,
+  PAYMENT_CLIENT,
+  NOTIFICATION_CLIENT,
+} from '../../database/supabase.module';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { handleSupabaseError } from '../../common/utils/supabase-error.handler';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { BookingCreatedEvent, BOOKING_EVENTS } from './events/booking.events';
+import {
+  BookingCreatedEvent,
+  BookingCancelledEvent,
+  BookingStatusUpdatedEvent,
+  BOOKING_EVENTS,
+} from './events/booking.events';
 
 @Injectable()
 export class BookingService {
@@ -13,7 +29,8 @@ export class BookingService {
     @Inject(IDENTITY_CLIENT) private readonly identityDb: SupabaseClient,
     @Inject(CATALOG_CLIENT) private readonly catalogDb: SupabaseClient,
     @Inject(PAYMENT_CLIENT) private readonly paymentDb: SupabaseClient,
-    private readonly eventEmitter: EventEmitter2
+    @Inject(NOTIFICATION_CLIENT) private readonly notificationDb: SupabaseClient,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async createBooking(dto: CreateBookingDto, customerId: string) {
@@ -23,8 +40,12 @@ export class BookingService {
       .eq('id', dto.provider_id)
       .single();
 
-    if (userError || !userRecord) throw new NotFoundException('Provider not found.');
-    if (userRecord.role !== 'provider') throw new BadRequestException('Bookings can only be made with registered providers.');
+    if (userError || !userRecord)
+      throw new NotFoundException('Provider not found.');
+    if (userRecord.role !== 'provider')
+      throw new BadRequestException(
+        'Bookings can only be made with registered providers.',
+      );
 
     const { data: profileRecord, error: profileError } = await this.catalogDb
       .from('provider_profiles')
@@ -32,20 +53,29 @@ export class BookingService {
       .eq('user_id', dto.provider_id)
       .single();
 
-    if (profileError || !profileRecord) throw new BadRequestException('Provider profile missing.');
-    if (userRecord.status !== 'active' || profileRecord.verification_status !== 'approved') {
+    if (profileError || !profileRecord)
+      throw new BadRequestException('Provider profile missing.');
+    if (
+      userRecord.status !== 'active' ||
+      profileRecord.verification_status !== 'approved'
+    ) {
       throw new BadRequestException('Provider is not fully verified.');
     }
 
     const { data: serviceRecord, error: serviceError } = await this.catalogDb
       .from('provider_services')
-      .select('id,provider_id,supports_hourly,hourly_rate,supports_flat,flat_rate')
+      .select(
+        'id,provider_id,supports_hourly,hourly_rate,supports_flat,flat_rate',
+      )
       .eq('id', dto.service_id)
       .single();
 
-    if (serviceError || !serviceRecord) throw new NotFoundException('Service not found.');
+    if (serviceError || !serviceRecord)
+      throw new NotFoundException('Service not found.');
     if (serviceRecord.provider_id !== dto.provider_id) {
-      throw new BadRequestException('Service does not belong to the selected provider.');
+      throw new BadRequestException(
+        'Service does not belong to the selected provider.',
+      );
     }
 
     let totalAmount = 0;
@@ -55,14 +85,18 @@ export class BookingService {
 
     if (dto.pricing_mode === 'hourly') {
       if (!serviceRecord.supports_hourly || !serviceRecord.hourly_rate) {
-        throw new BadRequestException('This service does not support hourly pricing.');
+        throw new BadRequestException(
+          'This service does not support hourly pricing.',
+        );
       }
       hourlyRate = Number(serviceRecord.hourly_rate);
       hoursRequired = Math.max(1, Number(dto.hours_required || 1));
       totalAmount = hourlyRate * hoursRequired;
     } else {
       if (!serviceRecord.supports_flat || !serviceRecord.flat_rate) {
-        throw new BadRequestException('This service does not support flat pricing.');
+        throw new BadRequestException(
+          'This service does not support flat pricing.',
+        );
       }
       flatRate = Number(serviceRecord.flat_rate);
       totalAmount = flatRate;
@@ -72,20 +106,22 @@ export class BookingService {
 
     const { data: newBooking, error: bookingError } = await this.bookingDb
       .from('bookings')
-      .insert([{
-        booking_reference: bookingRef,
-        customer_id: customerId,
-        provider_id: dto.provider_id,
-        service_id: dto.service_id,
-        service_address: dto.service_address,
-        scheduled_at: dto.scheduled_at,
-        pricing_mode: dto.pricing_mode,
-        hourly_rate: hourlyRate,
-        flat_rate: flatRate,
-        hours_required: hoursRequired,
-        total_amount: totalAmount,
-        status: 'pending',
-      }])
+      .insert([
+        {
+          booking_reference: bookingRef,
+          customer_id: customerId,
+          provider_id: dto.provider_id,
+          service_id: dto.service_id,
+          service_address: dto.service_address,
+          scheduled_at: dto.scheduled_at,
+          pricing_mode: dto.pricing_mode,
+          hourly_rate: hourlyRate,
+          flat_rate: flatRate,
+          hours_required: hoursRequired,
+          total_amount: totalAmount,
+          status: 'pending',
+        },
+      ])
       .select('id, booking_reference, status, total_amount')
       .single();
 
@@ -99,8 +135,8 @@ export class BookingService {
         newBooking.booking_reference,
         customerId,
         totalAmount,
-        dto
-      )
+        dto,
+      ),
     );
 
     return { message: 'Booking created successfully.', booking: newBooking };
@@ -109,7 +145,9 @@ export class BookingService {
   async getCustomerBookings(customerId: string) {
     const { data, error } = await this.bookingDb
       .from('bookings')
-      .select('id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, created_at')
+      .select(
+        'id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, created_at',
+      )
       .eq('customer_id', customerId)
       .order('created_at', { ascending: false });
 
@@ -118,15 +156,25 @@ export class BookingService {
     const rows = data || [];
     if (!rows.length) return { bookings: [] };
 
-    const providerIds = [...new Set(rows.map((b: any) => b.provider_id).filter(Boolean))];
-    const serviceIds = [...new Set(rows.map((b: any) => b.service_id).filter(Boolean))];
+    const providerIds = [
+      ...new Set(rows.map((b: any) => b.provider_id).filter(Boolean)),
+    ];
+    const serviceIds = [
+      ...new Set(rows.map((b: any) => b.service_id).filter(Boolean)),
+    ];
 
     const [{ data: providers }, { data: services }] = await Promise.all([
       providerIds.length
-        ? this.identityDb.from('users').select('id,full_name,contact_number').in('id', providerIds)
+        ? this.identityDb
+            .from('users')
+            .select('id,full_name,contact_number')
+            .in('id', providerIds)
         : Promise.resolve({ data: [] }),
       serviceIds.length
-        ? this.catalogDb.from('provider_services').select('id,title,price').in('id', serviceIds)
+        ? this.catalogDb
+            .from('provider_services')
+            .select('id,title,price')
+            .in('id', serviceIds)
         : Promise.resolve({ data: [] }),
     ]);
 
@@ -143,22 +191,39 @@ export class BookingService {
   }
 
   private isUuid(str: string): boolean {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     return uuidRegex.test(str);
   }
 
   async getBookingById(bookingId: string) {
     const query = this.isUuid(bookingId)
-      ? this.bookingDb.from('bookings').select('id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, cancellation_reason, cancellation_explanation').eq('id', bookingId)
-      : this.bookingDb.from('bookings').select('id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, cancellation_reason, cancellation_explanation').eq('booking_reference', bookingId);
+      ? this.bookingDb
+          .from('bookings')
+          .select(
+            'id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, cancellation_reason, cancellation_explanation',
+          )
+          .eq('id', bookingId)
+      : this.bookingDb
+          .from('bookings')
+          .select(
+            'id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, cancellation_reason, cancellation_explanation',
+          )
+          .eq('booking_reference', bookingId);
 
     const { data, error } = await query.maybeSingle();
     if (error) handleSupabaseError(error, 'BookingFetchDetail');
-    if (!data) throw new NotFoundException(`Booking not found for: ${bookingId}`);
+    if (!data)
+      throw new NotFoundException(`Booking not found for: ${bookingId}`);
     return { booking: data };
   }
 
-  async cancelBooking(bookingId: string, customerId: string, reason: string, explanation: string) {
+  async cancelBooking(
+    bookingId: string,
+    customerId: string,
+    reason: string,
+    explanation: string,
+  ) {
     let query = this.bookingDb.from('bookings').update({
       status: 'cancelled',
       cancellation_reason: reason || null,
@@ -179,9 +244,26 @@ export class BookingService {
       .maybeSingle();
 
     if (error) throw new BadRequestException(error.message);
-    if (!booking) throw new NotFoundException('Booking not found or not owned by this customer.');
+    if (!booking)
+      throw new NotFoundException(
+        'Booking not found or not owned by this customer.',
+      );
 
-    await this.paymentDb.from('payments').update({ status: 'cancelled' }).eq('booking_id', booking.id);
+    await this.paymentDb
+      .from('payments')
+      .update({ status: 'cancelled' })
+      .eq('booking_id', booking.id);
+
+    this.eventEmitter.emit(
+      BOOKING_EVENTS.CANCELLED,
+      new BookingCancelledEvent(
+        booking.id,
+        booking.booking_reference,
+        booking.customer_id,
+        booking.provider_id,
+        booking.service_id,
+      ),
+    );
 
     return { message: 'Booking cancelled.', booking };
   }
@@ -189,7 +271,9 @@ export class BookingService {
   async getHistory() {
     const { data, error } = await this.bookingDb
       .from('bookings')
-      .select('id, booking_reference, provider_id, status, total_amount, scheduled_at')
+      .select(
+        'id, booking_reference, provider_id, status, total_amount, scheduled_at',
+      )
       .in('status', ['completed', 'cancelled', 'disputed']);
 
     if (error) handleSupabaseError(error, 'BookingHistory');
@@ -199,7 +283,9 @@ export class BookingService {
   async getRequests() {
     const { data, error } = await this.bookingDb
       .from('bookings')
-      .select('id, booking_reference, customer_id, service_id, scheduled_at, total_amount')
+      .select(
+        'id, booking_reference, customer_id, service_id, scheduled_at, total_amount',
+      )
       .eq('status', 'pending');
 
     if (error) handleSupabaseError(error, 'BookingRequests');
@@ -209,13 +295,67 @@ export class BookingService {
   async updateStatus(id: string, status: string) {
     const query = this.isUuid(id)
       ? this.bookingDb.from('bookings').update({ status }).eq('id', id)
-      : this.bookingDb.from('bookings').update({ status }).eq('booking_reference', id);
+      : this.bookingDb
+          .from('bookings')
+          .update({ status })
+          .eq('booking_reference', id);
 
-    const { data, error } = await query.select('id, status, booking_reference').maybeSingle();
+    const { data, error } = await query
+      .select('id, status, booking_reference, customer_id, provider_id, service_id')
+      .maybeSingle();
 
     if (error) handleSupabaseError(error, 'BookingStatusUpdate');
     if (!data) throw new NotFoundException(`Booking not found for: ${id}`);
 
+    this.eventEmitter.emit(
+      BOOKING_EVENTS.STATUS_UPDATED,
+      new BookingStatusUpdatedEvent(
+        data.id,
+        data.booking_reference,
+        data.customer_id,
+        data.provider_id,
+        data.service_id,
+        data.status,
+      ),
+    );
+
     return { message: 'Status updated.', booking: data };
+  }
+
+  // ── Disputes ──────────────────────────────────────────────────────────────
+  
+  async createDispute(bookingId: string, raisedBy: string, reason: string) {
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException('Reason is required to file a dispute.');
+    }
+    
+    // Verify booking
+    const { data: booking, error: bookingError } = await this.bookingDb
+      .from('bookings')
+      .select('id, provider_id, customer_id')
+      .eq('id', bookingId)
+      .maybeSingle();
+      
+    if (bookingError) throw new BadRequestException(bookingError.message);
+    if (!booking) throw new NotFoundException('Booking not found.');
+    
+    // Write into notification_svc disputes
+    const { data, error } = await this.notificationDb
+      .from('disputes')
+      .insert({
+        booking_id: bookingId,
+        raised_by: raisedBy,
+        reason: reason.trim(),
+        status: 'open',
+      })
+      .select('*')
+      .maybeSingle();
+
+    if (error) throw new BadRequestException(error.message);
+
+    // Optionally update booking status to disputed
+    await this.updateStatus(bookingId, 'disputed');
+
+    return { dispute: data };
   }
 }

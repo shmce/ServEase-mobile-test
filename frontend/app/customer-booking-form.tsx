@@ -5,7 +5,6 @@ import {
   Text, 
   ScrollView, 
   TouchableOpacity, 
-  SafeAreaView, 
   StatusBar, 
   TextInput,
   Alert,
@@ -14,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -27,7 +27,7 @@ import {
 import { createBooking } from '@/services/bookingService';
 import { getPaymentMethodLabel, type PaymentMethod } from '@/services/paymentService';
 import { getErrorMessage } from '@/lib/error-handling';
-import { supabase, providerCatalogDb } from '@/lib/db';
+import { providerCatalogDb } from '@/lib/db';
 import { getProviderAvailability, type ProviderAvailabilityState } from '@/services/providerAvailabilityService';
 
 // Styles moved to top for hoisting/accessibility
@@ -538,7 +538,7 @@ const TIME_OPTIONS = [
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function parseTimeToMinutes(value: string): number | null {
-  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(String(value || '').trim());
   if (!match) return null;
   let hours = Number(match[1]);
   const minutes = Number(match[2]);
@@ -571,23 +571,32 @@ function isSameMonth(left: Date, right: Date) {
 
 const WEEKDAY_NAMES_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+function buildAvailableKeys(today: Date) {
+  const keys = new Set<string>();
+  for (let index = 0; index < BOOKABLE_DAYS; index += 1) {
+    const nextDate = new Date(today);
+    nextDate.setDate(today.getDate() + index);
+    keys.add(formatDateKey(nextDate));
+  }
+  return keys;
+}
+
+function buildDaysOffSet(daysOff?: { day: string }[]) {
+  const daysOffSet = new Set<string>();
+  if (daysOff) {
+    for (const dayOff of daysOff) {
+      daysOffSet.add(dayOff.day);
+    }
+  }
+  return daysOffSet;
+}
+
 function buildBookableDays(monthDate: Date, providerAvailability?: ProviderAvailabilityState | null) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const availableKeys = new Set<string>();
-  for (let index = 0; index < BOOKABLE_DAYS; index += 1) {
-    const nextDate = new Date(today);
-    nextDate.setDate(today.getDate() + index);
-    availableKeys.add(formatDateKey(nextDate));
-  }
-
-  const daysOffSet = new Set<string>();
-  if (providerAvailability?.daysOff) {
-    for (const dayOff of providerAvailability.daysOff) {
-      daysOffSet.add(dayOff.day);
-    }
-  }
+  const availableKeys = buildAvailableKeys(today);
+  const daysOffSet = buildDaysOffSet(providerAvailability?.daysOff);
 
   const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
   const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
@@ -633,6 +642,43 @@ function buildBookableDays(monthDate: Date, providerAvailability?: ProviderAvail
   }
 
   return cells;
+}
+
+function computeAvailableTimeOptions(
+  providerAvailability: ProviderAvailabilityState | null,
+  dateKey: string,
+  timeOptions: string[]
+) {
+  if (!providerAvailability || !dateKey) return timeOptions;
+
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const selectedDate = new Date(year, month - 1, day);
+  const weekdayName = WEEKDAY_NAMES_FULL[selectedDate.getDay()];
+  const daySchedule = providerAvailability.weeklySchedule[weekdayName];
+
+  if (!daySchedule?.active) return [];
+
+  return timeOptions.filter((timeOption) => {
+    const timeMinutes = parseTimeToMinutes(timeOption);
+    if (timeMinutes === null) return true;
+
+    const startMinutes = parseTimeToMinutes(daySchedule.start);
+    const endMinutes = parseTimeToMinutes(daySchedule.end);
+
+    if (startMinutes !== null && endMinutes !== null) {
+      if (timeMinutes < startMinutes || timeMinutes >= endMinutes) return false;
+    }
+
+    if (daySchedule.break?.start && daySchedule.break?.end) {
+      const breakStart = parseTimeToMinutes(daySchedule.break.start);
+      const breakEnd = parseTimeToMinutes(daySchedule.break.end);
+      if (breakStart !== null && breakEnd !== null) {
+        if (timeMinutes >= breakStart && timeMinutes < breakEnd) return false;
+      }
+    }
+
+    return true;
+  });
 }
 
 const getAddressIcon = (label: string = '') => {
@@ -702,13 +748,12 @@ export default function CustomerBookingFormScreen() {
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
   const [providerAvailability, setProviderAvailability] = useState<ProviderAvailabilityState | null>(null);
-  const [isAvailabilityLoading, setIsAvailabilityLoading] = useState(false);
 
   useEffect(() => {
     let changed = false;
     if (params.newAddress) {
       try {
-        const parsed = JSON.parse(params.newAddress as string);
+        const parsed = JSON.parse(String(params.newAddress));
         const formatted = {
            id: parsed.id,
            type: parsed.type,
@@ -717,7 +762,7 @@ export default function CustomerBookingFormScreen() {
              : parsed.addressLine1
         };
         setSavedAddresses(prev => {
-          if (prev.find(a => a.id === formatted.id)) return prev;
+          if (prev.some(a => a.id === formatted.id)) return prev;
           return [...prev, formatted];
         });
         setAddress(formatted);
@@ -750,7 +795,7 @@ export default function CustomerBookingFormScreen() {
 
         if (!active) return;
 
-        const rows: ServiceOption[] = (data || []).map((row: any) => ({
+        const mapServiceRow = (row: any): ServiceOption => ({
           id: String(row.id),
           title: String(row.title || ''),
           price: Number(row.price || 0),
@@ -759,9 +804,18 @@ export default function CustomerBookingFormScreen() {
           supports_flat: Boolean(row.supports_flat),
           flat_rate: row.flat_rate ? Number(row.flat_rate) : null,
           default_pricing_mode: (row.default_pricing_mode as PricingMode | null) || null,
-        }));
+        });
+
+        const rows: ServiceOption[] = (data || []).map(mapServiceRow);
 
         setServiceOptions(rows);
+
+        const getDefaultPricingMode = (picked: ServiceOption) => {
+          if (picked.supports_hourly && picked.supports_flat) return picked.default_pricing_mode || 'hourly';
+          if (picked.supports_hourly) return 'hourly';
+          if (picked.supports_flat) return 'flat';
+          return null;
+        };
 
         if (rows.length > 0 && !serviceId) {
           const matched = params.serviceName
@@ -770,16 +824,7 @@ export default function CustomerBookingFormScreen() {
           const picked = matched || rows[0];
           setServiceId(picked.id);
           setService(picked.title);
-
-          const nextMode =
-            picked.supports_hourly && picked.supports_flat
-              ? (picked.default_pricing_mode || 'hourly')
-              : picked.supports_hourly
-                ? 'hourly'
-                : picked.supports_flat
-                  ? 'flat'
-                  : null;
-          setPricingMode(nextMode);
+          setPricingMode(getDefaultPricingMode(picked));
         }
       } catch (error) {
         if (active) {
@@ -829,14 +874,11 @@ export default function CustomerBookingFormScreen() {
     let active = true;
 
     async function loadAvailability() {
-      setIsAvailabilityLoading(true);
       try {
         const availability = await getProviderAvailability(params.providerId!);
         if (active) setProviderAvailability(availability);
       } catch (error) {
         console.error('Failed to load provider availability', error);
-      } finally {
-        if (active) setIsAvailabilityLoading(false);
       }
     }
 
@@ -844,38 +886,10 @@ export default function CustomerBookingFormScreen() {
     return () => { active = false; };
   }, [params.providerId]);
 
-  const availableTimeOptions = React.useMemo(() => {
-    if (!providerAvailability || !dateKey) return TIME_OPTIONS;
-
-    const [year, month, day] = dateKey.split('-').map(Number);
-    const selectedDate = new Date(year, month - 1, day);
-    const weekdayName = WEEKDAY_NAMES_FULL[selectedDate.getDay()];
-    const daySchedule = providerAvailability.weeklySchedule[weekdayName];
-
-    if (!daySchedule || !daySchedule.active) return [];
-
-    return TIME_OPTIONS.filter((timeOption) => {
-      const timeMinutes = parseTimeToMinutes(timeOption);
-      if (timeMinutes === null) return true;
-
-      const startMinutes = parseTimeToMinutes(daySchedule.start);
-      const endMinutes = parseTimeToMinutes(daySchedule.end);
-
-      if (startMinutes !== null && endMinutes !== null) {
-        if (timeMinutes < startMinutes || timeMinutes >= endMinutes) return false;
-      }
-
-      if (daySchedule.break?.start && daySchedule.break?.end) {
-        const breakStart = parseTimeToMinutes(daySchedule.break.start);
-        const breakEnd = parseTimeToMinutes(daySchedule.break.end);
-        if (breakStart !== null && breakEnd !== null) {
-          if (timeMinutes >= breakStart && timeMinutes < breakEnd) return false;
-        }
-      }
-
-      return true;
-    });
-  }, [providerAvailability, dateKey]);
+  const availableTimeOptions = React.useMemo(
+    () => computeAvailableTimeOptions(providerAvailability, dateKey, TIME_OPTIONS),
+    [providerAvailability, dateKey]
+  );
 
   // Modal States
   const [isServiceModalVisible, setServiceModalVisible] = useState(false);
@@ -893,43 +907,92 @@ export default function CustomerBookingFormScreen() {
   const selectedService = serviceOptions.find((item) => item.id === serviceId) || null;
   const isHourly = pricingMode === 'hourly';
   const isFlat = pricingMode === 'flat';
-
   const hourlyRate = selectedService?.hourly_rate ?? selectedService?.price ?? 0;
   const flatRate = selectedService?.flat_rate ?? selectedService?.price ?? 0;
   const parsedHoursRequired = Math.max(1, Number(hoursRequired || 1));
 
-  const totalAmount = isHourly
-    ? Number(hourlyRate) * parsedHoursRequired
-    : isFlat
-      ? Number(flatRate)
-      : (selectedService?.price || 0);
+  let totalAmount = selectedService?.price || 0;
+  if (isHourly) {
+    totalAmount = Number(hourlyRate) * parsedHoursRequired;
+  } else if (isFlat) {
+    totalAmount = Number(flatRate);
+  }
+
+  const handleDateSelect = (formattedDate: string, key: string, dateObj: Date) => {
+    setDate(formattedDate);
+    setDateKey(key);
+    if (!time) return;
+    
+    const sched = providerAvailability?.weeklySchedule[WEEKDAY_NAMES_FULL[dateObj.getDay()]];
+    if (!sched?.active) return;
+
+    const tm = parseTimeToMinutes(time);
+    if (tm === null) return;
+    
+    const s = parseTimeToMinutes(sched.start);
+    const e = parseTimeToMinutes(sched.end);
+    if (s !== null && e !== null && (tm < s || tm >= e)) {
+      setTime('');
+      return;
+    }
+    
+    if (sched.break?.start && sched.break?.end) {
+      const bs = parseTimeToMinutes(sched.break.start);
+      const be = parseTimeToMinutes(sched.break.end);
+      if (bs !== null && be !== null && tm >= bs && tm < be) {
+        setTime('');
+      }
+    }
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const validateBooking = (): string | null => {
+    if (!service || !date || !time || !address) return 'Please fill in all required fields (Service, Date, Time, and Address).';
+    if (!dateKey) return 'Please pick a date from the calendar.';
+    if (!serviceId) return 'Please select a valid service before confirming.';
+    if (serviceOptions.length === 0) return 'This provider has no active services yet. Please try another provider.';
+    if (!user) return 'Please log in before creating a booking.';
+    return null;
+  };
+
+  const saveAttachmentsForBooking = async (bookingId: string, userId: string) => {
+    if (attachments.length === 0) return;
+    try {
+      const uploaded = [];
+      for (const attachment of attachments) {
+        const upload = await uploadBookingAttachment({
+          bookingId,
+          userId,
+          uri: attachment.uri,
+          fileName: attachment.label,
+        });
+        uploaded.push({
+          uri: upload.publicUrl,
+          label: attachment.label || upload.fileName,
+          storagePath: upload.storagePath,
+        });
+      }
+      await saveBookingAttachments(bookingId, uploaded);
+    } catch (attachmentError) {
+      console.error('Failed to upload/save attachments:', attachmentError);
+      Alert.alert('Booking Created', 'The booking was created, but attachments could not be saved.');
+    }
+  };
 
   const handleConfirmBooking = async () => {
-    if (!service || !date || !time || !address) {
-      Alert.alert('Missing Fields', 'Please fill in all required fields (Service, Date, Time, and Address).');
-      return;
-    }
-    if (!dateKey) {
-      Alert.alert('Date Required', 'Please pick a date from the calendar.');
-      return;
-    }
-    if (!serviceId) {
-      Alert.alert('Service Required', 'Please select a valid service before confirming.');
-      return;
-    }
-    if (serviceOptions.length === 0) {
-      Alert.alert('No Services Available', 'This provider has no active services yet. Please try another provider.');
-      return;
-    }
-    if (!user) {
-      Alert.alert('Login Required', 'Please log in before creating a booking.');
+    const errorMsg = validateBooking();
+    if (errorMsg) {
+      Alert.alert(errorMsg.includes('Fields') ? 'Missing Fields' : 'Error', errorMsg);
       return;
     }
 
     setIsSubmitting(true);
     try {
       const payload = {
-        customer_id: user.id,
+        customer_id: user!.id,
         provider_id: params.providerId || null,
         service_id: serviceId || null,
         service_name: service,
@@ -947,32 +1010,8 @@ export default function CustomerBookingFormScreen() {
       };
 
       const created = await createBooking(payload);
-      if (created?.id && attachments.length > 0) {
-        try {
-          const uploaded = [];
-          for (const attachment of attachments) {
-            const upload = await uploadBookingAttachment({
-              bookingId: String(created.id),
-              userId: user.id,
-              uri: attachment.uri,
-              fileName: attachment.label,
-            });
-            uploaded.push({
-              uri: upload.publicUrl,
-              label: attachment.label || upload.fileName,
-              storagePath: upload.storagePath,
-            });
-          }
-          await saveBookingAttachments(String(created.id), uploaded);
-        } catch (attachmentError) {
-          Alert.alert(
-            'Booking Created, Attachment Save Failed',
-            getErrorMessage(
-              attachmentError,
-              'The booking was created, but attachments could not be saved.'
-            )
-          );
-        }
+      if (created?.id) {
+        await saveAttachmentsForBooking(String(created.id), user!.id);
       }
       router.push({
         pathname: '/customer-booking-details',
@@ -981,7 +1020,7 @@ export default function CustomerBookingFormScreen() {
     } catch (error: any) {
       Alert.alert(
         'Booking Save Failed',
-        error?.message || getErrorMessage(error, 'Could not save booking to server. Please check your database columns and try again.')
+        error?.message || getErrorMessage(error, 'Could not save booking to server.')
       );
     } finally {
       setIsSubmitting(false);
@@ -1097,7 +1136,7 @@ export default function CustomerBookingFormScreen() {
                 <TextInput
                   style={[styles.dropdownText, { flex: 1, paddingLeft: 8 }]}
                   value={hoursRequired}
-                  onChangeText={(v: string) => setHoursRequired(v.replace(/[^0-9]/g, ''))}
+                  onChangeText={(v: string) => setHoursRequired(v.replaceAll(/\D/g, ''))}
                   keyboardType="number-pad"
                   placeholder="1"
                 />
@@ -1166,29 +1205,7 @@ export default function CustomerBookingFormScreen() {
                           isSelected && styles.calendarDateButtonSelected,
                           !cell.isAvailable && styles.calendarDateButtonDisabled,
                         ]}
-                        onPress={() => {
-                          setDate(formattedDate);
-                          setDateKey(cell.key);
-                          if (time) {
-                            const weekday = WEEKDAY_NAMES_FULL[cell.date.getDay()];
-                            const sched = providerAvailability?.weeklySchedule[weekday];
-                            if (sched && sched.active) {
-                              const tm = parseTimeToMinutes(time);
-                              const s = parseTimeToMinutes(sched.start);
-                              const e = parseTimeToMinutes(sched.end);
-                              if (tm !== null && s !== null && e !== null && (tm < s || tm >= e)) {
-                                setTime('');
-                              }
-                              if (sched.break?.start && sched.break?.end) {
-                                const bs = parseTimeToMinutes(sched.break.start);
-                                const be = parseTimeToMinutes(sched.break.end);
-                                if (tm !== null && bs !== null && be !== null && tm >= bs && tm < be) {
-                                  setTime('');
-                                }
-                              }
-                            }
-                          }
-                        }}
+                        onPress={() => handleDateSelect(formattedDate, cell.key, cell.date)}
                         disabled={!cell.isAvailable}
                       >
                         <Text
@@ -1293,11 +1310,7 @@ export default function CustomerBookingFormScreen() {
                         {attachment.uri.split('/').pop() || attachment.uri}
                       </Text>
                     </View>
-                    <TouchableOpacity
-                      onPress={() =>
-                        setAttachments((prev) => prev.filter((_, itemIndex) => itemIndex !== index))
-                      }
-                    >
+                    <TouchableOpacity onPress={() => handleRemoveAttachment(index)}>
                       <Ionicons name="close-circle" size={20} color="#94A3B8" />
                     </TouchableOpacity>
                   </View>

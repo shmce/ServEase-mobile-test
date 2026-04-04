@@ -10,9 +10,8 @@ export class AdminController {
   @Patch('documents/status/:id')
   async updateDocumentStatus(
     @Param('id') documentId: string,
-    @Body() dto: UpdateDocumentStatusDto
+    @Body() dto: UpdateDocumentStatusDto,
   ) {
     return this.adminService.updateDocumentStatus(documentId, dto);
   }
 }
-

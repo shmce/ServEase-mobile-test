@@ -14,7 +14,7 @@ describe('AppButton Component', () => {
   });
 
   it('calls onPress when pressed', () => {
-    const { getByText } = render(<AppButton {...defaultProps} />);
+    render(<AppButton {...defaultProps} />);
     // Testing Library Native logic... but we just want to see it fail for the next one
     expect(true).toBe(true);
   });

@@ -5,7 +5,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
@@ -43,8 +43,7 @@ export default function ProviderEditProfileScreen() {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState('');
-
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [fullName, setFullName] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [bio, setBio] = useState('');
@@ -55,7 +54,6 @@ export default function ProviderEditProfileScreen() {
   const [instagramHandle, setInstagramHandle] = useState('');
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [serviceCategories, setServiceCategories] = useState<string[]>([]);
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -63,12 +61,10 @@ export default function ProviderEditProfileScreen() {
     async function load() {
       if (!user?.id) {
         setIsLoading(false);
-        setError('You must be logged in to edit your profile.');
         return;
       }
 
       setIsLoading(true);
-      setError('');
       setAvatarUri(`${getAvatarUrl(user.id)}?t=${Date.now()}`);
 
       try {
@@ -102,7 +98,10 @@ export default function ProviderEditProfileScreen() {
           .filter(Boolean);
         setServiceCategories([...new Set(cats)] as string[]);
       } catch (err) {
-        if (mounted) setError(getErrorMessage(err, 'Failed to load provider profile.'));
+        if (mounted) {
+          console.error('[ProviderProfile] Load error:', err);
+          Alert.alert('Error', getErrorMessage(err, 'Failed to load profile details.'));
+        }
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -119,24 +118,11 @@ export default function ProviderEditProfileScreen() {
   };
 
   const onSave = async () => {
-    if (!user?.id) {
-      Alert.alert('Login Required', 'Please log in again before saving your profile.');
-      return;
-    }
-
-    if (!fullName.trim() || !businessName.trim()) {
-      Alert.alert('Missing Details', 'Full name and business name are required.');
-      return;
-    }
+    if (!user?.id) return;
 
     setIsSaving(true);
     try {
-      // 1. Update generic user fields (name, phone)
-      await api.patch('/users/profile', {
-        full_name: fullName.trim(),
-      });
-
-      // 2. Update provider-specific fields
+      await api.patch('/users/profile', { full_name: fullName.trim() });
       await api.patch('/provider/profile', {
         business_name: businessName.trim(),
         bio: bio.trim(),
@@ -158,140 +144,124 @@ export default function ProviderEditProfileScreen() {
     }
   };
 
+  const renderContent = () => {
+    if (isLoading) {
+      return (
+        <View style={styles.stateWrap}>
+          <ActivityIndicator size="small" color="#00B761" />
+          <Text style={styles.stateText}>Loading provider profile...</Text>
+        </View>
+      );
+    }
+
+    if (!user) {
+      return (
+        <View style={styles.stateWrap}>
+          <Text style={styles.errorText}>You must be logged in to edit your profile.</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.formContent}>
+        <View style={styles.avatarSection}>
+          <View style={styles.avatarContainer}>
+            {avatarUri ? (
+              <Image source={{ uri: avatarUri }} style={styles.avatarImage} onError={() => setAvatarUri(null)} />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Text style={styles.avatarInitial}>{fullName.charAt(0).toUpperCase() || 'P'}</Text>
+              </View>
+            )}
+            <TouchableOpacity style={styles.cameraButton} onPress={handlePickAvatar}>
+              <Ionicons name="camera" size={16} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <SectionHeader title="Basic Information" />
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Full Name</Text>
+          <TextInput style={styles.input} value={fullName} onChangeText={setFullName} placeholder="Enter full name" />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Business Name</Text>
+          <TextInput style={styles.input} value={businessName} onChangeText={setBusinessName} placeholder="Enter business name" />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Bio / Description</Text>
+          <View style={styles.textAreaContainer}>
+            <TextInput
+              style={styles.textArea}
+              value={bio}
+              onChangeText={(text) => setBio(text.slice(0, 500))}
+              placeholder="Describe your services..."
+              multiline
+              numberOfLines={4}
+            />
+            <Text style={styles.charCount}>{bio.length}/500</Text>
+          </View>
+        </View>
+
+        <SectionHeader title="Professional Background" />
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Years of Experience</Text>
+          <TextInput style={styles.input} value={yearsExperience} onChangeText={setYearsExperience} keyboardType="numeric" />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Service Areas (comma separated)</Text>
+          <TextInput style={styles.input} value={serviceAreasText} onChangeText={setServiceAreasText} />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Languages (comma separated)</Text>
+          <TextInput style={styles.input} value={languagesText} onChangeText={setLanguagesText} />
+        </View>
+
+        <Text style={styles.label}>Service Categories</Text>
+        <View style={styles.chipRow}>
+          {serviceCategories.map((c) => <ReadonlyChip key={c} label={c} />)}
+        </View>
+        
+        <SectionHeader title="Links" />
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Facebook</Text>
+          <TextInput style={styles.input} value={facebookUrl} onChangeText={setFacebookUrl} />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Instagram</Text>
+          <TextInput style={styles.input} value={instagramHandle} onChangeText={setInstagramHandle} />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Website</Text>
+          <TextInput style={styles.input} value={websiteUrl} onChangeText={setWebsiteUrl} />
+        </View>
+
+        <TouchableOpacity 
+          style={[styles.saveActionButton, isSaving && styles.saveActionButtonDisabled]} 
+          onPress={() => void onSave()} 
+          disabled={isSaving}
+        >
+          <Text style={styles.saveActionButtonText}>{isSaving ? 'Saving...' : 'Save Profile'}</Text>
+        </TouchableOpacity>
+        <View style={styles.footerSpacer} />
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/(provider-tabs)/more' as any))}>
-          <Text style={styles.headerButtonText}>Cancel</Text>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="close" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit Profile</Text>
-        <TouchableOpacity onPress={() => void onSave()} disabled={isSaving || isLoading}>
-          <Text style={[styles.headerButtonText, styles.saveText, (isSaving || isLoading) && styles.disabledText]}>
-            Save
-          </Text>
-        </TouchableOpacity>
+        <View style={{ width: 24 }} />
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        {isLoading ? (
-          <View style={styles.stateWrap}>
-            <ActivityIndicator size="small" color="#00B761" />
-            <Text style={styles.stateText}>Loading provider profile...</Text>
-          </View>
-        ) : null}
-
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-        {!isLoading ? (
-          <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-            <View style={styles.formContent}>
-              {/* Avatar */}
-              <View style={styles.avatarSection}>
-                <View style={styles.avatarContainer}>
-                  {avatarUri ? (
-                    <Image source={{ uri: avatarUri }} style={styles.avatarImage} onError={() => setAvatarUri(null)} />
-                  ) : (
-                    <View style={styles.avatarFallback}>
-                      <Text style={styles.avatarInitial}>{fullName.charAt(0).toUpperCase() || 'P'}</Text>
-                    </View>
-                  )}
-                  <TouchableOpacity style={styles.cameraButton} onPress={handlePickAvatar}>
-                    <Ionicons name="camera" size={16} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <SectionHeader title="Basic Information" />
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Full Name</Text>
-                <TextInput style={styles.input} value={fullName} onChangeText={setFullName} placeholder="Enter full name" />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Business Name</Text>
-                <TextInput style={styles.input} value={businessName} onChangeText={setBusinessName} placeholder="Enter business name" />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Bio / Description</Text>
-                <View style={styles.textAreaContainer}>
-                  <TextInput
-                    style={styles.textArea}
-                    multiline
-                    numberOfLines={5}
-                    value={bio}
-                    onChangeText={setBio}
-                    maxLength={500}
-                    placeholder="Tell customers about your experience, quality, and service style."
-                  />
-                  <Text style={styles.charCount}>{bio.length}/500</Text>
-                </View>
-              </View>
-
-              <SectionHeader title="Coverage & Languages" />
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Service Areas</Text>
-                <TextInput style={styles.input} value={serviceAreasText} onChangeText={setServiceAreasText} placeholder="Makati, Pasig, Quezon City" />
-                <Text style={styles.helperText}>Separate multiple areas with commas.</Text>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Languages Spoken</Text>
-                <TextInput style={styles.input} value={languagesText} onChangeText={setLanguagesText} placeholder="English, Tagalog" />
-                <Text style={styles.helperText}>Separate multiple languages with commas.</Text>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Years of Experience</Text>
-                <TextInput style={styles.input} value={yearsExperience} onChangeText={setYearsExperience} placeholder="e.g. 5" keyboardType="numeric" />
-              </View>
-
-              <SectionHeader title="Services" />
-
-              <Text style={styles.label}>Current Service Categories</Text>
-              <View style={styles.chipRow}>
-                {serviceCategories.length > 0 ? (
-                  serviceCategories.map((category) => <ReadonlyChip key={category} label={category} />)
-                ) : (
-                  <Text style={styles.helperText}>No service categories found yet. Add services in Services & Pricing.</Text>
-                )}
-              </View>
-              <TouchableOpacity style={styles.linkRow} onPress={() => router.push('/(provider-tabs)/pricing' as any)}>
-                <Ionicons name="cash-outline" size={18} color="#00B761" />
-                <Text style={styles.linkText}>Manage Services & Pricing</Text>
-              </TouchableOpacity>
-
-              <SectionHeader title="Social Media & Links" />
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Facebook</Text>
-                <TextInput style={styles.input} value={facebookUrl} onChangeText={setFacebookUrl} placeholder="facebook.com/yourbusiness" autoCapitalize="none" />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Instagram</Text>
-                <TextInput style={styles.input} value={instagramHandle} onChangeText={setInstagramHandle} placeholder="@yourbusiness" autoCapitalize="none" />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Website</Text>
-                <TextInput style={styles.input} value={websiteUrl} onChangeText={setWebsiteUrl} placeholder="www.yourbusiness.com" autoCapitalize="none" />
-              </View>
-
-              <TouchableOpacity
-                style={[styles.saveActionButton, isSaving && styles.saveActionButtonDisabled]}
-                onPress={() => void onSave()}
-                disabled={isSaving}
-              >
-                <Text style={styles.saveActionButtonText}>{isSaving ? 'Saving...' : 'Save Profile'}</Text>
-              </TouchableOpacity>
-
-              <View style={styles.footerSpacer} />
-            </View>
-          </ScrollView>
-        ) : null}
+        <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
+          {renderContent()}
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -316,6 +286,7 @@ const styles = StyleSheet.create({
   stateText: { color: '#64748B' },
   errorText: { color: '#C62828', paddingHorizontal: 20, paddingTop: 16 },
   scrollContainer: { flex: 1 },
+  scrollContent: { paddingBottom: 40 },
   formContent: { paddingHorizontal: 20 },
   avatarSection: { alignItems: 'center', marginTop: 24, marginBottom: 8 },
   avatarContainer: { position: 'relative' },

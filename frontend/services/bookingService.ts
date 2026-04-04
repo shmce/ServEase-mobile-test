@@ -1,7 +1,4 @@
 import { api } from '../lib/apiClient';
-import { providerCatalogDb, identityDb } from '../lib/db';
-import { getErrorMessage } from '../lib/error-handling';
-import { createBookingStatusNotification } from './notificationService';
 
 export const getCustomerBookings = async (customerId: string) => {
   const { bookings } = await api.get<{ bookings: any[] }>(`/booking/customer/${customerId}`);
@@ -24,9 +21,7 @@ export const createBooking = async (bookingData: any) => {
     hours_required: bookingData.hours_required,
   });
 
-  const booking = inserted.booking ?? inserted;
-  await maybeNotifyProviderAboutNewBooking(booking, bookingData.customer_id);
-  return booking;
+  return inserted.booking ?? inserted;
 };
 
 export const getBookingById = async (bookingId: string) => {
@@ -36,7 +31,6 @@ export const getBookingById = async (bookingId: string) => {
 
 export const cancelCustomerBooking = async (bookingId: string, _customerId: string, reason: string, explanation: string) => {
   const { booking } = await api.patch<{ booking: any }>(`/booking/${bookingId}/cancel`, { reason, explanation });
-  await maybeNotifyProviderAboutCustomerCancellation(booking, _customerId);
   return booking;
 };
 
@@ -66,52 +60,4 @@ const parseScheduleLocal = (dateInput: string, timeInput: string) => {
   return Number.isNaN(dt.getTime()) ? null : dt;
 };
 
-const maybeNotifyProviderAboutNewBooking = async (booking: any, customerId: string) => {
-  const providerId = String(booking?.provider_id || '').trim();
-  const bookingId = String(booking?.id || '').trim();
-  if (!providerId || !bookingId) return;
-  try {
-    const [{ data: customer }, { data: service }] = await Promise.all([
-      identityDb.from('users').select('full_name,contact_number').eq('id', customerId).maybeSingle(),
-      booking?.service_id ? providerCatalogDb.from('provider_services').select('title').eq('id', booking.service_id).maybeSingle() : Promise.resolve({ data: null } as any),
-    ]);
-    const customerName = String(customer?.full_name || 'Customer');
-    const serviceName = String(service?.title || 'Service Booking');
-    await createBookingStatusNotification({
-      recipientUserId: providerId, recipientRole: 'provider', actorId: customerId, bookingId,
-      type: 'booking_requested', title: `New booking request from ${customerName}`,
-      body: `${serviceName} needs your confirmation.`,
-      senderName: customerName, senderPhone: String(customer?.contact_number || ''), serviceName,
-      bookingStatus: String(booking?.status || 'pending'),
-      target: { screen: '/provider-booking-details', params: { id: bookingId } },
-      fallbackTarget: { screen: '/provider-chat', params: { id: bookingId, name: customerName, phone: String(customer?.contact_number || ''), serviceName, initials: customerName.split(/\s+/).map((p) => p[0] || '').join('').slice(0, 2).toUpperCase() } },
-    });
-  } catch (error) {
-    console.warn(getErrorMessage(error, 'Failed to notify provider about new booking.'));
-  }
-};
 
-const maybeNotifyProviderAboutCustomerCancellation = async (booking: any, customerId: string) => {
-  const providerId = String(booking?.provider_id || '').trim();
-  const bookingId = String(booking?.id || '').trim();
-  if (!providerId || !bookingId) return;
-  try {
-    const [{ data: customer }, { data: service }] = await Promise.all([
-      identityDb.from('users').select('full_name,contact_number').eq('id', customerId).maybeSingle(),
-      booking?.service_id ? providerCatalogDb.from('provider_services').select('title').eq('id', booking.service_id).maybeSingle() : Promise.resolve({ data: null } as any),
-    ]);
-    const customerName = String(customer?.full_name || 'Customer');
-    const serviceName = String(service?.title || 'Service Booking');
-    await createBookingStatusNotification({
-      recipientUserId: providerId, recipientRole: 'provider', actorId: customerId, bookingId,
-      type: 'booking_cancelled', title: `${customerName} cancelled the booking`,
-      body: `${serviceName} no longer requires provider action.`,
-      senderName: customerName, senderPhone: String(customer?.contact_number || ''), serviceName,
-      bookingStatus: String(booking?.status || 'cancelled'),
-      target: { screen: '/provider-booking-details', params: { id: bookingId } },
-      fallbackTarget: { screen: '/provider-chat', params: { id: bookingId, name: customerName, phone: String(customer?.contact_number || ''), serviceName, initials: customerName.split(/\s+/).map((p) => p[0] || '').join('').slice(0, 2).toUpperCase() } },
-    });
-  } catch (error) {
-    console.warn(getErrorMessage(error, 'Failed to notify provider about booking cancellation.'));
-  }
-};

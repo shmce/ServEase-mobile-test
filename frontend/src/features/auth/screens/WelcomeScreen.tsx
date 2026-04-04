@@ -85,6 +85,7 @@ export function WelcomeScreen() {
 
         <View style={styles.termsContainer}>
           <AppPressable 
+            testID="checkbox"
             style={[styles.checkbox, isAgreed && styles.checkboxActive]} 
             onPress={() => setIsAgreed(!isAgreed)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}

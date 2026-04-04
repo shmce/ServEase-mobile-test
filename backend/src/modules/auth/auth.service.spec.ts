@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
 import { SupabaseClient } from '@supabase/supabase-js';
-import { IDENTITY_CLIENT, CATALOG_CLIENT } from '../../database/supabase.module';
+import {
+  IDENTITY_CLIENT,
+  CATALOG_CLIENT,
+} from '../../database/supabase.module';
 import { UserRepository } from '../users/repositories/user.repository';
 import { UnauthorizedException } from '@nestjs/common';
 
@@ -40,11 +43,14 @@ describe('AuthService', () => {
 
   describe('login', () => {
     it('should return a token and role for valid credentials', async () => {
-      const loginDto = { identifier: 'test@example.com', password: 'Password123!' };
+      const loginDto = {
+        identifier: 'test@example.com',
+        password: 'Password123!',
+      };
       const mockUser = { id: 'uuid-123', email: 'test@example.com' };
       const mockUserData = { role: 'customer', status: 'active' };
 
-      supabase.auth.signInWithPassword.mockResolvedValueOnce({
+      (supabase.auth.signInWithPassword as jest.Mock).mockResolvedValueOnce({
         data: { user: mockUser, session: { access_token: 'valid-token' } },
         error: null,
       } as any);
@@ -64,28 +70,37 @@ describe('AuthService', () => {
     it('should throw UnauthorizedException for invalid credentials', async () => {
       const loginDto = { identifier: 'test@example.com', password: 'wrong' };
 
-      supabase.auth.signInWithPassword.mockResolvedValueOnce({
+      (supabase.auth.signInWithPassword as jest.Mock).mockResolvedValueOnce({
         data: { user: null, session: null },
         error: { message: 'Invalid Credentials' },
       } as any);
 
-      await expect(service.login(loginDto)).rejects.toThrow(UnauthorizedException);
+      await expect(service.login(loginDto)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('should deny access for pending providers', async () => {
-      const loginDto = { identifier: 'provider@example.com', password: 'Password123!' };
+      const loginDto = {
+        identifier: 'provider@example.com',
+        password: 'Password123!',
+      };
       const mockUser = { id: 'uuid-456' };
       const mockUserData = { role: 'provider', status: 'pending' };
 
-      supabase.auth.signInWithPassword.mockResolvedValueOnce({
+      (supabase.auth.signInWithPassword as jest.Mock).mockResolvedValueOnce({
         data: { user: mockUser, session: { access_token: 'token' } },
         error: null,
       } as any);
 
       userRepository.findById.mockResolvedValueOnce(mockUserData as any);
-      supabase.auth.signOut.mockResolvedValueOnce({ error: null } as any);
+      (supabase.auth.signOut as jest.Mock).mockResolvedValueOnce({
+        error: null,
+      } as any);
 
-      await expect(service.login(loginDto)).rejects.toThrow(UnauthorizedException);
+      await expect(service.login(loginDto)).rejects.toThrow(
+        UnauthorizedException,
+      );
       expect(supabase.auth.signOut).toHaveBeenCalled();
     });
   });

@@ -1,7 +1,5 @@
 import { api } from '../lib/apiClient';
-import { identityDb, providerCatalogDb } from '../lib/db';
 import { getErrorMessage } from '../lib/error-handling';
-import { createBookingStatusNotification } from './notificationService';
 
 export type ProviderBookingStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -72,7 +70,6 @@ export const getProviderBookingById = async (bookingId: string) => {
 
 export const updateBookingStatus = async (bookingId: string, providerId: string, target: 'confirmed' | 'in_progress' | 'completed' | 'cancelled') => {
   const { booking } = await api.patch<{ booking: any }>(`/provider/booking/${bookingId}/status`, { provider_id: providerId, status: target });
-  await maybeNotifyCustomerOnProviderStatusChange(booking, providerId, target);
   return booking;
 };
 
@@ -84,47 +81,7 @@ export const createProviderSupportTicket = async (providerId: string, subject: s
 };
 
 export const createProviderDispute = async (providerId: string, bookingId: string, reason: string) => {
-  const { notificationDb } = await import('../lib/db');
-  const { error } = await notificationDb.from('disputes').insert({ booking_id: bookingId, raised_by: providerId, reason });
-  if (error) throw new Error(getErrorMessage(error, 'Failed to create dispute.'));
+  const { dispute } = await api.post<{ dispute: any }>(`/booking/${bookingId}/disputes`, { reason });
+  return dispute;
 };
 
-// ── Notification helper (keeps Supabase direct for realtime lookups) ────────
-
-const buildNotificationTarget = (bookingId: string, target: ProviderBookingStatus) =>
-  target === 'in_progress'
-    ? { screen: '/customer-track-order', params: { id: bookingId } }
-    : { screen: '/customer-booking-details', params: { id: bookingId } };
-
-const maybeNotifyCustomerOnProviderStatusChange = async (booking: any, providerId: string, target: ProviderBookingStatus) => {
-  const bookingId = String(booking?.id || '').trim();
-  const customerId = String(booking?.customer_id || '').trim();
-  if (!bookingId || !customerId) return;
-  try {
-    const [{ data: provider }, { data: service }] = await Promise.all([
-      identityDb.from('users').select('full_name,contact_number').eq('id', providerId).maybeSingle(),
-      booking?.service_id ? providerCatalogDb.from('provider_services').select('title').eq('id', booking.service_id).maybeSingle() : Promise.resolve({ data: null } as any),
-    ]);
-    const providerName = String(provider?.full_name || 'Service Provider');
-    const serviceName = String(service?.title || 'Service Booking');
-    const notificationMap = {
-      confirmed: { type: 'booking_confirmed' as const, title: `${providerName} confirmed your booking`, body: `${serviceName} is confirmed and ready for tracking.` },
-      in_progress: { type: 'booking_in_progress' as const, title: `${providerName} started your service`, body: `${serviceName} is now in progress.` },
-      completed: { type: 'booking_completed' as const, title: `${serviceName} is complete`, body: `Your provider marked this service as completed.` },
-      cancelled: { type: 'booking_cancelled' as const, title: `${serviceName} was cancelled`, body: `This booking was cancelled by the provider.` },
-    }[target as 'confirmed' | 'in_progress' | 'completed' | 'cancelled'];
-
-    if (!notificationMap) return;
-
-    await createBookingStatusNotification({
-      recipientUserId: customerId, recipientRole: 'customer', actorId: providerId, bookingId,
-      type: notificationMap.type, title: notificationMap.title, body: notificationMap.body,
-      senderName: providerName, senderPhone: String(provider?.contact_number || ''), serviceName,
-      bookingStatus: String(booking?.status || target),
-      target: buildNotificationTarget(bookingId, target),
-      fallbackTarget: { screen: '/customer-chat', params: { id: bookingId, providerName, phone: String(provider?.contact_number || ''), serviceName } },
-    });
-  } catch (error) {
-    console.warn(getErrorMessage(error, 'Failed to create customer booking notification.'));
-  }
-};

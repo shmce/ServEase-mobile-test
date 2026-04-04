@@ -1,6 +1,15 @@
-import { Injectable, Inject, InternalServerErrorException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  InternalServerErrorException,
+  BadRequestException,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
-import { BOOKING_CLIENT, IDENTITY_CLIENT, CATALOG_CLIENT } from '../../database/supabase.module';
+import {
+  BOOKING_CLIENT,
+  IDENTITY_CLIENT,
+  CATALOG_CLIENT,
+} from '../../database/supabase.module';
 import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
 
 @Injectable()
@@ -14,7 +23,9 @@ export class CustomerService {
   async getDashboardData(customerId: string): Promise<any[]> {
     const { data: bookings, error } = await this.bookingDb
       .from('bookings')
-      .select('id, booking_reference, status, scheduled_at, total_amount, created_at, updated_at, provider_id')
+      .select(
+        'id, booking_reference, status, scheduled_at, total_amount, created_at, updated_at, provider_id',
+      )
       .eq('customer_id', customerId)
       .in('status', ['pending', 'completed']);
 
@@ -22,15 +33,29 @@ export class CustomerService {
     const rows = bookings || [];
     if (!rows.length) return [];
 
-    const providerIds = [...new Set(rows.map((b: any) => b.provider_id).filter(Boolean))];
+    const providerIds = [
+      ...new Set(rows.map((b: any) => b.provider_id).filter(Boolean)),
+    ];
 
     const [{ data: providers }, { data: profiles }] = await Promise.all([
-      providerIds.length ? this.identityDb.from('users').select('id,full_name,contact_number').in('id', providerIds) : Promise.resolve({ data: [] }),
-      providerIds.length ? this.catalogDb.from('provider_profiles').select('user_id,business_name,total_reviews,average_rating').in('user_id', providerIds) : Promise.resolve({ data: [] }),
+      providerIds.length
+        ? this.identityDb
+            .from('users')
+            .select('id,full_name,contact_number')
+            .in('id', providerIds)
+        : Promise.resolve({ data: [] }),
+      providerIds.length
+        ? this.catalogDb
+            .from('provider_profiles')
+            .select('user_id,business_name,total_reviews,average_rating')
+            .in('user_id', providerIds)
+        : Promise.resolve({ data: [] }),
     ]);
 
     const providerMap = new Map((providers || []).map((u: any) => [u.id, u]));
-    const profileMap = new Map((profiles || []).map((p: any) => [p.user_id, p]));
+    const profileMap = new Map(
+      (profiles || []).map((p: any) => [p.user_id, p]),
+    );
 
     return rows.map((booking: any) => {
       const user = providerMap.get(booking.provider_id);
@@ -68,5 +93,16 @@ export class CustomerService {
 
     if (error) throw new BadRequestException(error.message);
     return { status: 'success', data };
+  }
+
+  async getProfile(userId: string) {
+    const { data, error } = await this.identityDb
+      .from('customer_profiles')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) throw new InternalServerErrorException(error.message);
+    return data || {};
   }
 }

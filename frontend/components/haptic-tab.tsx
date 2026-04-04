@@ -3,11 +3,11 @@ import { Pressable } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
 export function HapticTab(props: BottomTabBarButtonProps) {
-  const { onPressIn, style, children, ...restProps } = props;
+  const { onPressIn, style, children, href, ...restProps } = props;
 
   return (
     <Pressable
-      {...restProps}
+      {...(restProps as any)}
       style={style}
       onPressIn={(ev) => {
         if (process.env.EXPO_OS === 'ios') {

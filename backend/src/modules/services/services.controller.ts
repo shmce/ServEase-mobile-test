@@ -35,4 +35,3 @@ export class ServicesController {
     return this.servicesService.searchServices(keyword);
   }
 }
-

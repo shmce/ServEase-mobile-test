@@ -1,10 +1,16 @@
-import { Injectable, Inject, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { CATALOG_CLIENT } from '../../database/supabase.module';
 
 @Injectable()
 export class ReferenceService {
-  constructor(@Inject(CATALOG_CLIENT) private readonly catalogDb: SupabaseClient) {}
+  constructor(
+    @Inject(CATALOG_CLIENT) private readonly catalogDb: SupabaseClient,
+  ) {}
 
   async getCategories() {
     try {
@@ -17,7 +23,9 @@ export class ReferenceService {
       if (error) throw new Error(error.message);
       return { message: 'Categories:', data };
     } catch (err) {
-      throw new InternalServerErrorException('Failed to GET service categories');
+      throw new InternalServerErrorException(
+        'Failed to GET service categories',
+      );
     }
   }
 }

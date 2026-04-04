@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Version } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  Version,
+} from '@nestjs/common';
 import { AddressesService } from './addresses.service';
 
 @Controller('addresses')
@@ -29,4 +38,3 @@ export class AddressesController {
     return this.addressesService.deleteAddress(id);
   }
 }
-

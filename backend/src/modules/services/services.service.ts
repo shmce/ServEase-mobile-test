@@ -1,6 +1,14 @@
-import { Injectable, Inject, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
-import { CATALOG_CLIENT, IDENTITY_CLIENT, TRUST_CLIENT } from '../../database/supabase.module';
+import {
+  CATALOG_CLIENT,
+  IDENTITY_CLIENT,
+  TRUST_CLIENT,
+} from '../../database/supabase.module';
 
 @Injectable()
 export class ServicesService {
@@ -33,7 +41,9 @@ export class ServicesService {
 
     const { data: services, error: svcErr } = await this.catalogDb
       .from('provider_services')
-      .select('id,title,description,price,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode')
+      .select(
+        'id,title,description,price,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode',
+      )
       .eq('category_id', category.id)
       .order('title', { ascending: true });
 
@@ -44,7 +54,9 @@ export class ServicesService {
   async getProvidersByServiceName(serviceName: string) {
     const { data: serviceRows, error: svcErr } = await this.catalogDb
       .from('provider_services')
-      .select('id,provider_id,title,price,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode')
+      .select(
+        'id,provider_id,title,price,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode',
+      )
       .ilike('title', serviceName);
 
     if (svcErr) throw new InternalServerErrorException(svcErr.message);
@@ -54,17 +66,27 @@ export class ServicesService {
     const providerIds = [...new Set(rows.map((r: any) => r.provider_id))];
 
     const [{ data: usersData }, { data: profilesData }] = await Promise.all([
-      this.identityDb.from('users').select('id,full_name').in('id', providerIds),
-      this.catalogDb.from('provider_profiles').select('user_id,business_name,average_rating,total_reviews').in('user_id', providerIds),
+      this.identityDb
+        .from('users')
+        .select('id,full_name')
+        .in('id', providerIds),
+      this.catalogDb
+        .from('provider_profiles')
+        .select('user_id,business_name,average_rating,total_reviews')
+        .in('user_id', providerIds),
     ]);
 
     const usersMap = new Map((usersData || []).map((u: any) => [u.id, u]));
-    const profilesMap = new Map((profilesData || []).map((p: any) => [p.user_id, p]));
+    const profilesMap = new Map(
+      (profilesData || []).map((p: any) => [p.user_id, p]),
+    );
 
     const providers = providerIds.map((providerId) => {
       const cheapest = rows
         .filter((r: any) => r.provider_id === providerId)
-        .sort((a: any, b: any) => Number(a.price || 0) - Number(b.price || 0))[0];
+        .sort(
+          (a: any, b: any) => Number(a.price || 0) - Number(b.price || 0),
+        )[0];
 
       const user = usersMap.get(providerId);
       const profile = profilesMap.get(providerId);
@@ -72,7 +94,8 @@ export class ServicesService {
       return {
         id: providerId,
         name: user?.full_name || 'Service Provider',
-        businessName: profile?.business_name || user?.full_name || 'Service Provider',
+        businessName:
+          profile?.business_name || user?.full_name || 'Service Provider',
         rating: Number(profile?.average_rating || 0),
         reviews: Number(profile?.total_reviews || 0),
         priceLabel: `P${Number(cheapest?.price || 0).toFixed(2)}`,
@@ -83,25 +106,58 @@ export class ServicesService {
   }
 
   async getProviderProfileData(providerId: string) {
-    const [{ data: user }, { data: profile }, { data: services }, { data: reviews }] = await Promise.all([
-      this.identityDb.from('users').select('id,full_name,email,contact_number,created_at').eq('id', providerId).maybeSingle(),
-      this.catalogDb.from('provider_profiles').select('*').eq('user_id', providerId).maybeSingle(),
-      this.catalogDb.from('provider_services').select('*').eq('provider_id', providerId).order('created_at', { ascending: false }),
-      this.trustDb.from('reviews').select('*').eq('reviewee_id', providerId).order('created_at', { ascending: false }),
+    const [
+      { data: user },
+      { data: profile },
+      { data: services },
+      { data: reviews },
+    ] = await Promise.all([
+      this.identityDb
+        .from('users')
+        .select('id,full_name,email,contact_number,created_at')
+        .eq('id', providerId)
+        .maybeSingle(),
+      this.catalogDb
+        .from('provider_profiles')
+        .select('*')
+        .eq('user_id', providerId)
+        .maybeSingle(),
+      this.catalogDb
+        .from('provider_services')
+        .select('*')
+        .eq('provider_id', providerId)
+        .order('created_at', { ascending: false }),
+      this.trustDb
+        .from('reviews')
+        .select('*')
+        .eq('reviewee_id', providerId)
+        .order('created_at', { ascending: false }),
     ]);
 
-    const reviewerIds = [...new Set((reviews || []).map((r: any) => r.reviewer_id).filter(Boolean))];
+    const reviewerIds = [
+      ...new Set(
+        (reviews || []).map((r: any) => r.reviewer_id).filter(Boolean),
+      ),
+    ];
     let reviewerNames = new Map<string, string>();
     if (reviewerIds.length) {
-      const { data: reviewerRows } = await this.identityDb.from('users').select('id,full_name').in('id', reviewerIds);
-      reviewerNames = new Map((reviewerRows || []).map((u: any) => [u.id, u.full_name || 'User']));
+      const { data: reviewerRows } = await this.identityDb
+        .from('users')
+        .select('id,full_name')
+        .in('id', reviewerIds);
+      reviewerNames = new Map(
+        (reviewerRows || []).map((u: any) => [u.id, u.full_name || 'User']),
+      );
     }
 
     return {
       user,
       profile,
       services: services || [],
-      reviews: (reviews || []).map((r: any) => ({ ...r, reviewer_name: reviewerNames.get(r.reviewer_id) || 'User' })),
+      reviews: (reviews || []).map((r: any) => ({
+        ...r,
+        reviewer_name: reviewerNames.get(r.reviewer_id) || 'User',
+      })),
     };
   }
 
@@ -109,16 +165,22 @@ export class ServicesService {
     try {
       let query = this.catalogDb
         .from('provider_services')
-        .select(`id, title, price, description, supports_hourly, hourly_rate, supports_flat, flat_rate, default_pricing_mode, service_categories!inner(id,name,slug), provider_profiles!inner(user_id,business_name,trust_score,verification_status)`)
+        .select(
+          `id, title, price, description, supports_hourly, hourly_rate, supports_flat, flat_rate, default_pricing_mode, service_categories!inner(id,name,slug), provider_profiles!inner(user_id,business_name,trust_score,verification_status)`,
+        )
         .eq('provider_profiles.verification_status', 'approved');
 
-      if (keyword) query = query.ilike('service_categories.name', `%${keyword}%`);
+      if (keyword)
+        query = query.ilike('service_categories.name', `%${keyword}%`);
 
       const { data, error } = await query;
       if (error) throw new Error(error.message);
 
       const sorted = (data || []).sort((a: any, b: any) => {
-        return ((b.provider_profiles as any)?.trust_score || 0) - ((a.provider_profiles as any)?.trust_score || 0);
+        return (
+          (b.provider_profiles?.trust_score || 0) -
+          (a.provider_profiles?.trust_score || 0)
+        );
       });
 
       return { status: 200, message: 'Search successful', results: sorted };

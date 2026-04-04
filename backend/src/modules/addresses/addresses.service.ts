@@ -1,10 +1,17 @@
-import { Injectable, Inject, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { IDENTITY_CLIENT } from '../../database/supabase.module';
 
 @Injectable()
 export class AddressesService {
-  constructor(@Inject(IDENTITY_CLIENT) private readonly supabase: SupabaseClient) {}
+  constructor(
+    @Inject(IDENTITY_CLIENT) private readonly supabase: SupabaseClient,
+  ) {}
 
   async getUserAddresses(userId: string) {
     const { data, error } = await this.supabase
@@ -42,7 +49,10 @@ export class AddressesService {
   }
 
   async deleteAddress(id: string) {
-    const { error } = await this.supabase.from('user_addresses').delete().eq('id', id);
+    const { error } = await this.supabase
+      .from('user_addresses')
+      .delete()
+      .eq('id', id);
     if (error) throw new BadRequestException(error.message);
     return { message: 'Address deleted.' };
   }
