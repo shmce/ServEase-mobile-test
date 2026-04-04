@@ -77,6 +77,15 @@ const styles = StyleSheet.create({
     color: '#0D1B2A',
     marginLeft: 8,
   },
+  providerBannerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 8,
+  },
+  providerBannerFallbackIcon: {
+    marginRight: 8,
+  },
   fieldContainer: {
     marginBottom: 20,
   },
@@ -239,6 +248,35 @@ const styles = StyleSheet.create({
   addressDetail: {
     fontSize: 13,
     color: '#8E8E93',
+  },
+  locationInfoCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 16,
+    padding: 16,
+  },
+  locationInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  locationInfoTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0D1B2A',
+    marginLeft: 10,
+  },
+  locationInfoAddress: {
+    fontSize: 14,
+    color: '#0D1B2A',
+    lineHeight: 20,
+  },
+  locationInfoNote: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 10,
+    lineHeight: 18,
   },
   textAreaContainer: {
     backgroundColor: '#FFF',
@@ -518,6 +556,8 @@ type ServiceOption = {
   supports_flat: boolean;
   flat_rate: number | null;
   default_pricing_mode: PricingMode | null;
+  service_location_type: 'mobile' | 'in_shop';
+  service_location_address: string | null;
 };
 
 export function getDefaultPricingModeForService(service: ServiceOption | null): PricingMode | null {
@@ -803,6 +843,7 @@ export default function CustomerBookingFormScreen() {
     serviceName?: string;
     providerName?: string;
     providerId?: string;
+    avatarUrl?: string;
     date?: string;
     time?: string;
   }>();
@@ -824,6 +865,7 @@ export default function CustomerBookingFormScreen() {
   const [servicesLoadError, setServicesLoadError] = useState('');
   const [savedAddresses, setSavedAddresses] = useState(INITIAL_ADDRESSES);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasAvatarLoadError, setHasAvatarLoadError] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
@@ -864,7 +906,7 @@ export default function CustomerBookingFormScreen() {
       try {
         let query = providerCatalogDb
           .from('provider_services')
-          .select('id,title,price,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode')
+          .select('id,title,price,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode,service_location_type,service_location_address')
           .order('title', { ascending: true });
 
         if (params.providerId) {
@@ -885,6 +927,8 @@ export default function CustomerBookingFormScreen() {
           supports_flat: Boolean(row.supports_flat),
           flat_rate: row.flat_rate ? Number(row.flat_rate) : null,
           default_pricing_mode: (row.default_pricing_mode as PricingMode | null) || null,
+          service_location_type: row.service_location_type === 'in_shop' ? 'in_shop' : 'mobile',
+          service_location_address: row.service_location_address ? String(row.service_location_address) : null,
         });
 
         const rows: ServiceOption[] = (data || []).map(mapServiceRow);
@@ -977,6 +1021,10 @@ export default function CustomerBookingFormScreen() {
   const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const isCurrentMonth = isSameMonth(calendarMonth, currentMonth);
   const selectedService = serviceOptions.find((item) => item.id === serviceId) || null;
+  const isInShopService = selectedService?.service_location_type === 'in_shop';
+  const inShopAddress = selectedService?.service_location_address?.trim() || '';
+  const providerAvatarUrl = String(params.avatarUrl || '').trim();
+  const shouldShowProviderAvatar = providerAvatarUrl.length > 0 && !hasAvatarLoadError;
   const { effectivePricingMode, isHourly, isFlat, hourlyRate, flatRate, parsedHoursRequired, totalAmount } =
     buildBookingPricingSnapshot(selectedService, pricingMode, hoursRequired);
 
@@ -1012,11 +1060,16 @@ export default function CustomerBookingFormScreen() {
   };
 
   const validateBooking = (): string | null => {
-    if (!service || !date || !time || !address) return 'Please fill in all required fields (Service, Date, Time, and Address).';
+    if (!service || !date || !time) return 'Please fill in all required fields (Service, Date, and Time).';
     if (!dateKey) return 'Please pick a date from the calendar.';
     if (!serviceId) return 'Please select a valid service before confirming.';
     if (serviceOptions.length === 0) {
       return servicesLoadError || 'This provider has no active services yet. Please try another provider.';
+    }
+    if (isInShopService) {
+      if (!inShopAddress) return 'This in-shop service is missing the provider address. Please try another service or contact support.';
+    } else if (!address) {
+      return 'Please fill in all required fields (Service, Date, Time, and Address).';
     }
     if (!user) return 'Please log in before creating a booking.';
     return null;
@@ -1063,7 +1116,8 @@ export default function CustomerBookingFormScreen() {
         scheduled_date_key: dateKey,
         scheduled_date: date,
         scheduled_time: time,
-        service_address: address.fullAddress,
+        service_address: isInShopService ? inShopAddress : address.fullAddress,
+        service_location_type: isInShopService ? 'in_shop' : 'mobile',
         total_amount: totalAmount,
         pricing_mode: effectivePricingMode || 'flat',
         hourly_rate: isHourly ? hourlyRate : null,
@@ -1079,7 +1133,7 @@ export default function CustomerBookingFormScreen() {
       }
       router.push({
         pathname: '/customer-booking-details',
-        params: { id: created?.id || 'new-booking', addressId: address.id },
+        params: { id: created?.id || 'new-booking', addressId: isInShopService ? '' : address.id },
       });
     } catch (error: any) {
       Alert.alert(
@@ -1140,7 +1194,21 @@ export default function CustomerBookingFormScreen() {
         >
           {params.providerName ? (
             <View style={styles.providerBanner}>
-              <Ionicons name="person-circle-outline" size={18} color="#00B761" />
+              {shouldShowProviderAvatar ? (
+                <Image
+                  source={{ uri: providerAvatarUrl }}
+                  style={styles.providerBannerAvatar}
+                  testID="provider-banner-avatar"
+                  onError={() => setHasAvatarLoadError(true)}
+                />
+              ) : (
+                <Ionicons
+                  name="person-circle-outline"
+                  size={36}
+                  color="#00B761"
+                  style={styles.providerBannerFallbackIcon}
+                />
+              )}
               <Text style={styles.providerBannerText}>Booking with {params.providerName}</Text>
             </View>
           ) : null}
@@ -1308,21 +1376,36 @@ export default function CustomerBookingFormScreen() {
 
           <View style={styles.fieldContainer}>
             <Text style={styles.fieldLabel}>Location <Text style={styles.requiredAsterisk}>*</Text></Text>
-            <TouchableOpacity 
-              style={styles.addressSelector} 
-              onPress={() => setAddressModalVisible(true)}
-            >
-              <View style={styles.addressSelectorContent}>
-                <View style={styles.addressIconContainer}>
-                  <Ionicons name={address ? getAddressIcon(address.type) : 'location'} size={24} color="#00B761" />
+            {isInShopService ? (
+              <View style={styles.locationInfoCard}>
+                <View style={styles.locationInfoHeader}>
+                  <Ionicons name="storefront-outline" size={22} color="#00B761" />
+                  <Text style={styles.locationInfoTitle}>Service Location (Provider&apos;s Place)</Text>
                 </View>
-                <View style={styles.addressTextContainer}>
-                  <Text style={styles.addressType}>{address ? address.type : 'Select Address'}</Text>
-                  {address && <Text style={styles.addressDetail} numberOfLines={2}>{address.fullAddress}</Text>}
-                </View>
+                <Text style={styles.locationInfoAddress}>
+                  {inShopAddress || 'Provider address unavailable'}
+                </Text>
+                <Text style={styles.locationInfoNote}>
+                  This service is performed at the provider&apos;s location. You will need to go there.
+                </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#8E8E93" />
-            </TouchableOpacity>
+            ) : (
+              <TouchableOpacity 
+                style={styles.addressSelector} 
+                onPress={() => setAddressModalVisible(true)}
+              >
+                <View style={styles.addressSelectorContent}>
+                  <View style={styles.addressIconContainer}>
+                    <Ionicons name={address ? getAddressIcon(address.type) : 'location'} size={24} color="#00B761" />
+                  </View>
+                  <View style={styles.addressTextContainer}>
+                    <Text style={styles.addressType}>{address ? address.type : 'Select Address'}</Text>
+                    {address && <Text style={styles.addressDetail} numberOfLines={2}>{address.fullAddress}</Text>}
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#8E8E93" />
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.fieldContainer}>
@@ -1448,57 +1531,59 @@ export default function CustomerBookingFormScreen() {
         )}
       />
 
-      <SelectionModal
-        visible={isAddressModalVisible}
-        title="Select Address"
-        data={[...savedAddresses, { id: 'add_new', type: 'Add New Address' }]}
-        onClose={() => setAddressModalVisible(false)}
-        renderItem={(item: any) => {
-          if (item.id === 'add_new') {
+      {!isInShopService ? (
+        <SelectionModal
+          visible={isAddressModalVisible}
+          title="Select Address"
+          data={[...savedAddresses, { id: 'add_new', type: 'Add New Address' }]}
+          onClose={() => setAddressModalVisible(false)}
+          renderItem={(item: any) => {
+            if (item.id === 'add_new') {
+              return (
+                <TouchableOpacity 
+                  key="add_new"
+                  style={[styles.modalAddressOption, { borderBottomWidth: 0, marginTop: 4 }]}
+                  onPress={() => {
+                    setAddressModalVisible(false);
+                    router.push({ pathname: '/add-address', params: { returnTo: '/customer-booking-form' } });
+                  }}
+                >
+                  <View style={[styles.modalAddressIcon, { backgroundColor: '#F0F0F0' }]}>
+                    <Ionicons name="add" size={20} color="#0D1B2A" />
+                  </View>
+                  <View style={styles.modalAddressDetails}>
+                    <Text style={[styles.modalOptionText, { fontWeight: '600' }]}>Add New Address</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            }
+            
             return (
               <TouchableOpacity 
-                key="add_new"
-                style={[styles.modalAddressOption, { borderBottomWidth: 0, marginTop: 4 }]}
+                key={item.id} 
+                style={[styles.modalAddressOption, address?.id === item.id && styles.modalOptionSelected]}
                 onPress={() => {
+                  setAddress(item);
                   setAddressModalVisible(false);
-                  router.push({ pathname: '/add-address', params: { returnTo: '/customer-booking-form' } });
                 }}
               >
-                <View style={[styles.modalAddressIcon, { backgroundColor: '#F0F0F0' }]}>
-                  <Ionicons name="add" size={20} color="#0D1B2A" />
+                <View style={styles.modalAddressIcon}>
+                  <Ionicons name={getAddressIcon(item.type)} size={20} color="#00B761" />
                 </View>
                 <View style={styles.modalAddressDetails}>
-                  <Text style={[styles.modalOptionText, { fontWeight: '600' }]}>Add New Address</Text>
+                  <Text style={[styles.modalOptionText, address?.id === item.id && styles.modalOptionTextSelected]}>
+                    {item.type}
+                  </Text>
+                  <Text style={styles.modalAddressLine} numberOfLines={1}>{item.fullAddress}</Text>
                 </View>
+                {address?.id === item.id && (
+                  <Ionicons name="checkmark-circle" size={20} color="#00B761" />
+                )}
               </TouchableOpacity>
             );
-          }
-          
-          return (
-            <TouchableOpacity 
-              key={item.id} 
-              style={[styles.modalAddressOption, address?.id === item.id && styles.modalOptionSelected]}
-              onPress={() => {
-                setAddress(item);
-                setAddressModalVisible(false);
-              }}
-            >
-              <View style={styles.modalAddressIcon}>
-                <Ionicons name={getAddressIcon(item.type)} size={20} color="#00B761" />
-              </View>
-              <View style={styles.modalAddressDetails}>
-                <Text style={[styles.modalOptionText, address?.id === item.id && styles.modalOptionTextSelected]}>
-                  {item.type}
-                </Text>
-                <Text style={styles.modalAddressLine} numberOfLines={1}>{item.fullAddress}</Text>
-              </View>
-              {address?.id === item.id && (
-                <Ionicons name="checkmark-circle" size={20} color="#00B761" />
-              )}
-            </TouchableOpacity>
-          );
-        }}
-      />
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

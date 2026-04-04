@@ -29,6 +29,20 @@ import {
   Dispute,
 } from '../../common/interfaces/database.interfaces';
 
+type BookingListRow = Pick<
+  Booking,
+  | 'id'
+  | 'booking_reference'
+  | 'provider_id'
+  | 'service_id'
+  | 'scheduled_at'
+  | 'status'
+  | 'total_amount'
+  | 'created_at'
+  | 'service_address'
+  | 'service_location_type'
+>;
+
 @Injectable()
 export class BookingService {
   constructor(
@@ -42,12 +56,15 @@ export class BookingService {
   ) {}
 
   async createBooking(dto: CreateBookingDto, customerId: string) {
-    const userResponse = (await this.identityDb
+    const userResponse = await this.identityDb
       .from('users')
       .select('role, status')
       .eq('id', dto.provider_id)
-      .single()) as { data: Pick<User, 'role' | 'status'> | null; error: any };
-    const userRecord = userResponse.data;
+      .single();
+    const userRecord = userResponse.data as Pick<
+      User,
+      'role' | 'status'
+    > | null;
     const userError = userResponse.error;
 
     if (userError || !userRecord)
@@ -77,25 +94,24 @@ export class BookingService {
       throw new BadRequestException('Provider is not fully verified.');
     }
 
-    const serviceResponse = (await this.catalogDb
+    const serviceResponse = await this.catalogDb
       .from('provider_services')
       .select(
-        'id,provider_id,supports_hourly,hourly_rate,supports_flat,flat_rate',
+        'id,provider_id,supports_hourly,hourly_rate,supports_flat,flat_rate,service_location_type,service_location_address',
       )
       .eq('id', dto.service_id)
-      .single()) as {
-      data: Pick<
-        IProviderService,
-        | 'id'
-        | 'provider_id'
-        | 'supports_hourly'
-        | 'hourly_rate'
-        | 'supports_flat'
-        | 'flat_rate'
-      > | null;
-      error: any;
-    };
-    const serviceRecord = serviceResponse.data;
+      .single();
+    const serviceRecord = serviceResponse.data as Pick<
+      IProviderService,
+      | 'id'
+      | 'provider_id'
+      | 'supports_hourly'
+      | 'hourly_rate'
+      | 'supports_flat'
+      | 'flat_rate'
+      | 'service_location_type'
+      | 'service_location_address'
+    > | null;
     const serviceError = serviceResponse.error;
 
     if (serviceError || !serviceRecord)
@@ -104,6 +120,39 @@ export class BookingService {
       throw new BadRequestException(
         'Service does not belong to the selected provider.',
       );
+    }
+    if (
+      (serviceRecord.service_location_type || 'mobile') !==
+      dto.service_location_type
+    ) {
+      throw new BadRequestException(
+        'Booking location type does not match the current service configuration.',
+      );
+    }
+    if (
+      dto.service_location_type === 'in_shop' &&
+      (!serviceRecord.service_location_address ||
+        !String(serviceRecord.service_location_address).trim())
+    ) {
+      throw new BadRequestException(
+        'This in-shop service is missing a provider address.',
+      );
+    }
+
+    if (dto.service_location_type === 'in_shop') {
+      const normalizedDtoAddress = String(dto.service_address || '')
+        .trim()
+        .toLowerCase();
+      const normalizedServiceAddress = String(
+        serviceRecord.service_location_address || '',
+      )
+        .trim()
+        .toLowerCase();
+      if (normalizedDtoAddress !== normalizedServiceAddress) {
+        throw new BadRequestException(
+          'In-shop booking address must match the provider service address.',
+        );
+      }
     }
 
     let totalAmount = 0;
@@ -130,7 +179,7 @@ export class BookingService {
       totalAmount = flatRate;
     }
 
-    const insertResponse = (await this.bookingDb
+    const insertResponse = await this.bookingDb
       .from('bookings')
       .insert([
         {
@@ -139,6 +188,7 @@ export class BookingService {
           service_id: dto.service_id,
           booking_reference: `BKG-${Math.floor(100000 + Math.random() * 900000)}`,
           service_address: dto.service_address,
+          service_location_type: dto.service_location_type,
           scheduled_at: dto.scheduled_at,
           pricing_mode: dto.pricing_mode,
           hourly_rate: hourlyRate,
@@ -149,15 +199,12 @@ export class BookingService {
         },
       ])
       .select('id, booking_reference, status, total_amount')
-      .single()) as {
-      data: Pick<
-        Booking,
-        'id' | 'booking_reference' | 'status' | 'total_amount'
-      > | null;
-      error: any;
-    };
+      .single();
 
-    const newBooking = insertResponse.data;
+    const newBooking = insertResponse.data as Pick<
+      Booking,
+      'id' | 'booking_reference' | 'status' | 'total_amount'
+    > | null;
     const bookingError = insertResponse.error;
     if (bookingError || !newBooking) {
       handleSupabaseError(
@@ -194,21 +241,25 @@ export class BookingService {
     const { data, error } = await this.bookingDb
       .from('bookings')
       .select(
-        'id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, created_at',
+        'id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, created_at, service_address, service_location_type',
       )
       .eq('customer_id', customerId)
       .order('created_at', { ascending: false });
 
     if (error) handleSupabaseError(error, 'BookingsFetch');
 
-    const rows = data || [];
+    const rows = (data || []) as BookingListRow[];
     if (!rows.length) return { bookings: [] };
 
     const providerIds = [
-      ...new Set(rows.map((b: Booking) => b.provider_id).filter(Boolean)),
+      ...new Set(
+        rows.map((bookingRow) => bookingRow.provider_id).filter(Boolean),
+      ),
     ];
     const serviceIds = [
-      ...new Set(rows.map((b: Booking) => b.service_id).filter(Boolean)),
+      ...new Set(
+        rows.map((bookingRow) => bookingRow.service_id).filter(Boolean),
+      ),
     ];
 
     const [{ data: providers }, { data: services }] = await Promise.all([
@@ -234,10 +285,10 @@ export class BookingService {
     );
 
     return {
-      bookings: rows.map((b: Booking) => ({
-        ...b,
-        provider: providerMap.get(b.provider_id) || null,
-        service: serviceMap.get(b.service_id) || null,
+      bookings: rows.map((bookingRow) => ({
+        ...bookingRow,
+        provider: providerMap.get(bookingRow.provider_id) || null,
+        service: serviceMap.get(bookingRow.service_id) || null,
       })),
     };
   }
@@ -253,13 +304,13 @@ export class BookingService {
       ? this.bookingDb
           .from('bookings')
           .select(
-            'id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, cancellation_reason, cancellation_explanation',
+            'id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, cancellation_reason, cancellation_explanation, service_address, service_location_type',
           )
           .eq('id', bookingId)
       : this.bookingDb
           .from('bookings')
           .select(
-            'id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, cancellation_reason, cancellation_explanation',
+            'id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, cancellation_reason, cancellation_explanation, service_address, service_location_type',
           )
           .eq('booking_reference', bookingId);
 

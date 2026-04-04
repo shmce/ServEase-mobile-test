@@ -55,6 +55,18 @@ const formatScheduleFromProposal = (dateRaw: string, timeRaw: string) => {
   };
 };
 
+const getServiceLocationSummary = (serviceLocationType?: string | null) => {
+  return serviceLocationType === 'in_shop'
+    ? {
+        label: "Provider's Place (In-Shop)",
+        helper: 'You go to the provider for this service.',
+      }
+    : {
+        label: "Customer's Place (Mobile)",
+        helper: 'The provider travels to the booking address.',
+      };
+};
+
 export function CustomerBookingDetailsScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -93,6 +105,7 @@ export function CustomerBookingDetailsScreen() {
     totalAmount: booking?.totalAmount || String(booking?.total_amount || '0.00'),
     notes: booking?.customer_notes || booking?.notes || '',
   };
+  const locationSummary = getServiceLocationSummary(booking?.service_location_type);
 
   const loadChatSummary = React.useCallback(async () => {
     if (!user?.id || !bookingIdForChat) {
@@ -467,6 +480,10 @@ export function CustomerBookingDetailsScreen() {
           <View style={styles.heroAddressRow}>
             <Ionicons name="location" size={14} color={TOKENS.colors.primary} />
             <Text style={styles.heroAddressText}>{safeBooking.address}</Text>
+          </View>
+          <View style={styles.locationTypeBadge}>
+            <Ionicons name="navigate-outline" size={14} color={TOKENS.colors.primary} />
+            <Text style={styles.locationTypeBadgeText}>{locationSummary.label}</Text>
           </View>
         </View>
 
@@ -972,6 +989,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: TOKENS.colors.text.secondary,
   },
+  locationTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: TOKENS.colors.success.bg,
+  },
+  locationTypeBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: TOKENS.colors.primary,
+  },
   scheduleContainer: {
     flexDirection: 'row',
     gap: 16,
@@ -1202,6 +1234,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: TOKENS.colors.text.primary,
     marginTop: 2,
+  },
+  detailHelper: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: TOKENS.colors.text.muted,
+    marginTop: 4,
+    lineHeight: 18,
   },
   priceContainer: {
     marginTop: 12,

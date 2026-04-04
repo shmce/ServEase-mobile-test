@@ -4,7 +4,7 @@ import { Alert } from 'react-native';
 import CustomerBookingFormScreen, { buildBookingPricingSnapshot, pickInitialServiceOption } from '../customer-booking-form';
 import { useLocalSearchParams } from 'expo-router';
 
-const mockCreateBooking = jest.fn(() => Promise.resolve({ id: '123' }));
+const mockCreateBooking = jest.fn<Promise<{ id: string }>, [unknown]>(() => Promise.resolve({ id: '123' }));
 const mockProviderServicesQueryBuilder = {
   select: jest.fn().mockReturnThis(),
   order: jest.fn().mockReturnThis(),
@@ -17,7 +17,7 @@ jest.mock('@/services/addressService', () => ({
 }));
 
 jest.mock('@/services/bookingService', () => ({
-  createBooking: (...args: unknown[]) => mockCreateBooking(...args),
+  createBooking: (payload: unknown) => mockCreateBooking(payload),
 }));
 
 jest.mock('@/lib/db', () => ({
@@ -103,6 +103,8 @@ describe('CustomerBookingFormScreen', () => {
         supports_flat: true,
         flat_rate: 800,
         default_pricing_mode: 'hourly',
+        service_location_type: 'mobile',
+        service_location_address: null,
       },
       null,
       '3'
@@ -127,6 +129,8 @@ describe('CustomerBookingFormScreen', () => {
           supports_flat: true,
           flat_rate: 900,
           default_pricing_mode: 'flat',
+          service_location_type: 'mobile',
+          service_location_address: null,
         },
         {
           id: 'service-2',
@@ -137,6 +141,8 @@ describe('CustomerBookingFormScreen', () => {
           supports_flat: true,
           flat_rate: 500,
           default_pricing_mode: 'hourly',
+          service_location_type: 'mobile',
+          service_location_address: null,
         },
       ],
       'service-2',
@@ -145,5 +151,43 @@ describe('CustomerBookingFormScreen', () => {
 
     expect(result?.id).toBe('service-2');
     expect(result?.title).toBe('Electrical Wiring');
+  });
+
+  it('renders the provider avatar when avatarUrl is provided', async () => {
+    (useLocalSearchParams as jest.Mock).mockReturnValue({
+      providerName: 'Test Provider',
+      serviceName: 'Cleaning',
+      providerId: 'prov-1',
+      avatarUrl: 'https://example.com/avatar.jpg',
+    });
+
+    const { getByText, getByTestId } = render(<CustomerBookingFormScreen />);
+
+    await waitFor(() => {
+      expect(getByText('Booking with Test Provider')).toBeTruthy();
+    });
+
+    expect(getByTestId('provider-banner-avatar')).toBeTruthy();
+  });
+
+  it('falls back to the icon when the provider avatar fails to load', async () => {
+    (useLocalSearchParams as jest.Mock).mockReturnValue({
+      providerName: 'Test Provider',
+      serviceName: 'Cleaning',
+      providerId: 'prov-1',
+      avatarUrl: 'https://example.com/broken-avatar.jpg',
+    });
+
+    const { getByTestId, queryByTestId } = render(<CustomerBookingFormScreen />);
+
+    await waitFor(() => {
+      expect(getByTestId('provider-banner-avatar')).toBeTruthy();
+    });
+
+    fireEvent(getByTestId('provider-banner-avatar'), 'error');
+
+    await waitFor(() => {
+      expect(queryByTestId('provider-banner-avatar')).toBeNull();
+    });
   });
 });

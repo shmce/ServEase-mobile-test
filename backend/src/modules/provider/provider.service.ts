@@ -234,7 +234,7 @@ export class ProviderService {
         ? this.catalogDb
             .from('provider_services')
             .select(
-              'id,title,price,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode',
+              'id,title,price,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode,service_location_type,service_location_address',
             )
             .in('id', serviceIds)
         : Promise.resolve({ data: [] }),
@@ -279,7 +279,7 @@ export class ProviderService {
       this.catalogDb
         .from('provider_services')
         .select(
-          'id,title,description,price,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode',
+          'id,title,description,price,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode,service_location_type,service_location_address',
         )
         .eq('id', booking.service_id)
         .maybeSingle(),

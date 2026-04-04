@@ -13,21 +13,27 @@ export type ProviderCard = {
   id: string;
   name: string;
   businessName: string;
+  avatarUrl: string;
   serviceId: string;
   serviceName: string;
   rating: number;
   reviews: number;
   priceLabel: string;
+  serviceLocationType: 'mobile' | 'in_shop';
+  serviceLocationAddress: string | null;
 };
 
 type RawProviderRow = {
   id: string;
   title?: string | null;
   price?: number | null;
+  service_location_type?: string | null;
+  service_location_address?: string | null;
   provider_profiles?: {
     user_id?: string | null;
     business_name?: string | null;
     average_rating?: number | null;
+    avatar_url?: string | null;
   } | null;
 };
 
@@ -49,11 +55,17 @@ function mapProviderRowToCard(row: RawProviderRow): ProviderCard | null {
     id: providerId,
     name: businessName || 'Provider',
     businessName,
+    avatarUrl: String(row.provider_profiles?.avatar_url || '').trim(),
     serviceId: String(row.id || '').trim(),
     serviceName: String(row.title || '').trim(),
     rating: Number.isFinite(rating) ? rating : 0,
     reviews: 0,
     priceLabel: Number.isFinite(rawPrice) && rawPrice >= 0 ? `P${rawPrice.toFixed(2)}` : '',
+    serviceLocationType: row.service_location_type === 'in_shop' ? 'in_shop' : 'mobile',
+    serviceLocationAddress:
+      typeof row.service_location_address === 'string' && row.service_location_address.trim()
+        ? row.service_location_address.trim()
+        : null,
   };
 }
 

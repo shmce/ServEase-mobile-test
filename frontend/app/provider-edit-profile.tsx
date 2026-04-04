@@ -44,6 +44,7 @@ export default function ProviderEditProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [uploadedAvatarUrl, setUploadedAvatarUrl] = useState<string | null>(null);
   const [fullName, setFullName] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [bio, setBio] = useState('');
@@ -82,6 +83,10 @@ export default function ProviderEditProfileScreen() {
         const userData = userResp;
         const profile = profileResp;
         const services = servicesResp.data;
+        const persistedAvatarUrl =
+          typeof profile?.avatar_url === 'string' && profile.avatar_url.trim()
+            ? profile.avatar_url.trim()
+            : null;
 
         setFullName(userData?.full_name || '');
         setBusinessName(profile?.business_name || '');
@@ -92,6 +97,7 @@ export default function ProviderEditProfileScreen() {
         setFacebookUrl(profile?.facebook_url || '');
         setInstagramHandle(profile?.instagram_handle || '');
         setWebsiteUrl(profile?.website_url || '');
+        setUploadedAvatarUrl(persistedAvatarUrl);
 
         const cats = (services || [])
           .map((s: any) => s.service_categories?.name)
@@ -114,7 +120,11 @@ export default function ProviderEditProfileScreen() {
   const handlePickAvatar = async () => {
     if (!user) return;
     const url = await pickAndUploadAvatar(user.id);
-    if (url) setAvatarUri(url);
+    if (url) {
+      const cleanAvatarUrl = url.split('?')[0];
+      setAvatarUri(url);
+      setUploadedAvatarUrl(cleanAvatarUrl);
+    }
   };
 
   const onSave = async () => {
@@ -132,6 +142,7 @@ export default function ProviderEditProfileScreen() {
         facebook_url: facebookUrl.trim() || null,
         instagram_handle: instagramHandle.trim() || null,
         website_url: websiteUrl.trim() || null,
+        ...(uploadedAvatarUrl ? { avatar_url: uploadedAvatarUrl } : {}),
       });
 
       Alert.alert('Profile Updated', 'Your changes have been saved.', [

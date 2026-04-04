@@ -1,0 +1,4 @@
+interface:
+  display_name: "Customer Journey Audit"
+  short_description: "Audit live UI and customer flows."
+  default_prompt: "Use $customer-journey-audit to test the app like a customer, interact with screens, and write an evidence-backed review note."

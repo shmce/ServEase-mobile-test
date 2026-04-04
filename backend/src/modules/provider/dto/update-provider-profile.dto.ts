@@ -9,6 +9,10 @@ import {
 export class UpdateProviderProfileDto {
   @IsOptional()
   @IsString()
+  avatar_url?: string;
+
+  @IsOptional()
+  @IsString()
   business_name?: string;
 
   @IsOptional()

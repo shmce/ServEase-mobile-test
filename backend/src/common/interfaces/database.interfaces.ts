@@ -45,6 +45,8 @@ export interface ProviderService {
   supports_flat: boolean;
   flat_rate?: number;
   default_pricing_mode?: PricingMode;
+  service_location_type?: 'mobile' | 'in_shop';
+  service_location_address?: string | null;
   created_at: string;
 }
 
@@ -56,7 +58,7 @@ export type BookingStatus =
   | 'cancelled'
   | 'disputed';
 
-export type PricingMode = 'flat_rate' | 'hourly_rate';
+export type PricingMode = 'flat' | 'hourly';
 
 export interface Booking {
   id: string;
@@ -66,6 +68,7 @@ export interface Booking {
   service_id: string;
   status: BookingStatus;
   service_address: string;
+  service_location_type?: 'mobile' | 'in_shop';
   scheduled_at: string;
   total_amount: number;
   customer_notes?: string;

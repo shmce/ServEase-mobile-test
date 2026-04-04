@@ -23,6 +23,11 @@ import {
   getPaymentStatusLabel,
 } from '@/services/paymentService';
 
+const getServiceLocationLabel = (serviceLocationType?: string | null) =>
+  serviceLocationType === 'in_shop'
+    ? "Provider's Place (In-Shop)"
+    : "Customer's Place (Mobile)";
+
 export function ProviderBookingDetailsScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -169,6 +174,7 @@ export function ProviderBookingDetailsScreen() {
             <Text style={styles.title}>{booking.service_title}</Text>
             <Text style={styles.sub}>Customer: {booking.customer_name}</Text>
             <Text style={styles.sub}>When: {schedule}</Text>
+            <Text style={styles.sub}>Service Location: {getServiceLocationLabel(booking.service_location_type)}</Text>
             <Text style={styles.sub}>Address: {booking.service_address || 'N/A'}</Text>
             <Text style={styles.sub}>Status: {actionState.label}</Text>
             <Text style={styles.amount}>P{Number(booking.total_amount || 0).toFixed(2)}</Text>

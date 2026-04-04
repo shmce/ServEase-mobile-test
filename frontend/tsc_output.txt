@@ -1,9 +1,0 @@
-components/BookingCarousel.tsx(97,24): error TS7006: Parameter 'item' implicitly has an 'any' type.
-components/BookingCarousel.tsx(101,24): error TS7031: Binding element 'item' implicitly has an 'any' type.
-components/haptic-tab.tsx(9,6): error TS2322: Type '{ children: (((string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | ReactPortal | Promise<...> | ((state: PressableStateCallbackType) => ReactNode)) & (string | ... 6 more ... | Promise<...>)) & (string | ... 6 more ... | Promise<...>)) | null | unde...' is not assignable to type 'RefAttributes<View>'.
-  Types of property 'ref' are incompatible.
-    Type 'Ref<View | LegacyRef<View>> | undefined' is not assignable to type 'Ref<View> | undefined'.
-      Type 'RefObject<View | LegacyRef<View> | null>' is not assignable to type 'Ref<View> | undefined'.
-        Type 'RefObject<View | LegacyRef<View> | null>' is not assignable to type 'RefObject<View | null>'.
-          Type 'View | LegacyRef<View> | null' is not assignable to type 'View | null'.
-            Type 'LegacyRef<View>' is missing the following properties from type 'View': measure, measureInWindow, measureLayout, setNativeProps, and 8 more.

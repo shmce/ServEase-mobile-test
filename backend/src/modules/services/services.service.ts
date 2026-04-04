@@ -53,7 +53,7 @@ export class ServicesService {
     const servicesResponse = await this.catalogDb
       .from('provider_services')
       .select(
-        'id,title,price,description,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode,provider_profiles(user_id,business_name,average_rating,verification_status)',
+        'id,title,price,description,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode,service_location_type,service_location_address,provider_profiles(user_id,business_name,average_rating,verification_status,avatar_url)',
       )
       .eq('category_id', category.id)
       .eq('provider_profiles.verification_status', 'approved');
@@ -70,7 +70,7 @@ export class ServicesService {
   async getTopProviders() {
     const response = await this.catalogDb
       .from('provider_profiles')
-      .select('user_id,business_name,average_rating,verification_status')
+      .select('user_id,business_name,average_rating,verification_status,avatar_url')
       .eq('verification_status', 'approved')
       .order('average_rating', { ascending: false })
       .limit(5);
@@ -83,7 +83,7 @@ export class ServicesService {
   async getFeaturedProviders() {
     const response = await this.catalogDb
       .from('provider_profiles')
-      .select('user_id,business_name,average_rating,verification_status')
+      .select('user_id,business_name,average_rating,verification_status,avatar_url')
       .eq('verification_status', 'approved')
       .order('average_rating', { ascending: false })
       .limit(5);
@@ -156,20 +156,41 @@ export class ServicesService {
   }
 
   async getProvidersByServiceName(serviceName: string) {
-    const response = await this.catalogDb
+    const normalizedServiceName = String(serviceName || '').trim();
+
+    const queryProjection =
+      'id,title,price,description,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode,service_location_type,service_location_address,service_categories!inner(id,name,slug),provider_profiles!inner(user_id,business_name,average_rating,verification_status,avatar_url)';
+
+    const categoryMatchResponse = await this.catalogDb
       .from('provider_services')
-      .select(
-        'id,title,price,description,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode,provider_profiles(user_id,business_name,average_rating,verification_status)',
-      )
-      .ilike('title', `%${serviceName}%`)
+      .select(queryProjection)
+      .ilike('service_categories.name', normalizedServiceName)
       .eq('provider_profiles.verification_status', 'approved');
 
-    if (response.error)
-      throw new InternalServerErrorException(response.error.message);
+    if (categoryMatchResponse.error)
+      throw new InternalServerErrorException(
+        categoryMatchResponse.error.message,
+      );
+
+    if ((categoryMatchResponse.data || []).length > 0) {
+      return {
+        service_name: serviceName,
+        providers: categoryMatchResponse.data || [],
+      };
+    }
+
+    const titleMatchResponse = await this.catalogDb
+      .from('provider_services')
+      .select(queryProjection)
+      .ilike('title', `%${normalizedServiceName}%`)
+      .eq('provider_profiles.verification_status', 'approved');
+
+    if (titleMatchResponse.error)
+      throw new InternalServerErrorException(titleMatchResponse.error.message);
 
     return {
       service_name: serviceName,
-      providers: response.data || [],
+      providers: titleMatchResponse.data || [],
     };
   }
 
@@ -178,7 +199,7 @@ export class ServicesService {
       let query = this.catalogDb
         .from('provider_services')
         .select(
-          `id, title, price, description, supports_hourly, hourly_rate, supports_flat, flat_rate, default_pricing_mode, service_categories!inner(id,name,slug), provider_profiles!inner(user_id,business_name,average_rating,verification_status)`,
+          `id, title, price, description, supports_hourly, hourly_rate, supports_flat, flat_rate, default_pricing_mode, service_location_type, service_location_address, service_categories!inner(id,name,slug), provider_profiles!inner(user_id,business_name,average_rating,verification_status,avatar_url)`,
         )
         .eq('provider_profiles.verification_status', 'approved');
 
@@ -189,10 +210,8 @@ export class ServicesService {
       if (response.error) throw new Error(response.error.message);
 
       const sorted = (response.data || []).sort((a: any, b: any) => {
-        const profileA =
-          a.provider_profiles as unknown as ProviderProfile | null;
-        const profileB =
-          b.provider_profiles as unknown as ProviderProfile | null;
+        const profileA = a.provider_profiles as Partial<ProviderProfile>;
+        const profileB = b.provider_profiles as Partial<ProviderProfile>;
         const scoreA = profileA?.average_rating || 0;
         const scoreB = profileB?.average_rating || 0;
         return scoreB - scoreA;

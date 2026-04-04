@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -22,6 +22,15 @@ function formatProviderPrice(priceLabel: unknown) {
 
 function formatProviderBusinessName(provider: ProviderCard) {
   return provider.businessName || provider.name || 'Unnamed provider';
+}
+
+function getLocationBadgeLabel(locationType: ProviderCard['serviceLocationType']) {
+  return locationType === 'in_shop' ? 'In-Shop' : 'Mobile';
+}
+
+function formatLocationPreview(address: string | null) {
+  if (!address) return 'Visit the provider for this service.';
+  return address.length > 60 ? `${address.slice(0, 57)}...` : address;
 }
 
 export default function ProviderListScreen() {
@@ -89,13 +98,35 @@ export default function ProviderListScreen() {
               })
             }
           >
-            <Text style={styles.businessName}>{formatProviderBusinessName(provider)}</Text>
-            <Text style={styles.providerName}>{provider.serviceName || provider.name}</Text>
+            <View style={styles.cardHeader}>
+              {provider.avatarUrl ? (
+                <Image source={{ uri: provider.avatarUrl }} style={styles.avatar} />
+              ) : (
+                <View style={styles.avatarFallback}>
+                  <Ionicons name="person" size={20} color="#00B761" />
+                </View>
+              )}
+              <View style={styles.cardHeaderText}>
+                <Text style={styles.businessName}>{formatProviderBusinessName(provider)}</Text>
+                <Text style={styles.providerName}>{provider.serviceName || provider.name}</Text>
+              </View>
+              {provider.serviceLocationType === 'in_shop' ? (
+                <View style={styles.locationBadge}>
+                  <Text style={styles.locationBadgeText}>{getLocationBadgeLabel(provider.serviceLocationType)}</Text>
+                </View>
+              ) : null}
+            </View>
             <View style={styles.metaRow}>
               <Text style={styles.metaText}>Rating: {formatProviderRating(provider.rating)}</Text>
               <Text style={styles.metaText}>Reviews: {formatProviderReviews(provider.reviews)}</Text>
               <Text style={styles.priceText}>{formatProviderPrice(provider.priceLabel)}</Text>
             </View>
+            {provider.serviceLocationType === 'in_shop' ? (
+              <View style={styles.locationPreview}>
+                <Ionicons name="location-outline" size={16} color="#00B761" />
+                <Text style={styles.locationPreviewText}>{formatLocationPreview(provider.serviceLocationAddress)}</Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -113,11 +144,44 @@ const styles = StyleSheet.create({
   headerSubtitle: { fontSize: 12, color: '#999', marginTop: 2 },
   scrollContent: { padding: 20 },
   providerCard: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 12 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center' },
+  cardHeaderText: { flex: 1 },
+  avatar: { width: 52, height: 52, borderRadius: 26, marginRight: 12, backgroundColor: '#E8F8EF' },
+  avatarFallback: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    marginRight: 12,
+    backgroundColor: '#E8F8EF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   businessName: { fontSize: 16, fontWeight: '700', color: '#0D1B2A' },
   providerName: { fontSize: 14, color: '#555', marginTop: 4 },
+  locationBadge: {
+    backgroundColor: '#EAF8EF',
+    borderColor: '#B7E4C7',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginLeft: 10,
+  },
+  locationBadgeText: { color: '#157347', fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
   metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
   metaText: { fontSize: 12, color: '#777' },
   priceText: { fontSize: 13, fontWeight: '700', color: '#00B761' },
+  locationPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+    backgroundColor: '#F8FBF9',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  locationPreviewText: { flex: 1, fontSize: 12, color: '#3B4A54' },
   emptyText: { textAlign: 'center', color: '#777', marginTop: 24 },
   errorText: { textAlign: 'center', color: '#C62828', marginTop: 24 },
 });

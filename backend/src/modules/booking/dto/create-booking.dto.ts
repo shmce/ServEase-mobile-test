@@ -21,6 +21,11 @@ export class CreateBookingDto {
   @IsNotEmpty()
   service_address: string;
 
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(['mobile', 'in_shop'])
+  service_location_type: 'mobile' | 'in_shop';
+
   @IsDateString()
   @IsNotEmpty()
   scheduled_at: string;

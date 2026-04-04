@@ -16,6 +16,12 @@ const formatMemberSince = (value?: string | null) => {
   return parsed.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 };
 
+const getServiceLocationLabel = (locationType?: string | null) =>
+  locationType === 'in_shop' ? 'In-Shop' : 'Mobile';
+
+const hasInShopService = (services: any[]) =>
+  services.some((service) => service?.service_location_type === 'in_shop');
+
 export default function ProviderProfileScreen() {
   const router = useRouter();
   const { providerId = '', serviceId = '', serviceName = '', providerName } = useLocalSearchParams<{
@@ -56,6 +62,7 @@ export default function ProviderProfileScreen() {
 
   const providerDisplayName = useMemo(() => payload?.user?.full_name || providerName || 'Service Provider', [payload, providerName]);
   const serviceCount = Array.isArray(payload?.services) ? payload.services.length : 0;
+  const providerServices = Array.isArray(payload?.services) ? payload.services : [];
   const reviewCount = Number(payload?.profile?.total_reviews || payload?.reviews?.length || 0);
   const averageRating = Number(payload?.profile?.average_rating || 0).toFixed(1);
   const serviceAreas = Array.isArray(payload?.profile?.service_areas) ? payload.profile.service_areas : [];
@@ -187,6 +194,15 @@ export default function ProviderProfileScreen() {
                   </Text>
                 </View>
 
+                {hasInShopService(providerServices) ? (
+                  <View style={styles.card}>
+                    <Text style={styles.sectionHeading}>Visit Information</Text>
+                    <Text style={styles.cardText}>
+                      Some services are performed at the provider&apos;s location. Review the service details below before booking so you know whether to travel to the shop or wait for mobile service.
+                    </Text>
+                  </View>
+                ) : null}
+
                 {(payload.user?.email || payload.user?.contact_number || socialLinks.length > 0) ? (
                   <View style={styles.card}>
                     <Text style={styles.sectionHeading}>Contact & Links</Text>
@@ -224,14 +240,33 @@ export default function ProviderProfileScreen() {
 
             {activeTab === 'Services' ? (
               <View style={styles.card}>
-                {(payload.services || []).map((svc: any) => (
+                {providerServices.map((svc: any) => (
                   <View key={svc.id} style={styles.rowItem}>
                     <Text style={styles.rowTitle}>{svc.title}</Text>
                     <Text style={styles.rowSub}>{svc.description || 'No description'}</Text>
                     <Text style={styles.rowPrice}>P{Number(svc.price || 0).toFixed(2)}</Text>
+                    <View style={styles.serviceLocationRow}>
+                      <Ionicons
+                        name={svc.service_location_type === 'in_shop' ? 'location' : 'car-outline'}
+                        size={16}
+                        color="#00B761"
+                      />
+                      <Text style={styles.serviceLocationLabel}>
+                        {getServiceLocationLabel(svc.service_location_type)}
+                      </Text>
+                    </View>
+                    {svc.service_location_type === 'in_shop' ? (
+                      <Text style={styles.serviceLocationAddress}>
+                        {svc.service_location_address || 'Provider address will be confirmed before booking.'}
+                      </Text>
+                    ) : (
+                      <Text style={styles.serviceLocationAddress}>
+                        The provider travels to your selected address for this service.
+                      </Text>
+                    )}
                   </View>
                 ))}
-                {(!payload.services || payload.services.length === 0) ? <Text style={styles.emptyText}>No services listed yet.</Text> : null}
+                {providerServices.length === 0 ? <Text style={styles.emptyText}>No services listed yet.</Text> : null}
               </View>
             ) : null}
 
@@ -268,7 +303,13 @@ export default function ProviderProfileScreen() {
                 onPress={() =>
                   router.push({
                     pathname: '/customer-booking-form',
-                    params: { providerId, providerName: providerDisplayName, serviceId, serviceName },
+                    params: {
+                      providerId,
+                      providerName: providerDisplayName,
+                      serviceId,
+                      serviceName,
+                      avatarUrl: payload?.profile?.avatar_url ?? '',
+                    },
                   })
                 }
               >
@@ -334,6 +375,9 @@ const styles = StyleSheet.create({
   rowTitle: { fontSize: 14, fontWeight: '700', color: '#0D1B2A' },
   rowSub: { fontSize: 13, color: '#666', marginTop: 4 },
   rowPrice: { fontSize: 13, color: '#00B761', fontWeight: '700', marginTop: 4 },
+  serviceLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
+  serviceLocationLabel: { fontSize: 12, fontWeight: '700', color: '#157347', textTransform: 'uppercase' },
+  serviceLocationAddress: { fontSize: 13, color: '#444', marginTop: 6, lineHeight: 19 },
   emptyText: { textAlign: 'center', color: '#777', paddingVertical: 16 },
   errorText: { textAlign: 'center', color: '#C62828', marginTop: 20, paddingHorizontal: 20 },
   footer: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fff', padding: 12, borderTopWidth: 1, borderTopColor: '#eee' },

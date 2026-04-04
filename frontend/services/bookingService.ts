@@ -20,6 +20,7 @@ export const createBooking = async (bookingData: any) => {
     provider_id: bookingData.provider_id,
     service_id: bookingData.service_id,
     service_address: bookingData.service_address || bookingData.address || '',
+    service_location_type: bookingData.service_location_type || 'mobile',
     scheduled_at: scheduledAt.toISOString(),
     pricing_mode: bookingData.pricing_mode || 'flat',
     hourly_rate: bookingData.hourly_rate,

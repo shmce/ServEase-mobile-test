@@ -34,6 +34,8 @@ type ServiceRow = {
   supports_flat: boolean;
   flat_rate: number | null;
   default_pricing_mode: PricingMode | null;
+  service_location_type: 'mobile' | 'in_shop';
+  service_location_address: string | null;
 };
 
 type PricingMode = 'hourly' | 'flat';
@@ -45,6 +47,8 @@ type CategoryRow = {
 };
 
 const formatMoney = (value: number) => `P${Number(value || 0).toFixed(2)}`;
+const getServiceLocationLabel = (locationType: ServiceRow['service_location_type']) =>
+  locationType === 'in_shop' ? 'In-Shop' : 'Mobile';
 const slugify = (value: string) =>
   value
     .toLowerCase()
@@ -76,6 +80,8 @@ export default function PricingScreen() {
   const [supportsFlat, setSupportsFlat] = useState(false);
   const [flatRateText, setFlatRateText] = useState('');
   const [defaultPricingMode, setDefaultPricingMode] = useState<PricingMode>('hourly');
+  const [serviceLocationType, setServiceLocationType] = useState<'mobile' | 'in_shop'>('mobile');
+  const [serviceLocationAddress, setServiceLocationAddress] = useState('');
 
   // Category selection — driven by local taxonomy, not DB
   const [selectedGroup, setSelectedGroup] = useState('');
@@ -96,6 +102,8 @@ export default function PricingScreen() {
     setSupportsFlat(false);
     setFlatRateText('');
     setDefaultPricingMode('hourly');
+    setServiceLocationType('mobile');
+    setServiceLocationAddress('');
   }, []);
 
   // Load DB categories into a map for id lookups
@@ -121,7 +129,7 @@ export default function PricingScreen() {
     if (!user?.id) return;
     const { data, error } = await providerCatalogDb
       .from('provider_services')
-      .select('id,title,description,price,category_id,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode')
+      .select('id,title,description,price,category_id,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode,service_location_type,service_location_address')
       .eq('provider_id', user.id)
       .order('created_at', { ascending: false });
 
@@ -237,6 +245,8 @@ export default function PricingScreen() {
     setSupportsFlat(Boolean(service.supports_flat));
     setFlatRateText(service.flat_rate ? String(service.flat_rate) : '');
     setDefaultPricingMode(service.default_pricing_mode || 'hourly');
+    setServiceLocationType(service.service_location_type || 'mobile');
+    setServiceLocationAddress(service.service_location_address || '');
 
     // Resolve category from DB map
     const catRow = Object.values(dbCategoryMap).find((c) => c.id === service.category_id);
@@ -295,6 +305,10 @@ export default function PricingScreen() {
       Alert.alert('Invalid Pricing', 'At least one pricing mode with a valid rate is required.');
       return;
     }
+    if (serviceLocationType === 'in_shop' && !serviceLocationAddress.trim()) {
+      Alert.alert('Missing Fields', 'In-shop services require a service address.');
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -314,6 +328,8 @@ export default function PricingScreen() {
         default_pricing_mode: hasHourly && hasFlat
           ? defaultPricingMode
           : hasHourly ? 'hourly' : 'flat',
+        service_location_type: serviceLocationType,
+        service_location_address: serviceLocationType === 'in_shop' ? serviceLocationAddress.trim() : null,
       };
 
       const doSave = async () => {
@@ -351,7 +367,7 @@ export default function PricingScreen() {
   }, [
     defaultPricingMode, description, editingId, ensureProviderIdentityRows,
     flatRateText, hourlyRateText, loadServices, resetForm, resolveCategoryId,
-    selectedSubcategory, supportsFlat, supportsHourly, title, user?.id,
+    selectedSubcategory, serviceLocationAddress, serviceLocationType, supportsFlat, supportsHourly, title, user?.id,
   ]);
 
   // Get subcategory name for a service's category_id
@@ -523,6 +539,57 @@ export default function PricingScreen() {
             )}
           </View>
 
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Service Location</Text>
+
+            <Text style={styles.label}>Where is this service performed?</Text>
+            <View style={styles.locationTypeRow}>
+              <Pressable
+                onPress={() => setServiceLocationType('mobile')}
+                disabled={isSaving}
+                style={[styles.locationTypeChip, serviceLocationType === 'mobile' && styles.locationTypeChipActive]}
+              >
+                <Text
+                  style={[
+                    styles.locationTypeChipText,
+                    serviceLocationType === 'mobile' && styles.locationTypeChipTextActive,
+                  ]}
+                >
+                  Mobile
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setServiceLocationType('in_shop')}
+                disabled={isSaving}
+                style={[styles.locationTypeChip, serviceLocationType === 'in_shop' && styles.locationTypeChipActive]}
+              >
+                <Text
+                  style={[
+                    styles.locationTypeChipText,
+                    serviceLocationType === 'in_shop' && styles.locationTypeChipTextActive,
+                  ]}
+                >
+                  In-Shop
+                </Text>
+              </Pressable>
+            </View>
+
+            {serviceLocationType === 'in_shop' ? (
+              <>
+                <Text style={styles.label}>Service address</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={serviceLocationAddress}
+                  onChangeText={setServiceLocationAddress}
+                  placeholder="Enter the provider address for this service"
+                  placeholderTextColor="#94A3B8"
+                  multiline
+                  editable={!isSaving}
+                />
+              </>
+            ) : null}
+          </View>
+
           {/* ── Category ── */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Category</Text>
@@ -647,6 +714,24 @@ export default function PricingScreen() {
                         Default: {item.default_pricing_mode === 'flat' ? 'Flat' : 'Hourly'}
                       </Text>
                     )}
+                  </View>
+
+                  <View style={styles.locationSummaryRow}>
+                    <View style={styles.locationBadge}>
+                      <Ionicons
+                        name={item.service_location_type === 'in_shop' ? 'location' : 'car-outline'}
+                        size={14}
+                        color="#047857"
+                      />
+                      <Text style={styles.locationBadgeText}>
+                        {getServiceLocationLabel(item.service_location_type)}
+                      </Text>
+                    </View>
+                    <Text style={styles.locationSummaryText}>
+                      {item.service_location_type === 'in_shop'
+                        ? item.service_location_address || 'Provider address will be shown to customers before booking.'
+                        : 'Provider travels to the customer address for this service.'}
+                    </Text>
                   </View>
 
                   <View style={styles.serviceActions}>
@@ -827,6 +912,33 @@ const styles = StyleSheet.create({
   },
   modeChipText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
   modeChipTextActive: { color: '#00B761' },
+  locationTypeRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  locationTypeChip: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+  },
+  locationTypeChipActive: {
+    borderColor: '#00B761',
+    backgroundColor: '#F0FDF9',
+  },
+  locationTypeChipText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  locationTypeChipTextActive: {
+    color: '#00B761',
+  },
 
   // Category chips
   chipGrid: {
@@ -936,6 +1048,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748B',
     fontStyle: 'italic',
+  },
+  locationSummaryRow: {
+    marginTop: 10,
+    gap: 8,
+  },
+  locationBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#ECFDF3',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  locationBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#047857',
+    textTransform: 'uppercase',
+  },
+  locationSummaryText: {
+    fontSize: 13,
+    color: '#475569',
+    lineHeight: 18,
   },
   serviceActions: {
     flexDirection: 'row',
