@@ -111,6 +111,15 @@ Preferred artifacts:
 - Verification notes
 - Diff or changed file list
 - Review findings
+- Review input metadata:
+  - spec path reviewed
+  - changed file list or diff snapshot reviewed
+  - verification notes reviewed
+  - review timestamp
+- Contract change notes for multi-screen or multi-layer flows:
+  - route params added/changed
+  - DTO or response-shape changes
+  - fallback behavior when required data is missing
 
 Suggested locations:
 
@@ -136,6 +145,10 @@ Before review, Codex should provide:
 - a concise summary of what changed
 - relevant verification performed
 - any known limitations or assumptions
+- any contract changes across screens, services, or DTO boundaries
+  - include route params added/changed
+  - include data-shape assumptions introduced or removed
+  - include how missing data is handled
 
 ### Gate 3: Review Gate
 
@@ -146,6 +159,10 @@ Before closure, Gemini should check:
 - security/privacy implications
 - edge cases
 - missing tests or weak verification
+- whether the review inputs are still current
+  - if code changed after the review started, mark the review stale and rerun it
+- whether cross-screen or cross-layer contracts still match the implementation
+  - especially route params, shared DTOs, and fallback behavior
 
 ### Gate 4: Final Gate
 
@@ -154,6 +171,7 @@ Before merge or signoff, confirm:
 - critical findings are addressed
 - verification has been re-run after fixes
 - any remaining risk is explicitly documented
+- any stale reviews have been discarded or refreshed against the latest diff
 
 ## Prompting Pattern
 
@@ -177,6 +195,49 @@ Keep scope narrow, call out ambiguity explicitly, and run relevant verification 
 Follow `AGENTS.md`. You are the adversarial reviewer.
 Review the supplied spec, diff, and verification notes.
 Prioritize findings by severity and focus on regressions, security issues, edge cases, and missing tests.
+State the exact review inputs you used.
+Classify each finding as `current`, `stale`, or `speculative`.
+If implementation changed after the review started, mark the review stale and request a rerun.
+
+## Review Freshness Rule
+
+Every Gemini review should identify the exact implementation snapshot it reviewed.
+
+Minimum metadata:
+
+- spec path
+- changed files or diff snapshot
+- verification notes
+- review timestamp
+
+If Codex changes the implementation after Gemini begins review, the existing review is stale by default.
+Do not restate stale findings as current findings.
+
+## Cross-Screen / Cross-Layer Contract Rule
+
+If a task changes data flow across more than one screen, service, or layer, treat the contract itself as a review target.
+
+Examples:
+
+- route params passed between screens
+- frontend types derived from backend response shapes
+- service-layer normalization relied on by UI components
+- fallback values that affect downstream queries or navigation
+
+Codex should document these contract changes in implementation notes.
+Gemini should verify the full path, not just isolated files.
+
+## Review Finding Format
+
+Gemini findings should include:
+
+- severity
+- status: `current`, `stale`, or `speculative`
+- file and line reference when possible
+- why it matters
+- reproduction or verification status
+
+Use `current` only for issues verified against the implementation snapshot actually reviewed.
 
 ## Default Risk Policy
 

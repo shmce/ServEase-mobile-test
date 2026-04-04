@@ -520,6 +520,64 @@ type ServiceOption = {
   default_pricing_mode: PricingMode | null;
 };
 
+export function getDefaultPricingModeForService(service: ServiceOption | null): PricingMode | null {
+  if (!service) return null;
+  if (service.supports_hourly && service.supports_flat) return service.default_pricing_mode || 'hourly';
+  if (service.supports_hourly) return 'hourly';
+  if (service.supports_flat) return 'flat';
+  return null;
+}
+
+export function buildBookingPricingSnapshot(
+  service: ServiceOption | null,
+  pricingMode: PricingMode | null,
+  hoursRequired: string
+) {
+  const effectivePricingMode = pricingMode || getDefaultPricingModeForService(service);
+  const hourlyRate = service?.hourly_rate ?? service?.price ?? 0;
+  const flatRate = service?.flat_rate ?? service?.price ?? 0;
+  const parsedHoursRequired = Math.max(1, Number(hoursRequired || 1));
+  const isHourly = effectivePricingMode === 'hourly';
+  const isFlat = effectivePricingMode === 'flat';
+
+  let totalAmount = service?.price || 0;
+  if (isHourly) {
+    totalAmount = Number(hourlyRate) * parsedHoursRequired;
+  } else if (isFlat) {
+    totalAmount = Number(flatRate);
+  }
+
+  return {
+    effectivePricingMode,
+    hourlyRate,
+    flatRate,
+    parsedHoursRequired,
+    isHourly,
+    isFlat,
+    totalAmount,
+  };
+}
+
+export function pickInitialServiceOption(
+  services: ServiceOption[],
+  requestedServiceId?: string,
+  requestedServiceName?: string
+) {
+  const normalizedRequestedServiceId = String(requestedServiceId || '').trim();
+  if (normalizedRequestedServiceId) {
+    const exactIdMatch = services.find((service) => service.id === normalizedRequestedServiceId);
+    if (exactIdMatch) return exactIdMatch;
+  }
+
+  const normalizedRequestedServiceName = String(requestedServiceName || '').trim().toLowerCase();
+  if (normalizedRequestedServiceName) {
+    const exactNameMatch = services.find((service) => service.title.toLowerCase() === normalizedRequestedServiceName);
+    if (exactNameMatch) return exactNameMatch;
+  }
+
+  return services[0] || null;
+}
+
 const INITIAL_ADDRESSES: { id: string; type: string; fullAddress: string }[] = [];
 
 const TIME_OPTIONS = [
@@ -689,6 +747,28 @@ const getAddressIcon = (label: string = '') => {
   return 'location-outline' as const;
 };
 
+function getServiceLoadErrorMessage(error: unknown) {
+  const errorCode =
+    typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+      ? error.code
+      : '';
+  const errorText = getErrorMessage(error, 'Unable to load services for this provider.');
+  const normalizedErrorText = errorText.toLowerCase();
+
+  const looksLikeSchemaAccessIssue =
+    errorCode === 'PGRST106' ||
+    normalizedErrorText.includes('schema') ||
+    normalizedErrorText.includes('exposed') ||
+    normalizedErrorText.includes('permission') ||
+    normalizedErrorText.includes('not allowed');
+
+  if (looksLikeSchemaAccessIssue) {
+    return 'Provider services are temporarily unavailable due to a configuration issue. Please try again later or contact support.';
+  }
+
+  return errorText;
+}
+
 const SelectionModal = ({ 
   visible, 
   title, 
@@ -719,6 +799,7 @@ export default function CustomerBookingFormScreen() {
   const { user } = useAuth();
   const params = useLocalSearchParams<{
     newAddress?: string;
+    serviceId?: string;
     serviceName?: string;
     providerName?: string;
     providerId?: string;
@@ -810,26 +891,17 @@ export default function CustomerBookingFormScreen() {
 
         setServiceOptions(rows);
 
-        const getDefaultPricingMode = (picked: ServiceOption) => {
-          if (picked.supports_hourly && picked.supports_flat) return picked.default_pricing_mode || 'hourly';
-          if (picked.supports_hourly) return 'hourly';
-          if (picked.supports_flat) return 'flat';
-          return null;
-        };
-
         if (rows.length > 0 && !serviceId) {
-          const matched = params.serviceName
-            ? rows.find((r) => r.title.toLowerCase() === String(params.serviceName).toLowerCase())
-            : null;
-          const picked = matched || rows[0];
+          const picked = pickInitialServiceOption(rows, params.serviceId, params.serviceName);
+          if (!picked) return;
           setServiceId(picked.id);
           setService(picked.title);
-          setPricingMode(getDefaultPricingMode(picked));
+          setPricingMode(getDefaultPricingModeForService(picked));
         }
       } catch (error) {
         if (active) {
           setServiceOptions([]);
-          setServicesLoadError(getErrorMessage(error, 'Unable to load services for this provider.'));
+          setServicesLoadError(getServiceLoadErrorMessage(error));
           console.error('Failed to load service options', error);
         }
       } finally {
@@ -841,7 +913,7 @@ export default function CustomerBookingFormScreen() {
     return () => {
       active = false;
     };
-  }, [params.providerId, params.serviceName, serviceId]);
+  }, [params.providerId, params.serviceId, params.serviceName, serviceId]);
 
   useEffect(() => {
     async function loadAddresses() {
@@ -905,18 +977,8 @@ export default function CustomerBookingFormScreen() {
   const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const isCurrentMonth = isSameMonth(calendarMonth, currentMonth);
   const selectedService = serviceOptions.find((item) => item.id === serviceId) || null;
-  const isHourly = pricingMode === 'hourly';
-  const isFlat = pricingMode === 'flat';
-  const hourlyRate = selectedService?.hourly_rate ?? selectedService?.price ?? 0;
-  const flatRate = selectedService?.flat_rate ?? selectedService?.price ?? 0;
-  const parsedHoursRequired = Math.max(1, Number(hoursRequired || 1));
-
-  let totalAmount = selectedService?.price || 0;
-  if (isHourly) {
-    totalAmount = Number(hourlyRate) * parsedHoursRequired;
-  } else if (isFlat) {
-    totalAmount = Number(flatRate);
-  }
+  const { effectivePricingMode, isHourly, isFlat, hourlyRate, flatRate, parsedHoursRequired, totalAmount } =
+    buildBookingPricingSnapshot(selectedService, pricingMode, hoursRequired);
 
   const handleDateSelect = (formattedDate: string, key: string, dateObj: Date) => {
     setDate(formattedDate);
@@ -953,7 +1015,9 @@ export default function CustomerBookingFormScreen() {
     if (!service || !date || !time || !address) return 'Please fill in all required fields (Service, Date, Time, and Address).';
     if (!dateKey) return 'Please pick a date from the calendar.';
     if (!serviceId) return 'Please select a valid service before confirming.';
-    if (serviceOptions.length === 0) return 'This provider has no active services yet. Please try another provider.';
+    if (serviceOptions.length === 0) {
+      return servicesLoadError || 'This provider has no active services yet. Please try another provider.';
+    }
     if (!user) return 'Please log in before creating a booking.';
     return null;
   };
@@ -1001,7 +1065,7 @@ export default function CustomerBookingFormScreen() {
         scheduled_time: time,
         service_address: address.fullAddress,
         total_amount: totalAmount,
-        pricing_mode: pricingMode || (selectedService?.supports_hourly ? 'hourly' : 'flat'),
+        pricing_mode: effectivePricingMode || 'flat',
         hourly_rate: isHourly ? hourlyRate : null,
         flat_rate: isFlat ? flatRate : null,
         hours_required: isHourly ? parsedHoursRequired : null,

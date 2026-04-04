@@ -145,8 +145,8 @@ export default function CategoryDetailsScreen() {
                 style={{ width: SUB_COL_WIDTH, marginBottom: 12 }}
                 onPress={() =>
                   router.push({
-                    pathname: '/category-details',
-                    params: { title: subcategory },
+                    pathname: '/provider-list',
+                    params: { serviceName: subcategory },
                   })
                 }
               >

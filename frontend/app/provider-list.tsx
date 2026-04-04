@@ -6,6 +6,24 @@ import { StatusBar } from 'expo-status-bar';
 import { getErrorMessage } from '@/lib/error-handling';
 import { getProvidersByServiceName, ProviderCard } from '@/services/marketplaceService';
 
+function formatProviderRating(rating: unknown) {
+  const normalizedRating = Number(rating);
+  return Number.isFinite(normalizedRating) ? normalizedRating.toFixed(1) : '0.0';
+}
+
+function formatProviderReviews(reviews: unknown) {
+  const normalizedReviews = Number(reviews);
+  return Number.isFinite(normalizedReviews) ? String(normalizedReviews) : '0';
+}
+
+function formatProviderPrice(priceLabel: unknown) {
+  return typeof priceLabel === 'string' && priceLabel.trim() ? priceLabel : 'Price unavailable';
+}
+
+function formatProviderBusinessName(provider: ProviderCard) {
+  return provider.businessName || provider.name || 'Unnamed provider';
+}
+
 export default function ProviderListScreen() {
   const router = useRouter();
   const { serviceName = 'General Service' } = useLocalSearchParams<{ serviceName: string }>();
@@ -57,25 +75,26 @@ export default function ProviderListScreen() {
 
         {providers.map((provider) => (
           <TouchableOpacity
-            key={provider.id}
+            key={`${provider.id}-${provider.serviceId}`}
             style={styles.providerCard}
             onPress={() =>
               router.push({
                 pathname: '/provider-profile',
                 params: {
                   providerId: provider.id,
-                  serviceName,
+                  serviceId: provider.serviceId,
+                  serviceName: provider.serviceName || serviceName,
                   providerName: provider.name,
                 },
               })
             }
           >
-            <Text style={styles.businessName}>{provider.businessName}</Text>
-            <Text style={styles.providerName}>{provider.name}</Text>
+            <Text style={styles.businessName}>{formatProviderBusinessName(provider)}</Text>
+            <Text style={styles.providerName}>{provider.serviceName || provider.name}</Text>
             <View style={styles.metaRow}>
-              <Text style={styles.metaText}>Rating: {provider.rating.toFixed(1)}</Text>
-              <Text style={styles.metaText}>Reviews: {provider.reviews}</Text>
-              <Text style={styles.priceText}>{provider.priceLabel}</Text>
+              <Text style={styles.metaText}>Rating: {formatProviderRating(provider.rating)}</Text>
+              <Text style={styles.metaText}>Reviews: {formatProviderReviews(provider.reviews)}</Text>
+              <Text style={styles.priceText}>{formatProviderPrice(provider.priceLabel)}</Text>
             </View>
           </TouchableOpacity>
         ))}

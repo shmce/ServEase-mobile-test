@@ -7,15 +7,21 @@ export const getCustomerBookings = async (customerId: string): Promise<EnrichedB
 };
 
 export const createBooking = async (bookingData: any) => {
+  const scheduledAt = parseScheduleLocal(
+    String(bookingData.scheduled_date_key || bookingData.scheduled_date || '').trim(),
+    String(bookingData.scheduled_time || '').trim()
+  );
+
+  if (!scheduledAt) {
+    throw new Error('Please choose a valid booking date and time before confirming.');
+  }
+
   const inserted = await api.post<{ booking: Booking }>('/booking/create', {
     provider_id: bookingData.provider_id,
     service_id: bookingData.service_id,
     service_address: bookingData.service_address || bookingData.address || '',
-    scheduled_at: parseScheduleLocal(
-      String(bookingData.scheduled_date_key || bookingData.scheduled_date || '').trim(),
-      String(bookingData.scheduled_time || '').trim()
-    )?.toISOString(),
-    pricing_mode: bookingData.pricing_mode || 'flat_rate',
+    scheduled_at: scheduledAt.toISOString(),
+    pricing_mode: bookingData.pricing_mode || 'flat',
     hourly_rate: bookingData.hourly_rate,
     flat_rate: bookingData.flat_rate,
     hours_required: bookingData.hours_required,

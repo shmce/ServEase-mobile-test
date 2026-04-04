@@ -56,7 +56,7 @@ export type BookingStatus =
   | 'cancelled'
   | 'disputed';
 
-export type PricingMode = 'flat_rate' | 'hourly_rate';
+export type PricingMode = 'flat' | 'hourly';
 
 export interface Booking {
   id: string;

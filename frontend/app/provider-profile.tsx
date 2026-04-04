@@ -18,7 +18,12 @@ const formatMemberSince = (value?: string | null) => {
 
 export default function ProviderProfileScreen() {
   const router = useRouter();
-  const { providerId = '', serviceName = '', providerName } = useLocalSearchParams<{ providerId: string; serviceName?: string; providerName?: string }>();
+  const { providerId = '', serviceId = '', serviceName = '', providerName } = useLocalSearchParams<{
+    providerId: string;
+    serviceId?: string;
+    serviceName?: string;
+    providerName?: string;
+  }>();
   const [activeTab, setActiveTab] = useState('About');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -263,7 +268,7 @@ export default function ProviderProfileScreen() {
                 onPress={() =>
                   router.push({
                     pathname: '/customer-booking-form',
-                    params: { providerId, providerName: providerDisplayName, serviceName },
+                    params: { providerId, providerName: providerDisplayName, serviceId, serviceName },
                   })
                 }
               >
