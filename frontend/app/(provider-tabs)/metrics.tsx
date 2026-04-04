@@ -4,11 +4,11 @@ import {
   Text, 
   StyleSheet, 
   TouchableOpacity, 
-  SafeAreaView, 
   ScrollView, 
   StatusBar, 
   Dimensions 
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { NotificationBadge } from '@/components/ui/notification-badge';

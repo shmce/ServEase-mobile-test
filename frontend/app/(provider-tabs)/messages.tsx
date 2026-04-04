@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, StatusBar, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, StatusBar, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ChatSummaryCard } from '@/components/ui/chat-summary-card';
 import { useAuth } from '@/hooks/useAuth';

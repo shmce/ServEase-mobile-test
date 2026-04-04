@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SettingsRow } from '@/components/ui/settings-row';
@@ -159,7 +160,7 @@ export default function ProviderSettingsScreen() {
         <View style={styles.section}>
           <SettingsRow variant="setting" icon="globe-outline" label="Language" sublabel="English" />
           <SettingsRow variant="setting" icon="cash-outline" label="Currency" sublabel="PHP (₱)" />
-          <SettingsRow variant="setting" icon="ruler-outline" label="Distance Unit" sublabel="Kilometers" />
+          <SettingsRow variant="setting" icon="resize-outline" label="Distance Unit" sublabel="Kilometers" />
           <SettingsRow 
             icon="moon-outline" 
             label="Dark Mode" 

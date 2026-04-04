@@ -3,12 +3,12 @@ import {
   StyleSheet, 
   View, 
   Text, 
-  SafeAreaView, 
   StatusBar, 
   TouchableOpacity,
   Switch,
   ScrollView
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';

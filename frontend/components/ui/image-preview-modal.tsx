@@ -2,12 +2,11 @@ import React from 'react';
 import {
   Image,
   Modal,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
-} from 'react-native';
+  View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 type ImagePreviewModalProps = {

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, Pressable, SafeAreaView, StatusBar, Image, Dimensions, ActivityIndicator, Alert, ViewStyle } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Pressable, StatusBar, Image, Dimensions, ActivityIndicator, Alert, ViewStyle } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';

@@ -8,12 +8,11 @@ import {
   TouchableOpacity,
   Image,
   TextInput,
-  SafeAreaView,
   StatusBar,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
-} from 'react-native';
+  ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { openPhoneCall } from '@/lib/communication';

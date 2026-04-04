@@ -4,11 +4,10 @@ import {
   View,
   Text,
   TouchableOpacity,
-  SafeAreaView,
   Image,
   Dimensions,
-  ActivityIndicator,
-} from 'react-native';
+  ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';

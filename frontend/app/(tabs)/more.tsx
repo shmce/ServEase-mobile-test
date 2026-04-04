@@ -4,9 +4,8 @@ import {
   View,
   Text,
   ScrollView,
-  SafeAreaView,
-  StatusBar,
-} from 'react-native';
+  StatusBar } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { logoutCustomer } from '@/lib/customer-session';
 import { SettingsRow } from '@/components/ui/settings-row';

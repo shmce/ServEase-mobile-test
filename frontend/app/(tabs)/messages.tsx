@@ -5,10 +5,9 @@ import {
   Text,
   TextInput,
   ScrollView,
-  SafeAreaView,
   StatusBar,
-  ActivityIndicator,
-} from 'react-native';
+  ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ChatSummaryCard } from '@/components/ui/chat-summary-card';

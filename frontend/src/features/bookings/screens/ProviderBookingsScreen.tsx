@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, memo, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, SafeAreaView, ActivityIndicator, TextInput, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, TextInput, Alert, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';

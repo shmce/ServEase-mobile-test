@@ -3,13 +3,12 @@ import {
   View, 
   Text, 
   StyleSheet, 
-  SafeAreaView, 
   ScrollView, 
   Alert,
   ActivityIndicator,
   Modal,
-  Dimensions,
-} from 'react-native';
+  Dimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';

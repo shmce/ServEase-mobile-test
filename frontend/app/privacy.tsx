@@ -4,9 +4,8 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  SafeAreaView,
-} from 'react-native';
+  TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -26,7 +25,8 @@ export default function PrivacyScreen() {
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Privacy Policy</Text>
-        <View style={{ width: 40 }} /> {/* Spacer to center the title */}
+        {/* Spacer to center the title */}
+        <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={true}>
