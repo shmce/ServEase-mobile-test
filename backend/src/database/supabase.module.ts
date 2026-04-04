@@ -94,14 +94,17 @@ export class SupabaseModule {}
 /**
  * Creates a Proxy for the Supabase client that executes terminal calls through a Circuit Breaker.
  */
-function createResilientProxy(client: any, breaker: CircuitBreaker): any {
+function createResilientProxy<T extends object>(
+  client: T,
+  breaker: CircuitBreaker,
+): T {
   return new Proxy(client, {
     get(target, prop, receiver) {
       const originalValue = Reflect.get(target, prop, receiver);
 
       // We only intercept 'from' because it starts the fluent builder chain
       if (prop === 'from' && typeof originalValue === 'function') {
-        return (...args: any[]) => {
+        return (...args: unknown[]) => {
           const builder = originalValue.apply(target, args);
           // Return a proxy of the builder to intercept the final execution methods
           return createBuilderProxy(builder, breaker);
@@ -116,7 +119,10 @@ function createResilientProxy(client: any, breaker: CircuitBreaker): any {
 /**
  * Proxy for Supabase Query Builder to intercept execution methods like then, single, maybeSingle, etc.
  */
-function createBuilderProxy(builder: any, breaker: CircuitBreaker): any {
+function createBuilderProxy<T extends object>(
+  builder: T,
+  breaker: CircuitBreaker,
+): T {
   const executionMethods = new Set([
     'then',
     'single',
@@ -126,6 +132,7 @@ function createBuilderProxy(builder: any, breaker: CircuitBreaker): any {
     'update',
     'delete',
     'upsert',
+    'returns',
   ]);
 
   return new Proxy(builder, {
@@ -133,8 +140,8 @@ function createBuilderProxy(builder: any, breaker: CircuitBreaker): any {
       const originalValue = Reflect.get(target, prop, receiver);
 
       if (typeof originalValue === 'function') {
-        if (executionMethods.has(prop as string)) {
-          return (...args: any[]) => {
+        if (executionMethods.has(prop as string) && prop !== 'then') {
+          return (...args: unknown[]) => {
             const next = originalValue.apply(target, args);
             // If it returns another builder (fluent API), proxy it too
             if (next && typeof next === 'object' && next !== target) {
@@ -146,9 +153,12 @@ function createBuilderProxy(builder: any, breaker: CircuitBreaker): any {
 
         // Intercept 'then' to wrap the actual database call with the circuit breaker
         if (prop === 'then') {
-          return (onFulfilled: any, onRejected: any) => {
+          return (
+            onFulfilled: (value: any) => any,
+            onRejected: (reason: any) => any,
+          ) => {
             return breaker
-              .execute(() => originalValue.call(target))
+              .execute(() => (originalValue as Function).call(target))
               .then(onFulfilled, onRejected);
           };
         }

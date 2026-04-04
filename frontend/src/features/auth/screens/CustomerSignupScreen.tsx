@@ -6,7 +6,7 @@ import {
   SafeAreaView,
   ScrollView,
   Alert,
-} from 'react-native';
+ TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -16,7 +16,6 @@ import { TOKENS } from '@/constants/tokens';
 import { AppButton } from '@/src/components/common/AppButton';
 import { AppTextInput } from '@/src/components/common/AppTextInput';
 import { AppPressable } from '@/src/components/common/AppPressable';
-import { TextInput } from 'react-native';
 
 const CheckItem = ({ label, met }: { label: string; met: boolean }) => (
   <View style={styles.criteriaItem}>

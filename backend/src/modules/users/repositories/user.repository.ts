@@ -1,15 +1,8 @@
-import {
-  Injectable,
-  Inject,
-  InternalServerErrorException,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { IDENTITY_CLIENT } from '../../../database/supabase.module';
-import {
-  handleSupabaseError,
-  isNotFound,
-} from '../../../common/utils/supabase-error.handler';
+import { handleSupabaseError } from '../../../common/utils/supabase-error.handler';
+import { User } from '../../../common/interfaces/database.interfaces';
 
 @Injectable()
 export class UserRepository {
@@ -19,70 +12,68 @@ export class UserRepository {
 
   private readonly tableName = 'users';
 
-  async findById<T = any>(
+  async findById<T = User>(
     id: string,
     select = 'id,full_name,email,role,status',
-  ): Promise<T> {
+  ): Promise<T | null> {
     const { data, error } = await this.supabase
       .from(this.tableName)
       .select(select)
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (error) handleSupabaseError(error, 'User');
     return data as T;
   }
 
-  async update<T = any>(
+  async update<T = User>(
     id: string,
-    updates: any,
+    updates: Partial<User>,
     select = 'id,full_name,email,role,status',
-  ): Promise<T> {
+  ): Promise<T | null> {
     const { data, error } = await this.supabase
       .from(this.tableName)
       .update(updates)
       .eq('id', id)
       .select(select)
-      .single();
+      .maybeSingle();
 
     if (error) handleSupabaseError(error, 'User');
     return data as T;
   }
 
-  async create<T = any>(user: any): Promise<T> {
+  async create<T = User>(user: Partial<User>): Promise<T | null> {
     const { data, error } = await this.supabase
       .from(this.tableName)
       .insert(user)
       .select('id,full_name,email,role,status')
-      .single();
+      .maybeSingle();
 
     if (error) handleSupabaseError(error, 'User');
     return data as T;
   }
 
-  async findByEmail<T = any>(email: string): Promise<T | null> {
+  async findByEmail<T = User>(email: string): Promise<T | null> {
     const { data, error } = await this.supabase
       .from(this.tableName)
       .select('id,full_name,email,role,status')
       .eq('email', email)
-      .single();
+      .maybeSingle();
 
-    if (error && !isNotFound(error)) {
-      handleSupabaseError(error, 'UserByEmail');
-    }
-    return data as T;
+    if (error) handleSupabaseError(error, 'UserByEmail');
+    return data as T | null;
   }
 
-  async findByContactNumber<T = any>(contactNumber: string): Promise<T | null> {
+  async findByContactNumber<T = User>(
+    contactNumber: string,
+  ): Promise<T | null> {
     const { data, error } = await this.supabase
       .from(this.tableName)
       .select('id,full_name,email,role,status')
       .eq('contact_number', contactNumber)
-      .single();
+      .maybeSingle();
 
-    if (error && !isNotFound(error)) {
-      handleSupabaseError(error, 'UserByContact');
-    }
-    return data as T;
+    if (error) handleSupabaseError(error, 'UserByContact');
+    return data as T | null;
   }
 }

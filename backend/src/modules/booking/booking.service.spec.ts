@@ -6,6 +6,7 @@ import {
   IDENTITY_CLIENT,
   CATALOG_CLIENT,
   PAYMENT_CLIENT,
+  NOTIFICATION_CLIENT,
 } from '../../database/supabase.module';
 import { BadRequestException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -46,6 +47,7 @@ describe('BookingService', () => {
         { provide: IDENTITY_CLIENT, useValue: mockDb },
         { provide: CATALOG_CLIENT, useValue: mockDb },
         { provide: PAYMENT_CLIENT, useValue: mockDb },
+        { provide: NOTIFICATION_CLIENT, useValue: mockDb },
         { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
     }).compile();

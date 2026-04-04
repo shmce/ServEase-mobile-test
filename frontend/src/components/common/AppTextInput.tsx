@@ -122,6 +122,8 @@ export const AppTextInput = forwardRef<TextInput, AppTextInputProps>(({
   );
 });
 
+AppTextInput.displayName = 'AppTextInput';
+
 const styles = StyleSheet.create({
   container: {
     marginBottom: TOKENS.spacing.md,

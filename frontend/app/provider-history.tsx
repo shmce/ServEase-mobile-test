@@ -37,6 +37,8 @@ const HistoryItem = memo(({ item }: { item: ProviderPaymentHistoryItem }) => (
   </View>
 ));
 
+HistoryItem.displayName = 'HistoryItem';
+
 export default function ProviderHistoryScreen() {
   const router = useRouter();
   const { user } = useAuth();

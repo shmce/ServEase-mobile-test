@@ -1,10 +1,9 @@
 import {
   Controller,
-  Post,
   Body,
   Get,
-  Param,
   Patch,
+  Post,
   Version,
   UseGuards,
   Req,
@@ -20,32 +19,39 @@ export class UsersController {
   @Version('1')
   @Get('profile')
   @UseGuards(SupabaseAuthGuard)
-  async getProfile(@Req() req: any): Promise<UserProfileDto> {
-    return this.usersService.getProfile(req.user.id);
+  async getProfile(
+    @Req() req: { user: { id: string } },
+  ): Promise<UserProfileDto> {
+    const userId = req.user.id;
+    return this.usersService.getProfile(userId);
   }
 
   @Version('1')
   @Patch('profile')
   @UseGuards(SupabaseAuthGuard)
-  async updateProfile(@Req() req: any, @Body() body: Partial<UserProfileDto>) {
-    return this.usersService.updateProfile(req.user.id, body);
+  async updateProfile(
+    @Req() req: { user: { id: string } },
+    @Body() body: Partial<UserProfileDto>,
+  ) {
+    const userId = req.user.id;
+    return this.usersService.updateProfile(userId, body);
   }
 
   @Version('1')
   @Post('support-tickets')
   async submitSupportTicket(
+    @Req() req: { user: { id: string } },
     @Body()
     body: {
-      userId?: string;
       subject: string;
       message: string;
       category?: string;
       role?: 'customer' | 'provider';
     },
-    @Req() req: any,
   ) {
+    const userId = req.user.id;
     return this.usersService.submitSupportTicket({
-      userId: req.user.id,
+      userId,
       subject: body.subject,
       message: body.message,
       category: body.category,

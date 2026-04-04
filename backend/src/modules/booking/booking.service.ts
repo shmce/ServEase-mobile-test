@@ -21,6 +21,13 @@ import {
   BookingStatusUpdatedEvent,
   BOOKING_EVENTS,
 } from './events/booking.events';
+import {
+  Booking,
+  User,
+  ProviderProfile,
+  ProviderService as IProviderService,
+  Dispute,
+} from '../../common/interfaces/database.interfaces';
 
 @Injectable()
 export class BookingService {
@@ -29,16 +36,22 @@ export class BookingService {
     @Inject(IDENTITY_CLIENT) private readonly identityDb: SupabaseClient,
     @Inject(CATALOG_CLIENT) private readonly catalogDb: SupabaseClient,
     @Inject(PAYMENT_CLIENT) private readonly paymentDb: SupabaseClient,
-    @Inject(NOTIFICATION_CLIENT) private readonly notificationDb: SupabaseClient,
+    @Inject(NOTIFICATION_CLIENT)
+    private readonly notificationDb: SupabaseClient,
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async createBooking(dto: CreateBookingDto, customerId: string) {
-    const { data: userRecord, error: userError } = await this.identityDb
+    const userResponse = await this.identityDb
       .from('users')
       .select('role, status')
       .eq('id', dto.provider_id)
       .single();
+    const userRecord = userResponse.data as Pick<
+      User,
+      'role' | 'status'
+    > | null;
+    const userError = userResponse.error;
 
     if (userError || !userRecord)
       throw new NotFoundException('Provider not found.');
@@ -47,11 +60,16 @@ export class BookingService {
         'Bookings can only be made with registered providers.',
       );
 
-    const { data: profileRecord, error: profileError } = await this.catalogDb
+    const profileResponse = await this.catalogDb
       .from('provider_profiles')
       .select('verification_status')
       .eq('user_id', dto.provider_id)
       .single();
+    const profileRecord = profileResponse.data as Pick<
+      ProviderProfile,
+      'verification_status'
+    > | null;
+    const profileError = profileResponse.error;
 
     if (profileError || !profileRecord)
       throw new BadRequestException('Provider profile missing.');
@@ -62,13 +80,23 @@ export class BookingService {
       throw new BadRequestException('Provider is not fully verified.');
     }
 
-    const { data: serviceRecord, error: serviceError } = await this.catalogDb
+    const serviceResponse = await this.catalogDb
       .from('provider_services')
       .select(
         'id,provider_id,supports_hourly,hourly_rate,supports_flat,flat_rate',
       )
       .eq('id', dto.service_id)
       .single();
+    const serviceRecord = serviceResponse.data as Pick<
+      IProviderService,
+      | 'id'
+      | 'provider_id'
+      | 'supports_hourly'
+      | 'hourly_rate'
+      | 'supports_flat'
+      | 'flat_rate'
+    > | null;
+    const serviceError = serviceResponse.error;
 
     if (serviceError || !serviceRecord)
       throw new NotFoundException('Service not found.');
@@ -102,16 +130,14 @@ export class BookingService {
       totalAmount = flatRate;
     }
 
-    const bookingRef = `BKG-${Math.floor(100000 + Math.random() * 900000)}`;
-
-    const { data: newBooking, error: bookingError } = await this.bookingDb
+    const insertResponse = await this.bookingDb
       .from('bookings')
       .insert([
         {
-          booking_reference: bookingRef,
           customer_id: customerId,
           provider_id: dto.provider_id,
           service_id: dto.service_id,
+          booking_reference: `BKG-${Math.floor(100000 + Math.random() * 900000)}`,
           service_address: dto.service_address,
           scheduled_at: dto.scheduled_at,
           pricing_mode: dto.pricing_mode,
@@ -125,7 +151,23 @@ export class BookingService {
       .select('id, booking_reference, status, total_amount')
       .single();
 
-    if (bookingError) handleSupabaseError(bookingError, 'Booking');
+    const newBooking = insertResponse.data as Pick<
+      Booking,
+      'id' | 'booking_reference' | 'status' | 'total_amount'
+    > | null;
+    const bookingError = insertResponse.error;
+    if (bookingError || !newBooking) {
+      handleSupabaseError(
+        bookingError ||
+          ({
+            message: 'Insert failed',
+            code: 'INSERT_FAILED',
+            details: '',
+            hint: '',
+          } as any),
+        'Booking',
+      );
+    }
 
     // Emit event for asynchronous side-effects (conversation, payment)
     this.eventEmitter.emit(
@@ -139,7 +181,10 @@ export class BookingService {
       ),
     );
 
-    return { message: 'Booking created successfully.', booking: newBooking };
+    return {
+      message: 'Booking created successfully.',
+      booking: newBooking as Booking,
+    };
   }
 
   async getCustomerBookings(customerId: string) {
@@ -157,10 +202,10 @@ export class BookingService {
     if (!rows.length) return { bookings: [] };
 
     const providerIds = [
-      ...new Set(rows.map((b: any) => b.provider_id).filter(Boolean)),
+      ...new Set(rows.map((b: Booking) => b.provider_id).filter(Boolean)),
     ];
     const serviceIds = [
-      ...new Set(rows.map((b: any) => b.service_id).filter(Boolean)),
+      ...new Set(rows.map((b: Booking) => b.service_id).filter(Boolean)),
     ];
 
     const [{ data: providers }, { data: services }] = await Promise.all([
@@ -178,11 +223,15 @@ export class BookingService {
         : Promise.resolve({ data: [] }),
     ]);
 
-    const providerMap = new Map((providers || []).map((p: any) => [p.id, p]));
-    const serviceMap = new Map((services || []).map((s: any) => [s.id, s]));
+    const providerMap = new Map(
+      (providers || []).map((p: Partial<User>) => [p.id, p]),
+    );
+    const serviceMap = new Map(
+      (services || []).map((s: Partial<IProviderService>) => [s.id, s]),
+    );
 
     return {
-      bookings: rows.map((b: any) => ({
+      bookings: rows.map((b: Booking) => ({
         ...b,
         provider: providerMap.get(b.provider_id) || null,
         service: serviceMap.get(b.service_id) || null,
@@ -252,7 +301,7 @@ export class BookingService {
     await this.paymentDb
       .from('payments')
       .update({ status: 'cancelled' })
-      .eq('booking_id', booking.id);
+      .eq('booking_id', (booking as Booking).id);
 
     this.eventEmitter.emit(
       BOOKING_EVENTS.CANCELLED,
@@ -265,7 +314,7 @@ export class BookingService {
       ),
     );
 
-    return { message: 'Booking cancelled.', booking };
+    return { message: 'Booking cancelled.', booking: booking as Booking };
   }
 
   async getHistory() {
@@ -300,45 +349,69 @@ export class BookingService {
           .update({ status })
           .eq('booking_reference', id);
 
-    const { data, error } = await query
-      .select('id, status, booking_reference, customer_id, provider_id, service_id')
-      .maybeSingle();
+    const { data, error } = (await query
+      .select(
+        'id, status, booking_reference, customer_id, provider_id, service_id',
+      )
+      ?.maybeSingle()) ?? { data: null, error: null };
 
     if (error) handleSupabaseError(error, 'BookingStatusUpdate');
     if (!data) throw new NotFoundException(`Booking not found for: ${id}`);
 
+    const result = data as Pick<
+      Booking,
+      | 'id'
+      | 'status'
+      | 'booking_reference'
+      | 'customer_id'
+      | 'provider_id'
+      | 'service_id'
+    >;
     this.eventEmitter.emit(
       BOOKING_EVENTS.STATUS_UPDATED,
       new BookingStatusUpdatedEvent(
-        data.id,
-        data.booking_reference,
-        data.customer_id,
-        data.provider_id,
-        data.service_id,
-        data.status,
+        result.id,
+        result.booking_reference,
+        result.customer_id,
+        result.provider_id,
+        result.service_id,
+        result.status,
       ),
     );
 
-    return { message: 'Status updated.', booking: data };
+    return { message: 'Status updated.', booking: result as Booking };
   }
 
   // ── Disputes ──────────────────────────────────────────────────────────────
-  
+
   async createDispute(bookingId: string, raisedBy: string, reason: string) {
     if (!reason || !reason.trim()) {
       throw new BadRequestException('Reason is required to file a dispute.');
     }
-    
+
     // Verify booking
-    const { data: booking, error: bookingError } = await this.bookingDb
+    const response = await this.bookingDb
       .from('bookings')
-      .select('id, provider_id, customer_id')
+      .select(
+        'id, booking_reference, customer_id, provider_id, service_id, status',
+      )
       .eq('id', bookingId)
       .maybeSingle();
-      
+
+    const booking = response.data as Pick<
+      Booking,
+      | 'id'
+      | 'booking_reference'
+      | 'customer_id'
+      | 'provider_id'
+      | 'service_id'
+      | 'status'
+    > | null;
+    const bookingError = response.error;
+
     if (bookingError) throw new BadRequestException(bookingError.message);
     if (!booking) throw new NotFoundException('Booking not found.');
-    
+
     // Write into notification_svc disputes
     const { data, error } = await this.notificationDb
       .from('disputes')
@@ -356,6 +429,6 @@ export class BookingService {
     // Optionally update booking status to disputed
     await this.updateStatus(bookingId, 'disputed');
 
-    return { dispute: data };
+    return { dispute: data as Dispute };
   }
 }

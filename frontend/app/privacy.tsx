@@ -34,7 +34,7 @@ export default function PrivacyScreen() {
 
         <Text style={styles.sectionTitle}>1. Introduction</Text>
         <Text style={styles.paragraph}>
-          ServEase ("we", "our", "us") is committed to protecting your personal information. This Privacy Policy explains how we collect, use, and safeguard your data when you use our app.
+          ServEase (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;) is committed to protecting your personal information. This Privacy Policy explains how we collect, use, and safeguard your data when you use our app.
         </Text>
 
         <Text style={styles.sectionTitle}>2. Information We Collect</Text>

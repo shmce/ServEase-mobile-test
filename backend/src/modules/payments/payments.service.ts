@@ -14,6 +14,12 @@ import {
 } from '../../database/supabase.module';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { handleSupabaseError } from '../../common/utils/supabase-error.handler';
+import {
+  Payment,
+  Booking,
+  User,
+  ProviderService as IProviderService,
+} from '../../common/interfaces/database.interfaces';
 
 const createRef = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -78,10 +84,10 @@ export class PaymentsService {
     if (!rows.length) return { payments: [] };
 
     const bookingIds = [
-      ...new Set(rows.map((p: any) => p.booking_id).filter(Boolean)),
+      ...new Set(rows.map((p: Payment) => p.booking_id).filter(Boolean)),
     ];
     const customerIds = [
-      ...new Set(rows.map((p: any) => p.customer_id).filter(Boolean)),
+      ...new Set(rows.map((p: Payment) => p.customer_id).filter(Boolean)),
     ];
 
     const [{ data: bookings }, { data: customers }] = await Promise.all([
@@ -101,7 +107,9 @@ export class PaymentsService {
 
     const serviceIds = [
       ...new Set(
-        (bookings || []).map((b: any) => b.service_id).filter(Boolean),
+        (bookings || [])
+          .map((b: Partial<Booking>) => b.service_id)
+          .filter(Boolean),
       ),
     ];
     const { data: services } = serviceIds.length
@@ -112,19 +120,22 @@ export class PaymentsService {
       : { data: [] as any[] };
 
     const bookingMap = new Map(
-      (bookings || []).map((b: any) => [String(b.id), b]),
+      (bookings || []).map((b: Partial<Booking>) => [String(b.id), b]),
     );
     const customerMap = new Map(
-      (customers || []).map((c: any) => [
+      (customers || []).map((c: Partial<User>) => [
         String(c.id),
         c.full_name || 'Customer',
       ]),
     );
     const serviceMap = new Map(
-      (services || []).map((s: any) => [String(s.id), s.title || 'Service']),
+      (services || []).map((s: Partial<IProviderService>) => [
+        String(s.id),
+        s.title || 'Service',
+      ]),
     );
 
-    const history = rows.map((p: any) => {
+    const history = rows.map((p: Payment) => {
       const booking = bookingMap.get(String(p.booking_id));
       const platformFee = Number(p.amount || 0) * 0.1;
       return {

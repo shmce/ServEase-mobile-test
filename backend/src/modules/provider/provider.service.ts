@@ -14,7 +14,15 @@ import {
   TRUST_CLIENT,
 } from '../../database/supabase.module';
 import { UpdateProviderProfileDto } from './dto/update-provider-profile.dto';
+import { handleSupabaseError } from '../../common/utils/supabase-error.handler';
 import 'multer';
+import {
+  ProviderProfile,
+  ProviderService as IProviderService,
+  Booking,
+  User,
+  ProviderReview,
+} from '../../common/interfaces/database.interfaces';
 
 @Injectable()
 export class ProviderService {
@@ -30,14 +38,17 @@ export class ProviderService {
   // ── Existing ─────────────────────────────────────────────────────────────
 
   async getProviderReviews(providerId: string) {
-    const { data: profile, error: profileErr } = await this.catalogDb
+    const { data: profile, error: profileError } = await this.catalogDb
       .from('provider_profiles')
-      .select('average_rating,total_reviews')
+      .select('*')
       .eq('user_id', providerId)
-      .single();
+      .maybeSingle();
 
-    if (profileErr) throw new InternalServerErrorException(profileErr.message);
+    if (profileError)
+      throw new InternalServerErrorException(profileError.message);
     if (!profile) throw new NotFoundException('Provider profile not found');
+
+    const profileData = profile as ProviderProfile;
 
     const { data: reviews, error: reviewsErr } = await this.trustDb
       .from('reviews')
@@ -49,9 +60,9 @@ export class ProviderService {
 
     return {
       provider_id: providerId,
-      average_rating: Number(profile.average_rating) || 0,
-      total_reviews: Number(profile.total_reviews) || 0,
-      reviews,
+      average_rating: Number(profileData.average_rating) || 0,
+      total_reviews: Number(profileData.total_reviews) || 0,
+      reviews: (reviews || []) as any as ProviderReview[],
     };
   }
 
@@ -67,7 +78,7 @@ export class ProviderService {
 
     return {
       provider_id: providerId,
-      trust_score: Number(data.trust_score) || 0,
+      trust_score: Number((data as Partial<ProviderProfile>)?.trust_score) || 0,
     };
   }
 
@@ -83,18 +94,22 @@ export class ProviderService {
     if (error) throw new BadRequestException(error.message);
     if (!data) throw new NotFoundException('Provider profile not found');
 
+    const profileData = data as any;
+
     const documentsWithUrls = await Promise.all(
-      (data.provider_documents || []).map(async (doc: any) => {
-        const { data: urlData } = await this.supabase.storage
-          .from('verification-docs')
-          .createSignedUrl(doc.document_file_path, 60);
-        return { ...doc, view_url: urlData?.signedUrl || null };
-      }),
+      (profileData.provider_documents || []).map(
+        async (doc: { document_file_path: string }) => {
+          const { data: urlData } = await this.supabase.storage
+            .from('verification-docs')
+            .createSignedUrl(doc.document_file_path, 60);
+          return { ...doc, view_url: urlData?.signedUrl || null };
+        },
+      ),
     );
 
     return {
-      ...data,
-      provider_id: data.user_id,
+      ...profileData,
+      provider_id: profileData.user_id,
       provider_documents: documentsWithUrls,
     };
   }
@@ -118,8 +133,9 @@ export class ProviderService {
       .eq('provider_id', providerId)
       .gte('created_at', firstDayOfMonth);
 
-    const totalEarnings = (payouts || []).reduce(
-      (acc: number, curr: any) => acc + Number(curr.net_amount),
+    const totalEarnings = ((payouts as any[]) || []).reduce(
+      (acc: number, curr: { net_amount: number }) =>
+        acc + Number(curr.net_amount),
       0,
     );
 
@@ -140,7 +156,7 @@ export class ProviderService {
 
     if (profileErr || !profile)
       throw new NotFoundException('Provider profile not found');
-    if (profile.verification_status !== 'rejected')
+    if ((profile as any).verification_status !== 'rejected')
       throw new BadRequestException(
         'Only rejected providers can reupload KYC documents',
       );
@@ -190,14 +206,14 @@ export class ProviderService {
       .order('scheduled_at', { ascending: true });
 
     if (error) throw new BadRequestException(error.message);
-    const rows = data || [];
+    const rows = (data as Booking[]) || [];
     if (!rows.length) return { bookings: [] };
 
     const customerIds = [
-      ...new Set(rows.map((b: any) => b.customer_id).filter(Boolean)),
+      ...new Set(rows.map((b: Booking) => b.customer_id).filter(Boolean)),
     ];
     const serviceIds = [
-      ...new Set(rows.map((b: any) => b.service_id).filter(Boolean)),
+      ...new Set(rows.map((b: Booking) => b.service_id).filter(Boolean)),
     ];
 
     const [{ data: customers }, { data: services }] = await Promise.all([
@@ -217,13 +233,17 @@ export class ProviderService {
         : Promise.resolve({ data: [] }),
     ]);
 
-    const customerMap = new Map((customers || []).map((c: any) => [c.id, c]));
+    const customerMap = new Map(
+      ((customers as User[]) || []).map((c: Partial<User>) => [c.id, c]),
+    );
     const serviceMap = new Map(
-      (services || []).map((s: any) => [s.id, s.title || 'Service']),
+      ((services as IProviderService[]) || []).map(
+        (s: Partial<IProviderService>) => [s.id, s.title || 'Service'],
+      ),
     );
 
     return {
-      bookings: rows.map((b: any) => ({
+      bookings: rows.map((b: Booking) => ({
         ...b,
         customer_name: customerMap.get(b.customer_id)?.full_name || 'Customer',
         customer_contact: customerMap.get(b.customer_id)?.contact_number || '',
@@ -241,29 +261,34 @@ export class ProviderService {
     if (error) throw new BadRequestException(error.message);
     if (!data) throw new NotFoundException('Booking not found.');
 
+    const booking = data as Booking;
+
     const [{ data: customer }, { data: service }] = await Promise.all([
       this.identityDb
         .from('users')
         .select('id,full_name,contact_number')
-        .eq('id', data.customer_id)
+        .eq('id', booking.customer_id)
         .maybeSingle(),
       this.catalogDb
         .from('provider_services')
         .select(
           'id,title,description,price,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode',
         )
-        .eq('id', data.service_id)
+        .eq('id', booking.service_id)
         .maybeSingle(),
     ]);
 
+    const customerData = customer as Partial<User>;
+    const serviceData = service as Partial<IProviderService>;
+
     return {
       booking: {
-        ...data,
-        customer_name: customer?.full_name || 'Customer',
-        customer_contact: customer?.contact_number || '',
-        service_title: service?.title || 'Service',
-        service_description: service?.description || '',
-        service_price: Number(service?.price || data.total_amount || 0),
+        ...booking,
+        customer_name: customerData?.full_name || 'Customer',
+        customer_contact: customerData?.contact_number || '',
+        service_title: serviceData?.title || 'Service',
+        service_description: serviceData?.description || '',
+        service_price: Number(serviceData?.price || booking.total_amount || 0),
       },
     };
   }
@@ -282,7 +307,6 @@ export class ProviderService {
       .maybeSingle();
 
     if (error || !data) {
-      // Fallback without provider_id check (RLS enforces ownership)
       const { data: fallback, error: fallbackErr } = await this.bookingDb
         .from('bookings')
         .update({ status: target })
@@ -295,7 +319,6 @@ export class ProviderService {
           fallbackErr?.message || 'Failed to update booking status.',
         );
 
-      // Sync payment on completion/cancellation
       if (target === 'completed') {
         await this.paymentDb
           .from('payments')
@@ -308,7 +331,7 @@ export class ProviderService {
           .eq('booking_id', bookingId);
       }
 
-      return { booking: fallback };
+      return { booking: fallback as Booking };
     }
 
     if (target === 'completed') {
@@ -323,7 +346,7 @@ export class ProviderService {
         .eq('booking_id', bookingId);
     }
 
-    return { booking: data };
+    return { booking: data as Booking };
   }
 
   // ── Reschedule Requests ───────────────────────────────────────────────────
@@ -395,7 +418,8 @@ export class ProviderService {
     if (updateErr) throw new BadRequestException(updateErr.message);
 
     if (input.decision === 'approved') {
-      const dateStr = `${request.proposed_date}T${request.proposed_time}`;
+      const reqData = request;
+      const dateStr = `${reqData.proposed_date}T${reqData.proposed_time}`;
       const scheduledAt = new Date(dateStr).toISOString();
       await this.bookingDb
         .from('bookings')
@@ -456,7 +480,10 @@ export class ProviderService {
       .select('id,customer_id,total_amount')
       .eq('id', input.bookingId)
       .maybeSingle();
-    if (!booking || String(booking.customer_id) !== String(input.customerId))
+    if (
+      !booking ||
+      String((booking as any).customer_id) !== String(input.customerId)
+    )
       throw new BadRequestException(
         'You can only review charges for your own booking.',
       );
@@ -481,11 +508,12 @@ export class ProviderService {
     if (error) throw new BadRequestException(error.message);
 
     if (input.decision === 'approved') {
-      const approvedAmount = (charges || []).reduce(
-        (sum: number, c: any) => sum + Number(c.amount || 0),
+      const approvedAmount = ((charges as any[]) || []).reduce(
+        (sum: number, c: { amount: number }) => sum + Number(c.amount || 0),
         0,
       );
-      const nextTotal = Number(booking.total_amount || 0) + approvedAmount;
+      const nextTotal =
+        Number((booking as any).total_amount || 0) + approvedAmount;
       await this.bookingDb
         .from('bookings')
         .update({ total_amount: nextTotal })
@@ -546,12 +574,16 @@ export class ProviderService {
       throw new BadRequestException('Rating must be between 1 and 5.');
     }
 
-    const { data: booking } = await this.bookingDb
+    const { data: bookingData } = await this.bookingDb
       .from('bookings')
       .select('id, status, customer_id, provider_id')
       .eq('id', input.booking_id)
       .maybeSingle();
 
+    const booking = bookingData as Pick<
+      Booking,
+      'id' | 'status' | 'customer_id' | 'provider_id'
+    > | null;
     if (!booking) throw new NotFoundException('Booking not found.');
     if (booking.status !== 'completed') {
       throw new BadRequestException(
@@ -590,10 +622,11 @@ export class ProviderService {
       .select('rating')
       .eq('reviewee_id', input.reviewee_id);
 
-    const total = (allReviews || []).length;
+    const reviewsList = (allReviews as any[]) || [];
+    const total = reviewsList.length;
     const average = total
-      ? (allReviews || []).reduce(
-          (sum: number, r: any) => sum + Number(r.rating),
+      ? reviewsList.reduce(
+          (sum: number, r: { rating: number }) => sum + Number(r.rating),
           0,
         ) / total
       : input.rating;
@@ -606,7 +639,10 @@ export class ProviderService {
       })
       .eq('user_id', input.reviewee_id);
 
-    return { message: 'Review submitted successfully.', review };
+    return {
+      message: 'Review submitted successfully.',
+      review: review as ProviderReview,
+    };
   }
 
   // ── Provider Profile Draft ────────────────────────────────────────────────
@@ -618,8 +654,8 @@ export class ProviderService {
       .eq('user_id', userId)
       .maybeSingle();
 
-    if (error) throw new InternalServerErrorException(error.message);
-    return { draft: data || null };
+    if (error) handleSupabaseError(error, 'ProviderProfileDraft');
+    return { draft: (data as ProviderProfile) || null };
   }
 
   async saveProviderProfileDraft(userId: string, draft: Record<string, any>) {
@@ -629,8 +665,8 @@ export class ProviderService {
       .select()
       .maybeSingle();
 
-    if (error) throw new BadRequestException(error.message);
-    return data;
+    if (error) handleSupabaseError(error, 'ProviderProfileDraftSave');
+    return data as ProviderProfile;
   }
 
   async updateProfile(userId: string, dto: UpdateProviderProfileDto) {
@@ -647,7 +683,7 @@ export class ProviderService {
       .select()
       .maybeSingle();
 
-    if (error) throw new BadRequestException(error.message);
-    return data;
+    if (error) handleSupabaseError(error, 'ProviderProfileUpdate');
+    return data as ProviderProfile;
   }
 }

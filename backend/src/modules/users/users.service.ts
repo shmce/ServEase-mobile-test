@@ -1,6 +1,12 @@
-import { Injectable, BadRequestException, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  Inject,
+  NotFoundException,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { NOTIFICATION_CLIENT } from '../../database/supabase.module';
+import { handleSupabaseError } from '../../common/utils/supabase-error.handler';
 import { UserProfileDto } from './dto/user-profile.dto';
 import { UserRepository } from './repositories/user.repository';
 
@@ -8,25 +14,36 @@ import { UserRepository } from './repositories/user.repository';
 export class UsersService {
   constructor(
     private readonly userRepository: UserRepository,
-    @Inject(NOTIFICATION_CLIENT) private readonly notificationDb: SupabaseClient,
+    @Inject(NOTIFICATION_CLIENT)
+    private readonly notificationDb: SupabaseClient,
   ) {}
 
   async getProfile(userId: string): Promise<UserProfileDto> {
-    return this.userRepository.findById(userId);
+    const user = await this.userRepository.findById<UserProfileDto>(userId);
+    if (!user) throw new NotFoundException('Profile not found.');
+    return user;
   }
 
   async updateProfile(userId: string, updates: Partial<UserProfileDto>) {
-    const allowed: (keyof UserProfileDto)[] = ['full_name', 'contact_number'];
+    const allowed = new Set<keyof UserProfileDto>([
+      'full_name',
+      'contact_number',
+    ]);
     const payload = Object.fromEntries(
       Object.entries(updates).filter(([key]) =>
-        allowed.includes(key as keyof UserProfileDto),
+        allowed.has(key as keyof UserProfileDto),
       ),
     );
 
     if (!Object.keys(payload).length)
       throw new BadRequestException('No valid fields to update.');
 
-    return this.userRepository.update(userId, payload);
+    const updated = await this.userRepository.update<UserProfileDto>(
+      userId,
+      payload,
+    );
+    if (!updated) throw new BadRequestException('Update failed.');
+    return updated;
   }
 
   async submitSupportTicket(input: {
@@ -37,7 +54,9 @@ export class UsersService {
     role?: 'customer' | 'provider';
   }) {
     if (!input.userId || !input.subject || !input.message) {
-      throw new BadRequestException('Support tickets need a user, subject, and message.');
+      throw new BadRequestException(
+        'Support tickets need a user, subject, and message.',
+      );
     }
 
     const { data, error } = await this.notificationDb
@@ -53,7 +72,7 @@ export class UsersService {
       .select('*')
       .maybeSingle();
 
-    if (error) throw new BadRequestException(error.message);
+    if (error) handleSupabaseError(error, 'SupportTicket');
     return { ticket: data };
   }
 }

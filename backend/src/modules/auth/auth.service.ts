@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
   InternalServerErrorException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
@@ -15,6 +16,10 @@ import { LoginUserDto } from './dto/login-user.dto';
 import { UserRepository } from '../users/repositories/user.repository';
 import { handleSupabaseError } from '../../common/utils/supabase-error.handler';
 import 'multer';
+import {
+  User,
+  ProviderProfile,
+} from '../../common/interfaces/database.interfaces';
 
 @Injectable()
 export class AuthService {
@@ -25,8 +30,12 @@ export class AuthService {
     private readonly userRepository: UserRepository,
   ) {}
 
-  async register(dto: any) {
+  async register(dto: Partial<User> & { password?: string; address?: string }) {
     try {
+      if (!dto.email || !dto.password) {
+        throw new BadRequestException('Email and password are required.');
+      }
+
       const { data: authData, error: authError } =
         await this.supabase.auth.signUp({
           email: dto.email,
@@ -81,10 +90,13 @@ export class AuthService {
       if (error) throw new UnauthorizedException('Invalid Credentials');
 
       const userId = data.user?.id;
-      const userData = await this.userRepository.findById(
-        userId,
-        'role, status',
-      );
+      if (!userId) throw new UnauthorizedException('Authentication failed.');
+
+      const userData = await this.userRepository.findById<
+        Pick<User, 'role' | 'status'>
+      >(userId, 'role, status');
+
+      if (!userData) throw new NotFoundException('User profile not found.');
 
       if (userData.status === 'pending' || userData.status === 'rejected') {
         await this.supabase.auth.signOut();
@@ -97,7 +109,7 @@ export class AuthService {
       return {
         message: 'STATUS 200 OK',
         access_token: data.session?.access_token,
-        user_id: data.user?.id,
+        user_id: userId,
         role: userData.role,
       };
     } catch (err) {
@@ -140,28 +152,36 @@ export class AuthService {
       throw new BadRequestException('Could not retrieve user ID from Supabase');
 
     try {
-      await this.userRepository.create({
-        id: newUserId,
-        full_name,
-        email,
-        contact_number,
-        role,
-        status: 'pending',
-        is_verified: false,
-        date_of_birth,
-      });
+      const { error: updateError } = await this.identityDb
+        .from('users')
+        .update({
+          full_name,
+          contact_number,
+          role: role as 'customer' | 'provider',
+          date_of_birth,
+          status: 'pending',
+        })
+        .eq('id', newUserId);
+
+      if (updateError) handleSupabaseError(updateError, 'UserUpdate');
     } catch (userError) {
       await this.supabase.auth.admin.deleteUser(newUserId);
       throw new BadRequestException(`User Profile Error: ${userError.message}`);
     }
 
-    const { data: profile, error: profileError } = await this.catalogDb
+    const profileResponse = await this.catalogDb
       .from('provider_profiles')
       .insert([
         { user_id: newUserId, business_name, verification_status: 'pending' },
       ])
       .select('id, business_name, verification_status')
       .single();
+
+    const profile = profileResponse.data as Pick<
+      ProviderProfile,
+      'id' | 'business_name' | 'verification_status'
+    > | null;
+    const profileError = profileResponse.error;
 
     if (profileError) handleSupabaseError(profileError, 'ProviderProfile');
 
@@ -192,12 +212,11 @@ export class AuthService {
     if (docError) handleSupabaseError(docError, 'ProviderDocument');
 
     return {
-      status: 'success',
       message: 'Provider application submitted. Pending approval.',
       data: {
         provider_id: newUserId,
-        business_name: profile.business_name,
-        verification_status: profile.verification_status,
+        business_name: profile?.business_name,
+        verification_status: profile?.verification_status,
       },
     };
   }

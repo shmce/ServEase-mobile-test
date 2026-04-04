@@ -167,6 +167,8 @@ const BookingCard = memo(({
   );
 });
 
+BookingCard.displayName = 'BookingCard';
+
 export function ProviderBookingsScreen() {
   const router = useRouter();
   const { user } = useAuth();

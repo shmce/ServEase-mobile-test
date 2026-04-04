@@ -104,7 +104,7 @@ export default function TermsScreen() {
 
         <Text style={styles.sectionTitle}>6. Transportation Fee Policy</Text>
         <Text style={styles.paragraph}>
-          If a customer's location is beyond the service worker's maximum service radius, an additional transportation fee will be calculated and added to the total booking cost. This fee will be clearly shown before booking confirmation.
+          If a customer&apos;s location is beyond the service worker&apos;s maximum service radius, an additional transportation fee will be calculated and added to the total booking cost. This fee will be clearly shown before booking confirmation.
         </Text>
 
         <Text style={styles.sectionTitle}>7. Prohibited Activities</Text>

@@ -85,6 +85,8 @@ const BookingCarouselCard = memo(({
   );
 });
 
+BookingCarouselCard.displayName = 'BookingCarouselCard';
+
 export const BookingCarousel = ({ bookings, chatSummaryMap, onPress }: BookingCarouselProps) => {
   if (bookings.length === 0) return null;
 

@@ -221,7 +221,7 @@ export default function ProviderJoinScreen() {
             ))}
           </View>
           <Text style={styles.testimonialText}>
-            "I used to struggle finding clients. Now I get 3—5 bookings a day without leaving home to look for work. ServEase changed everything for me."
+            &quot;I used to struggle finding clients. Now I get 3—5 bookings a day without leaving home to look for work. ServEase changed everything for me.&quot;
           </Text>
           <View style={styles.testimonialFooter}>
             <View style={styles.testimonialAvatar}>

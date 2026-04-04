@@ -85,6 +85,8 @@ const CategoryGridCard = memo(({
   );
 });
 
+CategoryGridCard.displayName = 'CategoryGridCard';
+
 export const CategoryGrid = ({ categories, onPress }: CategoryGridProps) => {
   return (
     <View style={styles.grid}>

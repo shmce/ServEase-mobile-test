@@ -9,6 +9,12 @@ import {
   IDENTITY_CLIENT,
   TRUST_CLIENT,
 } from '../../database/supabase.module';
+import {
+  ProviderService,
+  User,
+  ProviderProfile,
+  ProviderReview,
+} from '../../common/interfaces/database.interfaces';
 
 @Injectable()
 export class ServicesService {
@@ -60,10 +66,14 @@ export class ServicesService {
       .ilike('title', serviceName);
 
     if (svcErr) throw new InternalServerErrorException(svcErr.message);
-    const rows = serviceRows || [];
+    const rows = (serviceRows || []) as Partial<ProviderService>[];
     if (!rows.length) return { providers: [] };
 
-    const providerIds = [...new Set(rows.map((r: any) => r.provider_id))];
+    const providerIds = [
+      ...new Set(
+        rows.map((r) => r.provider_id).filter((id): id is string => !!id),
+      ),
+    ];
 
     const [{ data: usersData }, { data: profilesData }] = await Promise.all([
       this.identityDb
@@ -76,17 +86,32 @@ export class ServicesService {
         .in('user_id', providerIds),
     ]);
 
-    const usersMap = new Map((usersData || []).map((u: any) => [u.id, u]));
-    const profilesMap = new Map(
-      (profilesData || []).map((p: any) => [p.user_id, p]),
+    const usersMap = new Map<string, Pick<User, 'id' | 'full_name'>>(
+      (usersData || []).map((u: unknown) => {
+        const user = u as Pick<User, 'id' | 'full_name'>;
+        return [user.id, user];
+      }),
+    );
+    const profilesMap = new Map<
+      string,
+      Pick<
+        ProviderProfile,
+        'user_id' | 'business_name' | 'average_rating' | 'total_reviews'
+      >
+    >(
+      (profilesData || []).map((p: unknown) => {
+        const profile = p as Pick<
+          ProviderProfile,
+          'user_id' | 'business_name' | 'average_rating' | 'total_reviews'
+        >;
+        return [profile.user_id, profile];
+      }),
     );
 
     const providers = providerIds.map((providerId) => {
       const cheapest = rows
-        .filter((r: any) => r.provider_id === providerId)
-        .sort(
-          (a: any, b: any) => Number(a.price || 0) - Number(b.price || 0),
-        )[0];
+        .filter((r) => r.provider_id === providerId)
+        .sort((a, b) => Number(a.price || 0) - Number(b.price || 0))[0];
 
       const user = usersMap.get(providerId);
       const profile = profilesMap.get(providerId);
@@ -134,9 +159,10 @@ export class ServicesService {
         .order('created_at', { ascending: false }),
     ]);
 
+    const reviewsList = (reviews || []) as ProviderReview[];
     const reviewerIds = [
       ...new Set(
-        (reviews || []).map((r: any) => r.reviewer_id).filter(Boolean),
+        reviewsList.map((r: ProviderReview) => r.reviewer_id).filter(Boolean),
       ),
     ];
     let reviewerNames = new Map<string, string>();
@@ -146,18 +172,27 @@ export class ServicesService {
         .select('id,full_name')
         .in('id', reviewerIds);
       reviewerNames = new Map(
-        (reviewerRows || []).map((u: any) => [u.id, u.full_name || 'User']),
+        (reviewerRows || []).map((u: unknown) => {
+          const user = u as Pick<User, 'id' | 'full_name'>;
+          return [user.id, user.full_name || 'User'];
+        }),
       );
     }
 
     return {
-      user,
-      profile,
-      services: services || [],
-      reviews: (reviews || []).map((r: any) => ({
-        ...r,
-        reviewer_name: reviewerNames.get(r.reviewer_id) || 'User',
-      })),
+      user: user as Pick<
+        User,
+        'id' | 'full_name' | 'email' | 'contact_number' | 'created_at'
+      > | null,
+      profile: profile as ProviderProfile | null,
+      services: (services || []) as ProviderService[],
+      reviews: (reviews || []).map((r: unknown) => {
+        const review = r as ProviderReview;
+        return {
+          ...review,
+          reviewer_name: reviewerNames.get(review.reviewer_id) || 'User',
+        };
+      }),
     };
   }
 
@@ -176,11 +211,12 @@ export class ServicesService {
       const { data, error } = await query;
       if (error) throw new Error(error.message);
 
-      const sorted = (data || []).sort((a: any, b: any) => {
-        return (
-          (b.provider_profiles?.trust_score || 0) -
-          (a.provider_profiles?.trust_score || 0)
-        );
+      const sorted = ((data || []) as any[]).sort((a: any, b: any) => {
+        const scoreA =
+          (a.provider_profiles as unknown as ProviderProfile)?.trust_score || 0;
+        const scoreB =
+          (b.provider_profiles as unknown as ProviderProfile)?.trust_score || 0;
+        return scoreB - scoreA;
       });
 
       return { status: 200, message: 'Search successful', results: sorted };
