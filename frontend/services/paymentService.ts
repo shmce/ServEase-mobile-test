@@ -1,19 +1,7 @@
 import { api } from '../lib/apiClient';
+import { Payment } from '../src/types/database.interfaces';
 
-export type PaymentRow = {
-  id: string;
-  booking_id: string;
-  customer_id: string;
-  provider_id: string;
-  amount: number;
-  method: string;
-  status: string;
-  transaction_reference?: string | null;
-  paid_at?: string | null;
-  created_at?: string | null;
-};
-
-export type ProviderPaymentHistoryItem = PaymentRow & {
+export type ProviderPaymentHistoryItem = Payment & {
   booking_reference: string;
   customer_name: string;
   service_title: string;
@@ -22,16 +10,16 @@ export type ProviderPaymentHistoryItem = PaymentRow & {
   platform_fee: number;
 };
 
-export type PaymentMethod = 'cash' | 'gcash' | 'paymaya' | 'card';
-export type PaymentStatus = 'pending' | 'authorized' | 'paid' | 'cancelled' | 'refunded';
+export type PaymentMethod = 'cash' | 'card' | 'wallet';
+export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'cancelled' | 'refunded';
 
-export const getPaymentByBookingId = async (bookingId: string): Promise<PaymentRow | null> => {
-  const { payment } = await api.get<{ payment: PaymentRow | null }>(`/payments/booking/${bookingId}`);
+export const getPaymentByBookingId = async (bookingId: string): Promise<Payment | null> => {
+  const { payment } = await api.get<{ payment: Payment | null }>(`/payments/booking/${bookingId}`);
   return payment;
 };
 
-export const getProviderPayments = async (providerId: string): Promise<PaymentRow[]> => {
-  const { payments } = await api.get<{ payments: any[] }>(`/payments/provider/${providerId}/history`);
+export const getProviderPayments = async (providerId: string): Promise<Payment[]> => {
+  const { payments } = await api.get<{ payments: Payment[] }>(`/payments/provider/${providerId}/history`);
   return payments;
 };
 
@@ -44,23 +32,23 @@ export const getProviderEarningsSummary = async (providerId: string) => {
   return api.get<any>(`/payments/provider/${providerId}/earnings-summary`);
 };
 
-export const ensureBookingPayment = async (input: { bookingId: string; customerId: string; providerId: string; amount: number; method?: PaymentMethod }) => {
-  const { payment } = await api.post<{ payment: PaymentRow }>('/payments/booking/ensure', input);
+export const ensureBookingPayment = async (input: { bookingId: string; customerId: string; provider_id: string; amount: number; method?: PaymentMethod }) => {
+  const { payment } = await api.post<{ payment: Payment }>('/payments/booking/ensure', input);
   return payment;
 };
 
 export const markBookingPaymentPaid = async (input: { bookingId: string; amount?: number; customerId?: string; providerId?: string; method?: PaymentMethod }) => {
-  const { payment } = await api.patch<{ payment: PaymentRow }>('/payments/booking/mark-paid', input);
+  const { payment } = await api.patch<{ payment: Payment }>('/payments/booking/mark-paid', input);
   return payment;
 };
 
 export const cancelBookingPayment = async (bookingId: string) => {
-  const { payment } = await api.patch<{ payment: PaymentRow | null }>(`/payments/booking/${bookingId}/cancel`);
+  const { payment } = await api.patch<{ payment: Payment | null }>(`/payments/booking/${bookingId}/cancel`);
   return payment;
 };
 
 export const updateBookingPaymentAmount = async (bookingId: string, amount: number) => {
-  const { payment } = await api.patch<{ payment: PaymentRow }>(`/payments/booking/${bookingId}/amount`, { amount });
+  const { payment } = await api.patch<{ payment: Payment }>(`/payments/booking/${bookingId}/amount`, { amount });
   return payment;
 };
 

@@ -1,14 +1,8 @@
 import { api } from '../lib/apiClient';
+import { User } from '../src/types/database.interfaces';
 
 export const getUserProfile = async () => {
-  return api.get<{
-    id: string;
-    full_name: string;
-    email: string;
-    contact_number: string;
-    role: string;
-    status: string;
-  }>('/users/profile');
+  return api.get<User>('/users/profile');
 };
 
 export const updateUserProfile = async (updates: {

@@ -1,4 +1,8 @@
 import { api } from '../lib/apiClient';
+import {
+  BookingRescheduleRequest,
+  AdditionalCharge,
+} from '../src/types/database.interfaces';
 
 export type ProviderRescheduleRequestInput = {
   bookingId: string;
@@ -21,32 +25,8 @@ export type ProviderAdditionalChargeRequestInput = {
   items: ProviderAdditionalChargeItemInput[];
 };
 
-export type BookingRescheduleRequestRow = {
-  id: string;
-  booking_id: string;
-  provider_id: string;
-  reason: string;
-  explanation: string;
-  proposed_date: string;
-  proposed_time: string;
-  status: string;
-  created_at: string;
-  reviewed_at?: string | null;
-  reviewed_by?: string | null;
-};
-
-export type AdditionalChargeRow = {
-  id: string;
-  booking_id: string;
-  requested_by: string;
-  description: string;
-  amount: number;
-  justification?: string | null;
-  status: string;
-  created_at: string;
-  reviewed_at?: string | null;
-  reviewed_by?: string | null;
-};
+export type BookingRescheduleRequestRow = BookingRescheduleRequest;
+export type AdditionalChargeRow = AdditionalCharge;
 
 export const createProviderRescheduleRequest = async (input: ProviderRescheduleRequestInput) => {
   const { request } = await api.post<{ request: BookingRescheduleRequestRow }>('/provider/reschedule-requests', {

@@ -1,4 +1,5 @@
 import { api } from '../lib/apiClient';
+import { ProviderReview } from '../src/types/database.interfaces';
 
 export const submitCustomerReview = async (input: {
   bookingId: string;
@@ -6,14 +7,15 @@ export const submitCustomerReview = async (input: {
   providerId: string;
   rating: number;
   reviewText: string;
-}) => {
-  return api.post('/provider/reviews', {
+}): Promise<ProviderReview> => {
+  const { review } = await api.post<{ review: ProviderReview }>('/provider/reviews', {
     booking_id: input.bookingId,
     reviewer_id: input.reviewerId,
     reviewee_id: input.providerId,
     rating: input.rating,
     review_text: input.reviewText,
   });
+  return review;
 };
 
 export const submitProviderProfileReport = async (input: {
@@ -24,11 +26,11 @@ export const submitProviderProfileReport = async (input: {
   bookingId?: string;
 }) => {
   return api.post('/provider/reports', {
-    providerId: input.providerId,
-    reporterId: input.reporterId,
+    provider_id: input.providerId,
+    reporter_id: input.reporterId,
     reason: input.reason,
     details: input.details,
-    bookingId: input.bookingId,
+    booking_id: input.bookingId,
   });
 };
 
@@ -38,6 +40,7 @@ export const submitProviderReview = async (input: {
   reviewee_id: string;
   rating: number;
   review_text?: string;
-}) => {
-  return api.post('/provider/reviews', input);
+}): Promise<ProviderReview> => {
+  const { review } = await api.post<{ review: ProviderReview }>('/provider/reviews', input);
+  return review;
 };

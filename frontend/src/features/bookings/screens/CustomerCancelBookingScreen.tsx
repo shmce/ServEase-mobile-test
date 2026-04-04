@@ -21,6 +21,8 @@ import { AppTextInput } from '@/src/components/common/AppTextInput';
 import { AppPressable } from '@/src/components/common/AppPressable';
 import { StatusBar } from 'expo-status-bar';
 
+import { EnrichedBooking } from '@/src/types/database.interfaces';
+
 const { height } = Dimensions.get('window');
 
 const CANCELLATION_REASONS = [
@@ -36,6 +38,16 @@ const CANCELLATION_REASONS = [
 
 const isValidUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
+type CancelBookingUIModel = {
+  id: string;
+  service: string;
+  provider: string;
+  date: string;
+  time: string;
+  address: string;
+  amount: string;
+};
+
 export function CustomerCancelBookingScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -46,7 +58,7 @@ export function CustomerCancelBookingScreen() {
   const [showReasonsModal, setShowReasonsModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [bookingData, setBookingData] = useState<any | null>(null);
+  const [bookingData, setBookingData] = useState<CancelBookingUIModel | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -75,17 +87,17 @@ export function CustomerCancelBookingScreen() {
 
       setIsLoading(true);
       try {
-        const row = await getBookingById(id);
+        const row: EnrichedBooking = await getBookingById(id);
         if (row && mounted) {
           const scheduled = row.scheduled_at ? new Date(row.scheduled_at) : null;
           setBookingData({
             id: row.id,
-            service: row.service_name || 'Service Booking',
-            provider: row.provider_name || 'Service Provider',
+            service: row.service_name || row.service?.title || 'Service Booking',
+            provider: row.provider_name || row.provider?.full_name || 'Service Provider',
             date: scheduled ? scheduled.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A',
             time: scheduled ? scheduled.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'N/A',
             address: row.service_address || 'No address provided',
-            amount: String(row.total_amount || '0.00'),
+            amount: String(row.total_amount || row.service?.price || '0.00'),
           });
         }
       } catch (err) {
@@ -103,7 +115,7 @@ export function CustomerCancelBookingScreen() {
     };
   }, [bookingParam, id]);
 
-  const booking = useMemo(
+  const booking = useMemo<CancelBookingUIModel>(
     () =>
       bookingData || {
         id: id || '',

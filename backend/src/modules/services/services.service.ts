@@ -2,6 +2,7 @@ import {
   Injectable,
   Inject,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
@@ -10,9 +11,9 @@ import {
   TRUST_CLIENT,
 } from '../../database/supabase.module';
 import {
-  ProviderService,
-  User,
   ProviderProfile,
+  ProviderService as IProviderService,
+  User,
   ProviderReview,
 } from '../../common/interfaces/database.interfaces';
 
@@ -25,141 +26,99 @@ export class ServicesService {
   ) {}
 
   async getServiceCategories() {
-    const { data, error } = await this.catalogDb
+    const response = await this.catalogDb
       .from('service_categories')
       .select('id,name,slug,is_active,parent_id,category_level')
       .eq('is_active', true)
       .order('name', { ascending: true });
 
-    if (error) throw new InternalServerErrorException(error.message);
-    return { categories: data || [] };
+    if (response.error)
+      throw new InternalServerErrorException(response.error.message);
+    return { categories: response.data || [] };
   }
 
   async getServicesByCategoryName(categoryName: string) {
-    const { data: category, error: catErr } = await this.catalogDb
+    const response = await this.catalogDb
       .from('service_categories')
       .select('id,name,slug,parent_id,category_level')
       .ilike('name', categoryName)
       .maybeSingle();
 
-    if (catErr) throw new InternalServerErrorException(catErr.message);
-    if (!category?.id) return { services: [] };
+    if (response.error)
+      throw new InternalServerErrorException(response.error.message);
+    if (!response.data) throw new NotFoundException('Category not found');
 
-    const { data: services, error: svcErr } = await this.catalogDb
+    const category = response.data;
+
+    const servicesResponse = await this.catalogDb
       .from('provider_services')
       .select(
-        'id,title,description,price,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode',
+        'id,title,price,description,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode,provider_profiles(user_id,business_name,average_rating,verification_status)',
       )
       .eq('category_id', category.id)
-      .order('title', { ascending: true });
+      .eq('provider_profiles.verification_status', 'approved');
 
-    if (svcErr) throw new InternalServerErrorException(svcErr.message);
-    return { services: services || [] };
+    if (servicesResponse.error)
+      throw new InternalServerErrorException(servicesResponse.error.message);
+
+    return {
+      category,
+      services: servicesResponse.data || [],
+    };
   }
 
-  async getProvidersByServiceName(serviceName: string) {
-    const { data: serviceRows, error: svcErr } = await this.catalogDb
-      .from('provider_services')
-      .select(
-        'id,provider_id,title,price,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode',
-      )
-      .ilike('title', serviceName);
+  async getTopProviders() {
+    const response = await this.catalogDb
+      .from('provider_profiles')
+      .select('user_id,business_name,average_rating,verification_status')
+      .eq('verification_status', 'approved')
+      .order('average_rating', { ascending: false })
+      .limit(5);
 
-    if (svcErr) throw new InternalServerErrorException(svcErr.message);
-    const rows = (serviceRows || []) as Partial<ProviderService>[];
-    if (!rows.length) return { providers: [] };
+    if (response.error)
+      throw new InternalServerErrorException(response.error.message);
+    return { providers: response.data || [] };
+  }
 
-    const providerIds = [
-      ...new Set(
-        rows.map((r) => r.provider_id).filter((id): id is string => !!id),
-      ),
-    ];
+  async getFeaturedProviders() {
+    const response = await this.catalogDb
+      .from('provider_profiles')
+      .select('user_id,business_name,average_rating,verification_status')
+      .eq('verification_status', 'approved')
+      .order('average_rating', { ascending: false })
+      .limit(5);
 
-    const [{ data: usersData }, { data: profilesData }] = await Promise.all([
-      this.identityDb
-        .from('users')
-        .select('id,full_name')
-        .in('id', providerIds),
-      this.catalogDb
-        .from('provider_profiles')
-        .select('user_id,business_name,average_rating,total_reviews')
-        .in('user_id', providerIds),
-    ]);
-
-    const usersMap = new Map<string, Pick<User, 'id' | 'full_name'>>(
-      (usersData || []).map((u: unknown) => {
-        const user = u as Pick<User, 'id' | 'full_name'>;
-        return [user.id, user];
-      }),
-    );
-    const profilesMap = new Map<
-      string,
-      Pick<
-        ProviderProfile,
-        'user_id' | 'business_name' | 'average_rating' | 'total_reviews'
-      >
-    >(
-      (profilesData || []).map((p: unknown) => {
-        const profile = p as Pick<
-          ProviderProfile,
-          'user_id' | 'business_name' | 'average_rating' | 'total_reviews'
-        >;
-        return [profile.user_id, profile];
-      }),
-    );
-
-    const providers = providerIds.map((providerId) => {
-      const cheapest = rows
-        .filter((r) => r.provider_id === providerId)
-        .sort((a, b) => Number(a.price || 0) - Number(b.price || 0))[0];
-
-      const user = usersMap.get(providerId);
-      const profile = profilesMap.get(providerId);
-
-      return {
-        id: providerId,
-        name: user?.full_name || 'Service Provider',
-        businessName:
-          profile?.business_name || user?.full_name || 'Service Provider',
-        rating: Number(profile?.average_rating || 0),
-        reviews: Number(profile?.total_reviews || 0),
-        priceLabel: `P${Number(cheapest?.price || 0).toFixed(2)}`,
-      };
-    });
-
-    return { providers };
+    if (response.error)
+      throw new InternalServerErrorException(response.error.message);
+    return { providers: response.data || [] };
   }
 
   async getProviderProfileData(providerId: string) {
-    const [
-      { data: user },
-      { data: profile },
-      { data: services },
-      { data: reviews },
-    ] = await Promise.all([
-      this.identityDb
-        .from('users')
-        .select('id,full_name,email,contact_number,created_at')
-        .eq('id', providerId)
-        .maybeSingle(),
-      this.catalogDb
-        .from('provider_profiles')
-        .select('*')
-        .eq('user_id', providerId)
-        .maybeSingle(),
-      this.catalogDb
-        .from('provider_services')
-        .select('*')
-        .eq('provider_id', providerId)
-        .order('created_at', { ascending: false }),
-      this.trustDb
-        .from('reviews')
-        .select('*')
-        .eq('reviewee_id', providerId)
-        .order('created_at', { ascending: false }),
-    ]);
+    const [userResponse, profileResponse, servicesResponse, reviewsResponse] =
+      await Promise.all([
+        this.identityDb
+          .from('users')
+          .select('id,full_name,email,contact_number,created_at')
+          .eq('id', providerId)
+          .maybeSingle(),
+        this.catalogDb
+          .from('provider_profiles')
+          .select('*')
+          .eq('user_id', providerId)
+          .maybeSingle(),
+        this.catalogDb
+          .from('provider_services')
+          .select('*')
+          .eq('provider_id', providerId)
+          .order('created_at', { ascending: false }),
+        this.trustDb
+          .from('reviews')
+          .select('*')
+          .eq('reviewee_id', providerId)
+          .order('created_at', { ascending: false }),
+      ]);
 
-    const reviewsList = (reviews || []) as ProviderReview[];
+    const reviewsList = (reviewsResponse.data || []) as ProviderReview[];
     const reviewerIds = [
       ...new Set(
         reviewsList.map((r: ProviderReview) => r.reviewer_id).filter(Boolean),
@@ -180,13 +139,13 @@ export class ServicesService {
     }
 
     return {
-      user: user as Pick<
+      user: userResponse.data as Pick<
         User,
         'id' | 'full_name' | 'email' | 'contact_number' | 'created_at'
       > | null,
-      profile: profile as ProviderProfile | null,
-      services: (services || []) as ProviderService[],
-      reviews: (reviews || []).map((r: unknown) => {
+      profile: profileResponse.data as ProviderProfile | null,
+      services: (servicesResponse.data || []) as IProviderService[],
+      reviews: (reviewsResponse.data || []).map((r: unknown) => {
         const review = r as ProviderReview;
         return {
           ...review,
@@ -196,32 +155,52 @@ export class ServicesService {
     };
   }
 
+  async getProvidersByServiceName(serviceName: string) {
+    const response = await this.catalogDb
+      .from('provider_services')
+      .select(
+        'id,title,price,description,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode,provider_profiles(user_id,business_name,average_rating,verification_status)',
+      )
+      .ilike('title', `%${serviceName}%`)
+      .eq('provider_profiles.verification_status', 'approved');
+
+    if (response.error)
+      throw new InternalServerErrorException(response.error.message);
+
+    return {
+      service_name: serviceName,
+      providers: response.data || [],
+    };
+  }
+
   async searchServices(keyword?: string) {
     try {
       let query = this.catalogDb
         .from('provider_services')
         .select(
-          `id, title, price, description, supports_hourly, hourly_rate, supports_flat, flat_rate, default_pricing_mode, service_categories!inner(id,name,slug), provider_profiles!inner(user_id,business_name,trust_score,verification_status)`,
+          `id, title, price, description, supports_hourly, hourly_rate, supports_flat, flat_rate, default_pricing_mode, service_categories!inner(id,name,slug), provider_profiles!inner(user_id,business_name,average_rating,verification_status)`,
         )
         .eq('provider_profiles.verification_status', 'approved');
 
       if (keyword)
         query = query.ilike('service_categories.name', `%${keyword}%`);
 
-      const { data, error } = await query;
-      if (error) throw new Error(error.message);
+      const response = await query;
+      if (response.error) throw new Error(response.error.message);
 
-      const sorted = ((data || []) as any[]).sort((a: any, b: any) => {
-        const scoreA =
-          (a.provider_profiles as unknown as ProviderProfile)?.trust_score || 0;
-        const scoreB =
-          (b.provider_profiles as unknown as ProviderProfile)?.trust_score || 0;
+      const sorted = (response.data || []).sort((a: any, b: any) => {
+        const profileA =
+          a.provider_profiles as unknown as ProviderProfile | null;
+        const profileB =
+          b.provider_profiles as unknown as ProviderProfile | null;
+        const scoreA = profileA?.average_rating || 0;
+        const scoreB = profileB?.average_rating || 0;
         return scoreB - scoreA;
       });
 
       return { status: 200, message: 'Search successful', results: sorted };
     } catch (err) {
-      throw new InternalServerErrorException(err.message);
+      throw new InternalServerErrorException((err as Error).message);
     }
   }
 }

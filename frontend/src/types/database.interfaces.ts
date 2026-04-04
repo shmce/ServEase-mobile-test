@@ -81,6 +81,22 @@ export interface Booking {
   updated_at: string;
 }
 
+export interface EnrichedBooking extends Booking {
+  provider?: {
+    full_name: string;
+    contact_number: string;
+    avatar_url?: string;
+  };
+  service?: {
+    title: string;
+    price: number;
+  };
+  provider_name?: string;
+  provider_rating?: number;
+  provider_avatar?: string;
+  service_name?: string;
+}
+
 export interface Dispute {
   dispute_id: string;
   booking_id: string;
@@ -100,22 +116,6 @@ export interface ProviderReview {
   rating: number;
   review_text?: string;
   created_at: string;
-}
-
-export interface EnrichedBooking extends Booking {
-  provider?: {
-    full_name: string;
-    contact_number: string;
-    avatar_url?: string;
-  };
-  service?: {
-    title: string;
-    price: number;
-  };
-  provider_name?: string;
-  provider_rating?: number;
-  provider_avatar?: string;
-  service_name?: string;
 }
 
 export interface Payment {

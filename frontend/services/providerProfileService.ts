@@ -1,23 +1,14 @@
 import { api } from '../lib/apiClient';
+import { ProviderProfile } from '../src/types/database.interfaces';
 
-export type ProviderProfileDraft = {
-  user_id?: string;
-  business_name?: string;
-  bio?: string;
-  years_experience?: number;
-  tags?: string[];
-  service_area?: string;
-  verification_status?: string;
-  average_rating?: number;
-  total_reviews?: number;
+export type ProviderProfileDraft = Partial<ProviderProfile> & {
   trust_score?: number;
-  [key: string]: any;
 };
 
 export const getDefaultProviderProfileDraft = (): ProviderProfileDraft => ({
   business_name: '',
   bio: '',
-  years_experience: 0,
+  years_experience: '0',
   tags: [],
   service_area: '',
 });

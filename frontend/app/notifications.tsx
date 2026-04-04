@@ -118,7 +118,7 @@ export default function NotificationsScreen() {
   }, [load, user?.id]);
 
   const unreadCount = useMemo(
-    () => items.filter((notification) => !notification.isRead).length,
+    () => items.filter((notification) => !notification.is_read).length,
     [items]
   );
   const filteredItems = useMemo(() => {
@@ -128,7 +128,7 @@ export default function NotificationsScreen() {
       case 'bookings':
         return items.filter((item) => item.type !== 'chat_message');
       case 'unread':
-        return items.filter((item) => !item.isRead);
+        return items.filter((item) => !item.is_read);
       default:
         return items;
     }
@@ -137,7 +137,7 @@ export default function NotificationsScreen() {
     const grouped = new Map<string, AppNotification[]>();
 
     filteredItems.forEach((item) => {
-      const title = getSectionTitle(item.createdAt);
+      const title = getSectionTitle(item.created_at);
       const existing = grouped.get(title) || [];
       existing.push(item);
       grouped.set(title, existing);
@@ -151,7 +151,7 @@ export default function NotificationsScreen() {
       .filter((section) => section.data.length > 0);
   }, [filteredItems]);
   const filteredUnreadCount = useMemo(
-    () => filteredItems.filter((item) => !item.isRead).length,
+    () => filteredItems.filter((item) => !item.is_read).length,
     [filteredItems]
   );
 
@@ -161,7 +161,7 @@ export default function NotificationsScreen() {
     const idSet = new Set(notificationIds);
     setItems((prev) =>
       prev.map((notification) =>
-        idSet.has(notification.id) ? { ...notification, isRead: true } : notification
+        idSet.has(notification.id) ? { ...notification, is_read: true } : notification
       )
     );
   }, []);
@@ -182,13 +182,13 @@ export default function NotificationsScreen() {
     await markNotificationRead(user.id, item.id);
     setItems((prev) =>
       prev.map((notification) =>
-        notification.id === item.id ? { ...notification, isRead: true } : notification
+        notification.id === item.id ? { ...notification, is_read: true } : notification
       )
     );
 
     if (item.type === 'chat_message') {
       const role = resolveUserRole(user);
-      const bookingId = String(item.data.bookingId || item.bookingId || '').trim();
+      const bookingId = String(item.data.bookingId || item.booking_id || '').trim();
 
       if (!bookingId) return;
 
@@ -279,26 +279,26 @@ export default function NotificationsScreen() {
   const handleMarkAllRead = async () => {
     if (!user?.id) return;
     await markAllNotificationsRead(user.id);
-    setItems((prev) => prev.map((item) => ({ ...item, isRead: true })));
+    setItems((prev) => prev.map((item) => ({ ...item, is_read: true })));
   };
 
   const handleMarkFilterRead = async () => {
-    const unreadIds = filteredItems.filter((item) => !item.isRead).map((item) => item.id);
+    const unreadIds = filteredItems.filter((item) => !item.is_read).map((item) => item.id);
     await markNotificationBatchRead(unreadIds);
   };
 
   const handleMarkSectionRead = async (section: NotificationSection) => {
-    const unreadIds = section.data.filter((item) => !item.isRead).map((item) => item.id);
+    const unreadIds = section.data.filter((item) => !item.is_read).map((item) => item.id);
     await markNotificationBatchRead(unreadIds);
   };
 
   const handleMarkRead = async (item: AppNotification) => {
-    if (!user?.id || item.isRead) return;
+    if (!user?.id || item.is_read) return;
 
     await markNotificationRead(user.id, item.id);
     setItems((prev) =>
       prev.map((notification) =>
-        notification.id === item.id ? { ...notification, isRead: true } : notification
+        notification.id === item.id ? { ...notification, is_read: true } : notification
       )
     );
   };
@@ -375,12 +375,12 @@ export default function NotificationsScreen() {
           <NotificationCard
             item={item}
             onPress={() => handleOpenNotification(item)}
-            actionLabel={item.isRead ? undefined : 'Mark read'}
+            actionLabel={item.is_read ? undefined : 'Mark read'}
             onActionPress={() => void handleMarkRead(item)}
           />
         )}
         renderSectionHeader={({ section }) => {
-          const sectionUnreadCount = section.data.filter((item) => !item.isRead).length;
+          const sectionUnreadCount = section.data.filter((item) => !item.is_read).length;
 
           return (
             <View style={styles.sectionHeaderRow}>

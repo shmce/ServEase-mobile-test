@@ -87,8 +87,8 @@ export function NotificationCard({
     <TouchableOpacity
       style={[
         styles.card,
-        !item.isRead && styles.unreadCard,
-        !item.isRead && { borderColor: visual.unreadBorder },
+        !item.is_read && styles.unreadCard,
+        !item.is_read && { borderColor: visual.unreadBorder },
       ]}
       onPress={onPress}
       activeOpacity={0.75}
@@ -102,14 +102,14 @@ export function NotificationCard({
           <Text style={styles.time}>{item.timeLabel}</Text>
         </View>
         <View style={styles.contextRow}>
-          <View style={[styles.contextPill, !item.isRead && styles.contextPillUnread]}>
-            <Text style={[styles.contextPillText, !item.isRead && styles.contextPillTextUnread]}>
+          <View style={[styles.contextPill, !item.is_read && styles.contextPillUnread]}>
+            <Text style={[styles.contextPillText, !item.is_read && styles.contextPillTextUnread]}>
               {contextLabel}
             </Text>
           </View>
         </View>
         <Text style={styles.text}>{item.body}</Text>
-        {!item.isRead ? (
+        {!item.is_read ? (
           <View style={styles.footer}>
             <Text style={styles.openHint}>Tap to open</Text>
             {actionLabel && onActionPress ? (

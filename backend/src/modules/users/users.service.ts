@@ -9,6 +9,7 @@ import { NOTIFICATION_CLIENT } from '../../database/supabase.module';
 import { handleSupabaseError } from '../../common/utils/supabase-error.handler';
 import { UserProfileDto } from './dto/user-profile.dto';
 import { UserRepository } from './repositories/user.repository';
+import { SupportTicket } from '../../common/interfaces/database.interfaces';
 
 @Injectable()
 export class UsersService {
@@ -73,6 +74,6 @@ export class UsersService {
       .maybeSingle();
 
     if (error) handleSupabaseError(error, 'SupportTicket');
-    return { ticket: data };
+    return { ticket: data as SupportTicket };
   }
 }

@@ -4,6 +4,7 @@ import {
   areMessageNotificationsEnabled,
   type NotificationRole,
 } from '../lib/notification-preferences';
+import { Notification as BackendNotification } from '../src/types/database.interfaces';
 
 type NotificationSubscription = () => void;
 export type AppNotificationType =
@@ -13,16 +14,19 @@ export type AppNotificationType =
   | 'booking_in_progress'
   | 'booking_completed'
   | 'booking_cancelled';
+
 export type NotificationTarget = {
   screen: string;
   params: Record<string, string>;
 };
+
 export type NotificationContext = {
   bookingStatus: string;
   recipientRole: NotificationRole;
   senderName: string;
   serviceName: string;
 };
+
 export type AppNotificationData = {
   bookingId: string;
   senderName: string;
@@ -34,19 +38,11 @@ export type AppNotificationData = {
   context?: NotificationContext;
 };
 
-export type AppNotification = {
-  id: string;
-  userId: string;
-  actorId: string;
-  bookingId: string;
+export interface AppNotification extends BackendNotification {
   type: AppNotificationType;
-  title: string;
-  body: string;
-  isRead: boolean;
-  createdAt: string;
   timeLabel: string;
   data: AppNotificationData;
-};
+}
 
 const memoryNotifications = new Map<string, AppNotification[]>();
 
@@ -82,14 +78,14 @@ const mapNotificationRow = (row: any): AppNotification => {
       : 'chat_message';
   return {
     id: String(row?.id || `notification-${createdAt}`),
-    userId: String(row?.user_id || ''),
-    actorId: String(row?.actor_id || ''),
-    bookingId: String(row?.booking_id || ''),
+    user_id: String(row?.user_id || ''),
+    actor_id: String(row?.actor_id || ''),
+    booking_id: String(row?.booking_id || ''),
     type,
     title: String(row?.title || 'Notification'),
     body: String(row?.body || ''),
-    isRead: Boolean(row?.is_read),
-    createdAt,
+    is_read: Boolean(row?.is_read),
+    created_at: createdAt,
     timeLabel: formatTimeLabel(createdAt),
     data: {
       bookingId: String(rawData.bookingId || row?.booking_id || ''),
@@ -122,7 +118,7 @@ export const getNotifications = async (userId: string): Promise<AppNotification[
   }
 
   return getMemoryNotifications(userId).sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 };
 
@@ -132,7 +128,7 @@ export const markNotificationRead = async (userId: string, notificationId: strin
   setMemoryNotifications(
     userId,
     getMemoryNotifications(userId).map((notification) =>
-      notification.id === notificationId ? { ...notification, isRead: true } : notification
+      notification.id === notificationId ? { ...notification, is_read: true } : notification
     )
   );
 
@@ -152,7 +148,7 @@ export const markAllNotificationsRead = async (userId: string) => {
 
   setMemoryNotifications(
     userId,
-    getMemoryNotifications(userId).map((notification) => ({ ...notification, isRead: true }))
+    getMemoryNotifications(userId).map((notification) => ({ ...notification, is_read: true }))
   );
 
   try {
@@ -168,7 +164,7 @@ export const markAllNotificationsRead = async (userId: string) => {
 
 export const getUnreadNotificationCount = async (userId: string) => {
   const notifications = await getNotifications(userId);
-  return notifications.filter((notification) => !notification.isRead).length;
+  return notifications.filter((notification) => !notification.is_read).length;
 };
 
 export const createChatNotification = async (input: {
@@ -205,14 +201,14 @@ export const createChatNotification = async (input: {
   };
   const nextNotification: AppNotification = {
     id: `local-notification-${createdAt}`,
-    userId: recipientUserId,
-    actorId: input.actorId,
-    bookingId: input.bookingId,
+    user_id: recipientUserId,
+    actor_id: input.actorId,
+    booking_id: input.bookingId,
     type: 'chat_message',
     title: `New message from ${input.senderName}`,
     body: `${input.serviceName}: open chat to reply.`,
-    isRead: false,
-    createdAt,
+    is_read: false,
+    created_at: createdAt,
     timeLabel: formatTimeLabel(createdAt),
     data,
   };
@@ -298,14 +294,14 @@ export const createBookingStatusNotification = async (input: {
 
   const nextNotification: AppNotification = {
     id: `local-notification-${createdAt}`,
-    userId: recipientUserId,
-    actorId: input.actorId,
-    bookingId: input.bookingId,
+    user_id: recipientUserId,
+    actor_id: input.actorId,
+    booking_id: input.bookingId,
     type: input.type,
     title: input.title,
     body: input.body,
-    isRead: false,
-    createdAt,
+    is_read: false,
+    created_at: createdAt,
     timeLabel: formatTimeLabel(createdAt),
     data,
   };

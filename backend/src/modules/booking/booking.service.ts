@@ -42,15 +42,12 @@ export class BookingService {
   ) {}
 
   async createBooking(dto: CreateBookingDto, customerId: string) {
-    const userResponse = await this.identityDb
+    const userResponse = (await this.identityDb
       .from('users')
       .select('role, status')
       .eq('id', dto.provider_id)
-      .single();
-    const userRecord = userResponse.data as Pick<
-      User,
-      'role' | 'status'
-    > | null;
+      .single()) as { data: Pick<User, 'role' | 'status'> | null; error: any };
+    const userRecord = userResponse.data;
     const userError = userResponse.error;
 
     if (userError || !userRecord)
@@ -80,22 +77,25 @@ export class BookingService {
       throw new BadRequestException('Provider is not fully verified.');
     }
 
-    const serviceResponse = await this.catalogDb
+    const serviceResponse = (await this.catalogDb
       .from('provider_services')
       .select(
         'id,provider_id,supports_hourly,hourly_rate,supports_flat,flat_rate',
       )
       .eq('id', dto.service_id)
-      .single();
-    const serviceRecord = serviceResponse.data as Pick<
-      IProviderService,
-      | 'id'
-      | 'provider_id'
-      | 'supports_hourly'
-      | 'hourly_rate'
-      | 'supports_flat'
-      | 'flat_rate'
-    > | null;
+      .single()) as {
+      data: Pick<
+        IProviderService,
+        | 'id'
+        | 'provider_id'
+        | 'supports_hourly'
+        | 'hourly_rate'
+        | 'supports_flat'
+        | 'flat_rate'
+      > | null;
+      error: any;
+    };
+    const serviceRecord = serviceResponse.data;
     const serviceError = serviceResponse.error;
 
     if (serviceError || !serviceRecord)
@@ -130,7 +130,7 @@ export class BookingService {
       totalAmount = flatRate;
     }
 
-    const insertResponse = await this.bookingDb
+    const insertResponse = (await this.bookingDb
       .from('bookings')
       .insert([
         {
@@ -149,12 +149,15 @@ export class BookingService {
         },
       ])
       .select('id, booking_reference, status, total_amount')
-      .single();
+      .single()) as {
+      data: Pick<
+        Booking,
+        'id' | 'booking_reference' | 'status' | 'total_amount'
+      > | null;
+      error: any;
+    };
 
-    const newBooking = insertResponse.data as Pick<
-      Booking,
-      'id' | 'booking_reference' | 'status' | 'total_amount'
-    > | null;
+    const newBooking = insertResponse.data;
     const bookingError = insertResponse.error;
     if (bookingError || !newBooking) {
       handleSupabaseError(
@@ -287,10 +290,10 @@ export class BookingService {
       query = query.eq('booking_reference', bookingId);
     }
 
-    const { data: booking, error } = await query
+    const { data: booking, error } = (await query
       .eq('customer_id', customerId)
       .select('*')
-      .maybeSingle();
+      .maybeSingle()) as { data: Booking | null; error: any };
 
     if (error) throw new BadRequestException(error.message);
     if (!booking)
@@ -301,7 +304,7 @@ export class BookingService {
     await this.paymentDb
       .from('payments')
       .update({ status: 'cancelled' })
-      .eq('booking_id', (booking as Booking).id);
+      .eq('booking_id', booking.id);
 
     this.eventEmitter.emit(
       BOOKING_EVENTS.CANCELLED,
@@ -314,7 +317,7 @@ export class BookingService {
       ),
     );
 
-    return { message: 'Booking cancelled.', booking: booking as Booking };
+    return { message: 'Booking cancelled.', booking: booking };
   }
 
   async getHistory() {
@@ -338,7 +341,7 @@ export class BookingService {
       .eq('status', 'pending');
 
     if (error) handleSupabaseError(error, 'BookingRequests');
-    return { requests: data };
+    return { requests: data ?? [] };
   }
 
   async updateStatus(id: string, status: string) {
@@ -349,11 +352,14 @@ export class BookingService {
           .update({ status })
           .eq('booking_reference', id);
 
-    const { data, error } = (await query
+    const response = await query
       .select(
         'id, status, booking_reference, customer_id, provider_id, service_id',
       )
-      ?.maybeSingle()) ?? { data: null, error: null };
+      .maybeSingle();
+
+    const data = response?.data as Booking | null;
+    const error = response?.error;
 
     if (error) handleSupabaseError(error, 'BookingStatusUpdate');
     if (!data) throw new NotFoundException(`Booking not found for: ${id}`);
@@ -429,6 +435,6 @@ export class BookingService {
     // Optionally update booking status to disputed
     await this.updateStatus(bookingId, 'disputed');
 
-    return { dispute: data as Dispute };
+    return { dispute: data as unknown as Dispute };
   }
 }

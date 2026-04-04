@@ -206,8 +206,8 @@ export class PaymentsService {
       .eq('status', 'completed');
 
     if (error) handleSupabaseError(error, 'EarningsFetch');
-    const totalEarnings = (data || []).reduce(
-      (acc: number, curr: any) => acc + Number(curr.amount),
+    const totalEarnings = ((data as { amount: number }[]) || []).reduce(
+      (acc: number, curr: { amount: number }) => acc + Number(curr.amount),
       0,
     );
 

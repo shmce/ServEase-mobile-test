@@ -1,4 +1,5 @@
 import { api } from '../lib/apiClient';
+import { SupportTicket } from '../src/types/database.interfaces';
 
 export const createSupportTicket = async (input: {
   userId: string;
@@ -7,7 +8,7 @@ export const createSupportTicket = async (input: {
   category?: string;
   role?: 'customer' | 'provider';
 }) => {
-  const { ticket } = await api.post<{ ticket: any }>('/users/support-tickets', {
+  const { ticket } = await api.post<{ ticket: SupportTicket }>('/users/support-tickets', {
     subject: input.subject,
     message: input.message,
     category: input.category,

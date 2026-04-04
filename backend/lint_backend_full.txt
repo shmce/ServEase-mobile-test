@@ -1,0 +1,343 @@
+
+> auth-app@0.0.1 lint
+> eslint "{src,apps,libs,test}/**/*.ts" --fix
+
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/common/filters/http-exception.filter.ts
+  32:7   error  Unsafe assignment of an `any` value                               @typescript-eslint/no-unsafe-assignment
+  35:30  error  Unsafe member access .message on an `any` value                   @typescript-eslint/no-unsafe-member-access
+  35:58  error  Unsafe member access .error on an `any` value                     @typescript-eslint/no-unsafe-member-access
+  39:9   error  The two values in this comparison do not have a shared enum type  @typescript-eslint/no-unsafe-enum-comparison
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/common/interceptors/transform.interceptor.ts
+  27:9   error  Unsafe assignment of an `any` value                 @typescript-eslint/no-unsafe-assignment
+  27:58  error  Unsafe member access .statusCode on an `any` value  @typescript-eslint/no-unsafe-member-access
+  29:9   error  Unsafe assignment of an `any` value                 @typescript-eslint/no-unsafe-assignment
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/common/utils/resilience.utils.ts
+  64:21  error    'error' is defined but never used                                              @typescript-eslint/no-unused-vars
+  93:5   warning  Unsafe argument of type `any` assigned to a parameter of type `Observable<T>`  @typescript-eslint/no-unsafe-argument
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/common/utils/supabase-error.handler.ts
+  48:17  error  Unsafe member access .code on an `any` value  @typescript-eslint/no-unsafe-member-access
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/database/supabase.module.ts
+   34:9   error    Unsafe return of a value of type `any`                                                                                    @typescript-eslint/no-unsafe-return
+   42:9   error    Unsafe return of a value of type `any`                                                                                    @typescript-eslint/no-unsafe-return
+   53:9   error    Unsafe return of a value of type `any`                                                                                    @typescript-eslint/no-unsafe-return
+   61:9   error    Unsafe return of a value of type `any`                                                                                    @typescript-eslint/no-unsafe-return
+   69:9   error    Unsafe return of a value of type `any`                                                                                    @typescript-eslint/no-unsafe-return
+   77:9   error    Unsafe return of a value of type `any`                                                                                    @typescript-eslint/no-unsafe-return
+  100:13  error    Unsafe assignment of an `any` value                                                                                       @typescript-eslint/no-unsafe-assignment
+  105:17  error    Unsafe assignment of an `any` value                                                                                       @typescript-eslint/no-unsafe-assignment
+  105:27  error    Unsafe call of an `any` typed value                                                                                       @typescript-eslint/no-unsafe-call
+  105:41  error    Unsafe member access .apply on an `any` value                                                                             @typescript-eslint/no-unsafe-member-access
+  107:11  error    Unsafe return of a value of type `any`                                                                                    @typescript-eslint/no-unsafe-return
+  111:7   error    Unsafe return of a value of type `any`                                                                                    @typescript-eslint/no-unsafe-return
+  133:13  error    Unsafe assignment of an `any` value                                                                                       @typescript-eslint/no-unsafe-assignment
+  138:19  error    Unsafe assignment of an `any` value                                                                                       @typescript-eslint/no-unsafe-assignment
+  138:26  error    Unsafe call of an `any` typed value                                                                                       @typescript-eslint/no-unsafe-call
+  138:40  error    Unsafe member access .apply on an `any` value                                                                             @typescript-eslint/no-unsafe-member-access
+  141:15  error    Unsafe return of a value of type `any`                                                                                    @typescript-eslint/no-unsafe-return
+  143:13  error    Unsafe return of a value of type `any`                                                                                    @typescript-eslint/no-unsafe-return
+  151:30  error    Unsafe return of a value of type `any`                                                                                    @typescript-eslint/no-unsafe-return
+  151:30  error    Unsafe call of an `any` typed value                                                                                       @typescript-eslint/no-unsafe-call
+  151:44  error    Unsafe member access .call on an `any` value                                                                              @typescript-eslint/no-unsafe-member-access
+  152:21  warning  Unsafe argument of type `any` assigned to a parameter of type `((value: unknown) => unknown) | null | undefined`          @typescript-eslint/no-unsafe-argument
+  152:34  warning  Unsafe argument of type `any` assigned to a parameter of type `((reason: any) => PromiseLike<never>) | null | undefined`  @typescript-eslint/no-unsafe-argument
+  157:7   error    Unsafe return of a value of type `any`                                                                                    @typescript-eslint/no-unsafe-return
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/main.ts
+  36:1  warning  Promises must be awaited, end with a call to .catch, end with a call to .then with a rejection handler or be explicitly marked as ignored with the `void` operator  @typescript-eslint/no-floating-promises
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/addresses/addresses.service.ts
+  28:13  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  35:14  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  39:13  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  48:14  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/admin/admin.service.ts
+   45:11  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+   56:24  error  Unsafe member access .reviewed_by on an `any` value  @typescript-eslint/no-unsafe-member-access
+   99:9   error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  100:9   error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  101:9   error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  102:9   error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/auth/auth.service.spec.ts
+  104:14  error  A method that is not declared with `this: void` may cause unintentional scoping of `this` when separated from its object.
+Consider using an arrow function or explicitly `.bind()`ing the method to avoid calling the method with an unintended `this` value. 
+If a function does not access `this`, it can be annotated with `this: void`  @typescript-eslint/unbound-method
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/auth/auth.service.ts
+   66:50  error  Unsafe member access .message on an `any` value   @typescript-eslint/no-unsafe-member-access
+   77:15  error  Unsafe assignment of an `any` value               @typescript-eslint/no-unsafe-assignment
+   81:9   error  Unsafe assignment of an `any` value               @typescript-eslint/no-unsafe-assignment
+   81:33  error  Unsafe member access .email on an `any` value     @typescript-eslint/no-unsafe-member-access
+   92:13  error  Unsafe assignment of an `any` value               @typescript-eslint/no-unsafe-assignment
+   97:20  error  Unsafe member access .status on an `any` value    @typescript-eslint/no-unsafe-member-access
+   97:53  error  Unsafe member access .status on an `any` value    @typescript-eslint/no-unsafe-member-access
+  101:11  error  Unsafe assignment of an `any` value               @typescript-eslint/no-unsafe-assignment
+  101:36  error  Unsafe member access .status on an `any` value    @typescript-eslint/no-unsafe-member-access
+  109:9   error  Unsafe assignment of an `any` value               @typescript-eslint/no-unsafe-assignment
+  109:24  error  Unsafe member access .role on an `any` value      @typescript-eslint/no-unsafe-member-access
+  113:43  error  Unsafe member access .response on an `any` value  @typescript-eslint/no-unsafe-member-access
+  113:59  error  Unsafe member access .message on an `any` value   @typescript-eslint/no-unsafe-member-access
+  163:70  error  Unsafe member access .message on an `any` value   @typescript-eslint/no-unsafe-member-access
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/auth/dto/create-provider.dto.ts
+  7:3  error  'IsUUID' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/booking/booking.service.spec.ts
+  124:9   warning  Unsafe argument of type `any` assigned to a parameter of type `CreateBookingDto`                                                                                                                                                                                                                                                            @typescript-eslint/no-unsafe-argument
+  130:14  error    A method that is not declared with `this: void` may cause unintentional scoping of `this` when separated from its object.
+Consider using an arrow function or explicitly `.bind()`ing the method to avoid calling the method with an unintended `this` value. 
+If a function does not access `this`, it can be annotated with `this: void`  @typescript-eslint/unbound-method
+  147:31  warning  Unsafe argument of type `any` assigned to a parameter of type `CreateBookingDto`                                                                                                                                                                                                                                                            @typescript-eslint/no-unsafe-argument
+  175:14  error    A method that is not declared with `this: void` may cause unintentional scoping of `this` when separated from its object.
+Consider using an arrow function or explicitly `.bind()`ing the method to avoid calling the method with an unintended `this` value. 
+If a function does not access `this`, it can be annotated with `this: void`  @typescript-eslint/unbound-method
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/booking/booking.service.ts
+  159:9   warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  160:9   warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  273:19  error    Unsafe object destructuring of a property with an `any` value           @typescript-eslint/no-unsafe-assignment
+  287:33  error    Unsafe member access .id on an `any` value                              @typescript-eslint/no-unsafe-member-access
+  292:9   warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  292:17  error    Unsafe member access .id on an `any` value                              @typescript-eslint/no-unsafe-member-access
+  293:9   warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  293:17  error    Unsafe member access .booking_reference on an `any` value               @typescript-eslint/no-unsafe-member-access
+  294:9   warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  294:17  error    Unsafe member access .customer_id on an `any` value                     @typescript-eslint/no-unsafe-member-access
+  295:9   warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  295:17  error    Unsafe member access .provider_id on an `any` value                     @typescript-eslint/no-unsafe-member-access
+  296:9   warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  296:17  error    Unsafe member access .service_id on an `any` value                      @typescript-eslint/no-unsafe-member-access
+  347:9   warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  348:9   warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  349:9   warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  350:9   warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  351:9   warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  352:9   warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  377:13  error    Unsafe object destructuring of a property with an `any` value           @typescript-eslint/no-unsafe-assignment
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/booking/listeners/booking.listeners.ts
+   56:7   error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+   57:7   error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+   58:7   error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+   59:7   error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+   60:7   error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  122:17  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  123:17  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  124:17  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  134:21  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  135:21  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  136:21  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  137:21  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  137:31  error  Unsafe call of an `any` typed value                  @typescript-eslint/no-unsafe-call
+  137:31  error  Unsafe call of an `any` typed value                  @typescript-eslint/no-unsafe-call
+  137:46  error  Unsafe member access .slice on an `any` value        @typescript-eslint/no-unsafe-member-access
+  137:58  error  Unsafe member access .toUpperCase on an `any` value  @typescript-eslint/no-unsafe-member-access
+  143:19  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  144:19  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  157:89  error  Unsafe member access .message on an `any` value      @typescript-eslint/no-unsafe-member-access
+  188:17  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  189:17  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  190:17  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  200:21  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  201:21  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  202:21  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  203:21  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  203:31  error  Unsafe call of an `any` typed value                  @typescript-eslint/no-unsafe-call
+  203:31  error  Unsafe call of an `any` typed value                  @typescript-eslint/no-unsafe-call
+  203:46  error  Unsafe member access .slice on an `any` value        @typescript-eslint/no-unsafe-member-access
+  203:58  error  Unsafe member access .toUpperCase on an `any` value  @typescript-eslint/no-unsafe-member-access
+  209:19  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  210:19  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  219:60  error  Unsafe member access .message on an `any` value      @typescript-eslint/no-unsafe-member-access
+  289:17  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  290:17  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  291:17  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  301:21  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  302:21  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  303:21  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  309:19  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  310:19  error  Unsafe assignment of an `any` value                  @typescript-eslint/no-unsafe-assignment
+  319:61  error  Unsafe member access .message on an `any` value      @typescript-eslint/no-unsafe-member-access
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/customer/customer.controller.ts
+  26:5   error    Unsafe return of type `Promise<any[]>` from function with return type `Promise<CustomerDashboardResponseDto[]>`  @typescript-eslint/no-unsafe-return
+  33:47  warning  Unsafe argument of type `any` assigned to a parameter of type `string`                                           @typescript-eslint/no-unsafe-argument
+  33:51  error    Unsafe member access .user on an `any` value                                                                     @typescript-eslint/no-unsafe-member-access
+  40:5   error    Unsafe return of a value of type `Promise<any>`                                                                  @typescript-eslint/no-unsafe-return
+  40:44  warning  Unsafe argument of type `any` assigned to a parameter of type `string`                                           @typescript-eslint/no-unsafe-argument
+  40:48  error    Unsafe member access .user on an `any` value                                                                     @typescript-eslint/no-unsafe-member-access
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/customer/customer.service.ts
+   37:39  error  Unsafe return of a value of type `any`                         @typescript-eslint/no-unsafe-return
+   37:41  error  Unsafe member access .provider_id on an `any` value            @typescript-eslint/no-unsafe-member-access
+   55:70  error  Unsafe member access .id on an `any` value                     @typescript-eslint/no-unsafe-member-access
+   57:43  error  Unsafe member access .user_id on an `any` value                @typescript-eslint/no-unsafe-member-access
+   61:13  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   61:44  error  Unsafe member access .provider_id on an `any` value            @typescript-eslint/no-unsafe-member-access
+   62:13  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   62:46  error  Unsafe member access .provider_id on an `any` value            @typescript-eslint/no-unsafe-member-access
+   65:9   error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   65:21  error  Unsafe member access .id on an `any` value                     @typescript-eslint/no-unsafe-member-access
+   66:9   error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   66:36  error  Unsafe member access .booking_reference on an `any` value      @typescript-eslint/no-unsafe-member-access
+   67:9   error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   67:25  error  Unsafe member access .status on an `any` value                 @typescript-eslint/no-unsafe-member-access
+   68:9   error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   68:31  error  Unsafe member access .scheduled_at on an `any` value           @typescript-eslint/no-unsafe-member-access
+   69:9   error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   69:31  error  Unsafe member access .total_amount on an `any` value           @typescript-eslint/no-unsafe-member-access
+   70:9   error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   70:29  error  Unsafe member access .created_at on an `any` value             @typescript-eslint/no-unsafe-member-access
+   71:9   error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   71:29  error  Unsafe member access .updated_at on an `any` value             @typescript-eslint/no-unsafe-member-access
+   73:11  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   73:28  error  Unsafe member access .full_name on an `any` value              @typescript-eslint/no-unsafe-member-access
+   74:11  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   74:33  error  Unsafe member access .contact_number on an `any` value         @typescript-eslint/no-unsafe-member-access
+   75:11  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   75:35  error  Unsafe member access .business_name on an `any` value          @typescript-eslint/no-unsafe-member-access
+   76:11  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   76:35  error  Unsafe member access .total_reviews on an `any` value          @typescript-eslint/no-unsafe-member-access
+   77:11  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   77:36  error  Unsafe member access .average_rating on an `any` value         @typescript-eslint/no-unsafe-member-access
+   84:13  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+   95:33  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+   99:13  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  106:5   error  Unsafe return of a value of type `any`                         @typescript-eslint/no-unsafe-return
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/locations/locations.controller.spec.ts
+  44:12  error  A method that is not declared with `this: void` may cause unintentional scoping of `this` when separated from its object.
+Consider using an arrow function or explicitly `.bind()`ing the method to avoid calling the method with an unintended `this` value. 
+If a function does not access `this`, it can be annotated with `this: void`  @typescript-eslint/unbound-method
+  55:12  error  A method that is not declared with `this: void` may cause unintentional scoping of `this` when separated from its object.
+Consider using an arrow function or explicitly `.bind()`ing the method to avoid calling the method with an unintended `this` value. 
+If a function does not access `this`, it can be annotated with `this: void`  @typescript-eslint/unbound-method
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/locations/locations.service.spec.ts
+  18:7  error  Async method 'json' has no 'await' expression  @typescript-eslint/require-await
+  47:7  error  Async method 'json' has no 'await' expression  @typescript-eslint/require-await
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/locations/locations.service.ts
+  112:11  error  Unsafe assignment of an `any` value           @typescript-eslint/no-unsafe-assignment
+  115:7   error  Unsafe return of a value of type `any[]`      @typescript-eslint/no-unsafe-return
+  118:29  error  Unsafe member access .data on an `any` value  @typescript-eslint/no-unsafe-member-access
+  119:7   error  Unsafe return of a value of type `any`        @typescript-eslint/no-unsafe-return
+  119:19  error  Unsafe member access .data on an `any` value  @typescript-eslint/no-unsafe-member-access
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/payments/payments.service.spec.ts
+  63:50  warning  Unsafe argument of type `any` assigned to a parameter of type `CreatePaymentDto`                                                                                                                                                                                                                                           @typescript-eslint/no-unsafe-argument
+  83:78  warning  Unsafe argument of type `any` assigned to a parameter of type `{ payments: { booking_reference: string; customer_name: string; service_title: string; scheduled_at: string | null; platform_fee: number; net_earnings: number; id: string; booking_id: string; ... 6 more ...; created_at: string; }[]; } | Promise<...>`  @typescript-eslint/no-unsafe-argument
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/payments/payments.service.ts
+  210:53  error  Unsafe member access .amount on an `any` value  @typescript-eslint/no-unsafe-member-access
+  299:9   error  Unsafe assignment of an `any` value             @typescript-eslint/no-unsafe-assignment
+  300:9   error  Unsafe assignment of an `any` value             @typescript-eslint/no-unsafe-assignment
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/provider/provider.controller.ts
+  175:47  warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  175:51  error    Unsafe member access .user on an `any` value                            @typescript-eslint/no-unsafe-member-access
+  213:25  error    'serviceId' is defined but never used                                   @typescript-eslint/no-unused-vars
+  214:22  error    'search' is defined but never used                                      @typescript-eslint/no-unused-vars
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/provider/provider.service.ts
+   19:3   error  'ProviderProfile' is defined but never used                    @typescript-eslint/no-unused-vars
+   23:3   error  'ProviderReview' is defined but never used                     @typescript-eslint/no-unused-vars
+  106:7   error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  106:34  error  Unsafe member access .user_id on an `any` value                @typescript-eslint/no-unsafe-member-access
+  251:13  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  263:24  error  Unsafe member access .customer_id on an `any` value            @typescript-eslint/no-unsafe-member-access
+  270:24  error  Unsafe member access .service_id on an `any` value             @typescript-eslint/no-unsafe-member-access
+  275:7   error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  277:9   error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  278:9   error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  279:9   error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  280:9   error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  281:54  error  Unsafe member access .total_amount on an `any` value           @typescript-eslint/no-unsafe-member-access
+  291:13  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  301:21  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  326:16  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  341:14  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  354:13  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  369:14  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  389:19  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  399:19  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  413:34  error  Unsafe member access .proposed_date on an `any` value          @typescript-eslint/no-unsafe-member-access
+  413:59  error  Unsafe member access .proposed_time on an `any` value          @typescript-eslint/no-unsafe-member-access
+  421:14  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  499:13  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  503:13  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  506:19  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  510:19  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  534:13  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  548:5   error  Unsafe return of a value of type `any`                         @typescript-eslint/no-unsafe-return
+  587:19  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  624:57  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  630:13  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  637:14  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+  641:13  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  648:5   error  Unsafe return of a value of type `any`                         @typescript-eslint/no-unsafe-return
+  652:13  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  666:5   error  Unsafe return of a value of type `any`                         @typescript-eslint/no-unsafe-return
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/reference/reference.service.ts
+  25:14  error  'err' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/services/services.service.ts
+   66:58  error    Unsafe return of a value of type `any`                                                 @typescript-eslint/no-unsafe-return
+   66:60  error    Unsafe member access .provider_id on an `any` value                                    @typescript-eslint/no-unsafe-member-access
+   79:67  error    Unsafe member access .id on an `any` value                                             @typescript-eslint/no-unsafe-member-access
+   81:47  error    Unsafe member access .user_id on an `any` value                                        @typescript-eslint/no-unsafe-member-access
+   86:31  error    Unsafe member access .provider_id on an `any` value                                    @typescript-eslint/no-unsafe-member-access
+   88:40  error    Unsafe member access .price on an `any` value                                          @typescript-eslint/no-unsafe-member-access
+   88:63  error    Unsafe member access .price on an `any` value                                          @typescript-eslint/no-unsafe-member-access
+   91:13  error    Unsafe assignment of an `any` value                                                    @typescript-eslint/no-unsafe-assignment
+   92:13  error    Unsafe assignment of an `any` value                                                    @typescript-eslint/no-unsafe-assignment
+   95:9   error    Unsafe assignment of an `any` value                                                    @typescript-eslint/no-unsafe-assignment
+   96:9   error    Unsafe assignment of an `any` value                                                    @typescript-eslint/no-unsafe-assignment
+   96:21  error    Unsafe member access .full_name on an `any` value                                      @typescript-eslint/no-unsafe-member-access
+   97:9   error    Unsafe assignment of an `any` value                                                    @typescript-eslint/no-unsafe-assignment
+   98:20  error    Unsafe member access .business_name on an `any` value                                  @typescript-eslint/no-unsafe-member-access
+   98:43  error    Unsafe member access .full_name on an `any` value                                      @typescript-eslint/no-unsafe-member-access
+   99:33  error    Unsafe member access .average_rating on an `any` value                                 @typescript-eslint/no-unsafe-member-access
+  100:34  error    Unsafe member access .total_reviews on an `any` value                                  @typescript-eslint/no-unsafe-member-access
+  111:15  error    Unsafe object destructuring of a property with an `any` value                          @typescript-eslint/no-unsafe-assignment
+  139:41  error    Unsafe return of a value of type `any`                                                 @typescript-eslint/no-unsafe-return
+  139:43  error    Unsafe member access .reviewer_id on an `any` value                                    @typescript-eslint/no-unsafe-member-access
+  148:7   error    Unsafe assignment of type `Map<any, any>` to a variable of type `Map<string, string>`  @typescript-eslint/no-unsafe-assignment
+  149:49  error    Unsafe member access .id on an `any` value                                             @typescript-eslint/no-unsafe-member-access
+  149:55  error    Unsafe member access .full_name on an `any` value                                      @typescript-eslint/no-unsafe-member-access
+  155:7   error    Unsafe assignment of an `any` value                                                    @typescript-eslint/no-unsafe-assignment
+  157:49  error    Unsafe return of a value of type `any`                                                 @typescript-eslint/no-unsafe-return
+  159:42  warning  Unsafe argument of type `any` assigned to a parameter of type `string`                 @typescript-eslint/no-unsafe-argument
+  159:44  error    Unsafe member access .reviewer_id on an `any` value                                    @typescript-eslint/no-unsafe-member-access
+  181:14  error    Unsafe member access .provider_profiles on an `any` value                              @typescript-eslint/no-unsafe-member-access
+  182:14  error    Unsafe member access .provider_profiles on an `any` value                              @typescript-eslint/no-unsafe-member-access
+  188:50  error    Unsafe member access .message on an `any` value                                        @typescript-eslint/no-unsafe-member-access
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/users/repositories/user.repository.ts
+  4:3  error  'InternalServerErrorException' is defined but never used  @typescript-eslint/no-unused-vars
+  5:3  error  'NotFoundException' is defined but never used             @typescript-eslint/no-unused-vars
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/users/users.controller.ts
+   6:3   error    'Param' is defined but never used                                       @typescript-eslint/no-unused-vars
+  24:41  warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  24:45  error    Unsafe member access .user on an `any` value                            @typescript-eslint/no-unsafe-member-access
+  31:5   error    Unsafe return of a value of type `Promise<any>`                         @typescript-eslint/no-unsafe-return
+  31:44  warning  Unsafe argument of type `any` assigned to a parameter of type `string`  @typescript-eslint/no-unsafe-argument
+  31:48  error    Unsafe member access .user on an `any` value                            @typescript-eslint/no-unsafe-member-access
+  48:7   error    Unsafe assignment of an `any` value                                     @typescript-eslint/no-unsafe-assignment
+  48:19  error    Unsafe member access .user on an `any` value                            @typescript-eslint/no-unsafe-member-access
+
+/Users/mac/Downloads/ServEase-mobile-test-feat-api-integration-althea/backend/src/modules/users/users.service.ts
+  30:5   error  Unsafe return of a value of type `Promise<any>`                @typescript-eslint/no-unsafe-return
+  46:13  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+  60:14  error  Unsafe assignment of an `any` value                            @typescript-eslint/no-unsafe-assignment
+
+✖ 270 problems (243 errors, 27 warnings)
+

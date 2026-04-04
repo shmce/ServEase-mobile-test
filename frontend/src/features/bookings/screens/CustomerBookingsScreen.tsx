@@ -22,6 +22,8 @@ import {
   type ChatSummary,
 } from '@/services/chatService';
 
+import { Booking, EnrichedBooking } from '@/src/types/database.interfaces';
+
 import { LinearGradient } from 'expo-linear-gradient';
 import { TOKENS } from '@/constants/tokens';
 import AnimatedCard from '@/components/ui/AnimatedCard';
@@ -234,7 +236,7 @@ export function CustomerBookingsScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
-  const [liveBookings, setLiveBookings] = useState<any[]>([]);
+  const [liveBookings, setLiveBookings] = useState<EnrichedBooking[]>([]);
   const [chatSummaries, setChatSummaries] = useState<ChatSummary[]>([]);
   const [activeTab, setActiveTab] = useState<BookingTab>('inProgress');
 
@@ -320,7 +322,7 @@ export function CustomerBookingsScreen() {
   }, [loadChatSummaries, user?.id]);
 
   const mappedLiveBookings = useMemo<CustomerBookingCard[]>(() => {
-    return liveBookings.map((item: any, idx: number) => {
+    return liveBookings.map((item: EnrichedBooking, idx: number) => {
       const providerName = item?.provider?.full_name || item?.provider_name || 'Service Provider';
       const providerRating = Number(item?.provider_rating || 4.8).toFixed(1);
       const statusRaw = String(item?.status || 'Pending');

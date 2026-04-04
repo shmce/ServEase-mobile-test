@@ -31,6 +31,11 @@ import {
   type BookingRescheduleRequestRow,
 } from '@/services/providerBookingActionsService';
 
+import {
+  Booking,
+  Payment,
+} from '@/src/types/database.interfaces';
+
 const { width } = Dimensions.get('window');
 
 const formatScheduleFromProposal = (dateRaw: string, timeRaw: string) => {
@@ -62,7 +67,7 @@ export function CustomerBookingDetailsScreen() {
   const [additionalChargeRequests, setAdditionalChargeRequests] = useState<AdditionalChargeRow[]>([]);
   const [requestAction, setRequestAction] = useState<'reschedule' | 'charges' | null>(null);
 
-  const initialBooking = useMemo(() => {
+  const initialBooking = useMemo<Partial<Booking> & { service?: string; date?: string; year?: string; time?: string; totalAmount?: string; rawId?: string; countdown?: any; provider?: any; loadError?: string } | null>(() => {
     if (params.booking) {
       try {
         return JSON.parse(params.booking);
@@ -73,20 +78,20 @@ export function CustomerBookingDetailsScreen() {
 
   const [booking, setBooking] = useState<any>(initialBooking);
   const provider = booking?.provider || {};
-  const [payment, setPayment] = useState<any>(null);
+  const [payment, setPayment] = useState<Payment | null>(null);
   const bookingIdForChat = String(booking?.rawId || params.id || '').trim();
   const bookingId = String(booking?.rawId || params.id || '').trim();
   const countdown = booking?.countdown || {};
   const safeBooking = {
-    id: booking?.id || 'Booking',
-    rawId: booking?.rawId || '',
+    id: booking?.booking_reference || booking?.id || 'Booking',
+    rawId: booking?.id || booking?.rawId || '',
     service: booking?.service || 'Service Booking',
-    address: booking?.address || 'No address provided.',
+    address: booking?.service_address || booking?.address || 'No address provided.',
     date: booking?.date || 'N/A',
     year: booking?.year || '',
     time: booking?.time || 'N/A',
-    totalAmount: booking?.totalAmount || '0.00',
-    notes: booking?.notes || '',
+    totalAmount: booking?.totalAmount || String(booking?.total_amount || '0.00'),
+    notes: booking?.customer_notes || booking?.notes || '',
   };
 
   const loadChatSummary = React.useCallback(async () => {
@@ -147,9 +152,10 @@ export function CustomerBookingDetailsScreen() {
         const providerName = String(providerRes.data?.full_name || 'Service Provider');
         const serviceTitle = String(serviceRes.data?.title || initialBooking?.service || 'Service Booking');
 
-        const normalized = {
-          id: bookingRow.booking_reference || bookingRow.id,
-          rawId: bookingRow.id,
+        const normalized: Partial<Booking> & { service: string; address: string; date: string; year: string; time: string; totalAmount: string; provider: any; countdown: any; notes: string } = {
+          id: bookingRow.id,
+          booking_reference: bookingRow.booking_reference,
+          status: statusRaw as any,
           service: serviceTitle,
           address: bookingRow.service_address || 'N/A',
           date: scheduled
@@ -159,8 +165,9 @@ export function CustomerBookingDetailsScreen() {
           time: scheduled
             ? scheduled.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
             : initialBooking?.time || 'N/A',
-          status: statusRaw,
+          total_amount: bookingRow.total_amount,
           totalAmount: Number(bookingRow.total_amount || 0).toFixed(2),
+          customer_notes: bookingRow.customer_notes || '',
           notes: String(bookingRow.customer_notes || '').trim(),
           countdown: {
             days: String(days),

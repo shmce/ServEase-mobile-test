@@ -1,5 +1,11 @@
 import { api } from '../lib/apiClient';
 import { getErrorMessage } from '../lib/error-handling';
+import {
+  Booking,
+  BookingStatus as GlobalBookingStatus,
+  SupportTicket,
+  Dispute,
+} from '../src/types/database.interfaces';
 
 export type ProviderBookingStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -14,20 +20,11 @@ export type ProviderBookingActionState = {
   canCancel: boolean;
 };
 
-export type ProviderBookingView = {
-  id: string;
-  booking_reference: string;
-  customer_id: string;
-  provider_id: string;
-  service_id: string;
-  status: string;
-  service_address: string;
-  scheduled_at: string;
-  total_amount: number;
+export interface ProviderBookingView extends Booking {
   customer_name: string;
   customer_contact: string;
   service_title: string;
-};
+}
 
 
 const STATUS_LABELS: Record<ProviderBookingStatus, string> = {
@@ -63,25 +60,37 @@ export const getProviderBookings = async (providerId: string): Promise<ProviderB
   return bookings;
 };
 
-export const getProviderBookingById = async (bookingId: string) => {
-  const { booking } = await api.get<{ booking: any }>(`/provider/booking/${bookingId}`);
+export const getProviderBookingById = async (bookingId: string): Promise<ProviderBookingView> => {
+  const { booking } = await api.get<{ booking: ProviderBookingView }>(`/provider/booking/${bookingId}`);
   return booking;
 };
 
-export const updateBookingStatus = async (bookingId: string, providerId: string, target: 'confirmed' | 'in_progress' | 'completed' | 'cancelled') => {
-  const { booking } = await api.patch<{ booking: any }>(`/provider/booking/${bookingId}/status`, { provider_id: providerId, status: target });
+export const updateBookingStatus = async (
+  bookingId: string,
+  providerId: string,
+  target: 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
+): Promise<Booking> => {
+  const { booking } = await api.patch<{ booking: Booking }>(`/provider/booking/${bookingId}/status`, {
+    provider_id: providerId,
+    status: target,
+  });
   return booking;
 };
 
-export const createProviderSupportTicket = async (providerId: string, subject: string, message: string) => {
-  // Keep direct since it goes to notification_svc schema
-  const { notificationDb } = await import('../lib/db');
-  const { error } = await notificationDb.from('support_tickets').insert({ user_id: providerId, subject, message });
-  if (error) throw new Error(getErrorMessage(error, 'Failed to submit support ticket.'));
+export const createProviderSupportTicket = async (providerId: string, subject: string, message: string): Promise<SupportTicket> => {
+  const { ticket } = await api.post<{ ticket: SupportTicket }>('/support/tickets', {
+    user_id: providerId,
+    subject,
+    message,
+  });
+  return ticket;
 };
 
-export const createProviderDispute = async (providerId: string, bookingId: string, reason: string) => {
-  const { dispute } = await api.post<{ dispute: any }>(`/booking/${bookingId}/disputes`, { reason });
+export const createProviderDispute = async (providerId: string, bookingId: string, reason: string): Promise<Dispute> => {
+  const { dispute } = await api.post<{ dispute: Dispute }>(`/booking/${bookingId}/disputes`, {
+    reason,
+    raised_by: providerId,
+  });
   return dispute;
 };
 

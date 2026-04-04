@@ -38,17 +38,18 @@ export class ProviderService {
   // ── Existing ─────────────────────────────────────────────────────────────
 
   async getProviderReviews(providerId: string) {
-    const { data: profile, error: profileError } = await this.catalogDb
+    const profileResponse = await this.catalogDb
       .from('provider_profiles')
       .select('*')
       .eq('user_id', providerId)
       .maybeSingle();
 
-    if (profileError)
-      throw new InternalServerErrorException(profileError.message);
-    if (!profile) throw new NotFoundException('Provider profile not found');
+    if (profileResponse.error)
+      throw new InternalServerErrorException(profileResponse.error.message);
+    if (!profileResponse.data)
+      throw new NotFoundException('Provider profile not found');
 
-    const profileData = profile as ProviderProfile;
+    const profileData = profileResponse.data as ProviderProfile;
 
     const { data: reviews, error: reviewsErr } = await this.trustDb
       .from('reviews')
@@ -67,23 +68,25 @@ export class ProviderService {
   }
 
   async getTrustScore(providerId: string) {
-    const { data, error } = await this.catalogDb
+    const profileResponse = await this.catalogDb
       .from('provider_profiles')
-      .select('trust_score')
+      .select('*')
       .eq('user_id', providerId)
       .single();
 
-    if (error) throw new InternalServerErrorException(error.message);
-    if (!data) throw new NotFoundException('Provider profile not found');
+    if (profileResponse.error)
+      throw new InternalServerErrorException(profileResponse.error.message);
+    if (!profileResponse.data)
+      throw new NotFoundException('Provider profile not found');
 
     return {
       provider_id: providerId,
-      trust_score: Number((data as Partial<ProviderProfile>)?.trust_score) || 0,
+      trust_score: 0, // trust_score is not in the live schema, using 0 as fallback
     };
   }
 
   async getProviderProfile(userId: string) {
-    const { data, error } = await this.catalogDb
+    const profileResponse = await this.catalogDb
       .from('provider_profiles')
       .select(
         `user_id,business_name,verification_status,provider_documents(document_id,document_type,document_file_path,status)`,
@@ -91,20 +94,24 @@ export class ProviderService {
       .eq('user_id', userId)
       .single();
 
-    if (error) throw new BadRequestException(error.message);
-    if (!data) throw new NotFoundException('Provider profile not found');
+    if (profileResponse.error)
+      throw new BadRequestException(profileResponse.error.message);
+    if (!profileResponse.data)
+      throw new NotFoundException('Provider profile not found');
 
-    const profileData = data as any;
+    const profileData = profileResponse.data as any;
 
     const documentsWithUrls = await Promise.all(
-      (profileData.provider_documents || []).map(
-        async (doc: { document_file_path: string }) => {
-          const { data: urlData } = await this.supabase.storage
-            .from('verification-docs')
-            .createSignedUrl(doc.document_file_path, 60);
-          return { ...doc, view_url: urlData?.signedUrl || null };
-        },
-      ),
+      (profileData.provider_documents || []).map(async (doc: any) => {
+        const filePath = doc.document_file_path as string;
+        const { data: urlData } = await this.supabase.storage
+          .from('verification-docs')
+          .createSignedUrl(filePath, 60);
+        return {
+          ...doc,
+          view_url: urlData?.signedUrl || null,
+        };
+      }),
     );
 
     return {
@@ -127,13 +134,14 @@ export class ProviderService {
       .eq('provider_id', providerId)
       .eq('status', 'pending');
 
-    const { data: payouts } = await this.paymentDb
+    const { data, error } = await this.paymentDb
       .from('provider_payouts')
       .select('net_amount')
       .eq('provider_id', providerId)
       .gte('created_at', firstDayOfMonth);
 
-    const totalEarnings = ((payouts as any[]) || []).reduce(
+    if (error) handleSupabaseError(error, 'EarningsFetch');
+    const totalEarnings = ((data as { net_amount: number }[]) || []).reduce(
       (acc: number, curr: { net_amount: number }) =>
         acc + Number(curr.net_amount),
       0,
@@ -148,15 +156,15 @@ export class ProviderService {
   async reuploadKycDocument(userId: string, file: Express.Multer.File) {
     if (!file) throw new BadRequestException('A new document file is required');
 
-    const { data: profile, error: profileErr } = await this.catalogDb
+    const { data: profile, error: profileErr } = (await this.catalogDb
       .from('provider_profiles')
       .select('verification_status')
       .eq('user_id', userId)
-      .single();
+      .single()) as { data: Partial<ProviderProfile> | null; error: any };
 
     if (profileErr || !profile)
       throw new NotFoundException('Provider profile not found');
-    if ((profile as any).verification_status !== 'rejected')
+    if (profile.verification_status !== 'rejected')
       throw new BadRequestException(
         'Only rejected providers can reupload KYC documents',
       );
@@ -176,7 +184,6 @@ export class ProviderService {
       .update({
         document_file_path: filePath,
         status: 'pending',
-        reject_reason: null,
         uploaded_at: new Date().toISOString(),
       })
       .eq('provider_id', userId);
@@ -253,15 +260,15 @@ export class ProviderService {
   }
 
   async getProviderBookingById(bookingId: string) {
-    const { data, error } = await this.bookingDb
+    const { data, error } = (await this.bookingDb
       .from('bookings')
       .select('*')
       .eq('id', bookingId)
-      .maybeSingle();
+      .maybeSingle()) as { data: Booking | null; error: any };
     if (error) throw new BadRequestException(error.message);
     if (!data) throw new NotFoundException('Booking not found.');
 
-    const booking = data as Booking;
+    const booking = data;
 
     const [{ data: customer }, { data: service }] = await Promise.all([
       this.identityDb
@@ -298,21 +305,21 @@ export class ProviderService {
     providerId: string,
     target: string,
   ) {
-    const { data, error } = await this.bookingDb
+    const { data, error } = (await this.bookingDb
       .from('bookings')
       .update({ status: target })
       .eq('id', bookingId)
       .eq('provider_id', providerId)
       .select('*')
-      .maybeSingle();
+      .maybeSingle()) as { data: Booking | null; error: any };
 
     if (error || !data) {
-      const { data: fallback, error: fallbackErr } = await this.bookingDb
+      const { data: fallback, error: fallbackErr } = (await this.bookingDb
         .from('bookings')
         .update({ status: target })
         .eq('id', bookingId)
         .select('*')
-        .maybeSingle();
+        .maybeSingle()) as { data: Booking | null; error: any };
 
       if (fallbackErr || !fallback)
         throw new BadRequestException(
@@ -322,7 +329,7 @@ export class ProviderService {
       if (target === 'completed') {
         await this.paymentDb
           .from('payments')
-          .update({ status: 'paid', paid_at: new Date().toISOString() })
+          .update({ status: 'completed', paid_at: new Date().toISOString() })
           .eq('booking_id', bookingId);
       } else if (target === 'cancelled') {
         await this.paymentDb
@@ -331,22 +338,22 @@ export class ProviderService {
           .eq('booking_id', bookingId);
       }
 
-      return { booking: fallback as Booking };
+      return { booking: fallback };
     }
 
     if (target === 'completed') {
-      await this.supabase
+      await this.paymentDb
         .from('payments')
-        .update({ status: 'paid', paid_at: new Date().toISOString() })
+        .update({ status: 'completed', paid_at: new Date().toISOString() })
         .eq('booking_id', bookingId);
     } else if (target === 'cancelled') {
-      await this.supabase
+      await this.paymentDb
         .from('payments')
         .update({ status: 'cancelled' })
         .eq('booking_id', bookingId);
     }
 
-    return { booking: data as Booking };
+    return { booking: data };
   }
 
   // ── Reschedule Requests ───────────────────────────────────────────────────
@@ -475,26 +482,28 @@ export class ProviderService {
     chargeIds: string[];
     decision: 'approved' | 'declined';
   }) {
-    const { data: booking } = await this.bookingDb
+    const bookingResponse = await this.bookingDb
       .from('bookings')
       .select('id,customer_id,total_amount')
       .eq('id', input.bookingId)
       .maybeSingle();
+
     if (
-      !booking ||
-      String((booking as any).customer_id) !== String(input.customerId)
+      !bookingResponse.data ||
+      String((bookingResponse.data as any).customer_id) !==
+        String(input.customerId)
     )
       throw new BadRequestException(
         'You can only review charges for your own booking.',
       );
 
-    const { data: charges } = await this.bookingDb
+    const chargesResponse = await this.bookingDb
       .from('additional_charges')
       .select('*')
       .eq('booking_id', input.bookingId)
       .in('id', input.chargeIds);
 
-    const { data: updatedCharges, error } = await this.bookingDb
+    const updateResponse = await this.bookingDb
       .from('additional_charges')
       .update({
         status: input.decision,
@@ -505,15 +514,17 @@ export class ProviderService {
       .eq('booking_id', input.bookingId)
       .select('*');
 
-    if (error) throw new BadRequestException(error.message);
+    if (updateResponse.error)
+      throw new BadRequestException(updateResponse.error.message);
 
-    if (input.decision === 'approved') {
-      const approvedAmount = ((charges as any[]) || []).reduce(
+    if (input.decision === 'approved' && chargesResponse.data) {
+      const approvedAmount = chargesResponse.data.reduce(
         (sum: number, c: { amount: number }) => sum + Number(c.amount || 0),
         0,
       );
       const nextTotal =
-        Number((booking as any).total_amount || 0) + approvedAmount;
+        Number((bookingResponse.data as any).total_amount || 0) +
+        approvedAmount;
       await this.bookingDb
         .from('bookings')
         .update({ total_amount: nextTotal })
@@ -522,10 +533,10 @@ export class ProviderService {
         .from('payments')
         .update({ amount: nextTotal })
         .eq('booking_id', input.bookingId)
-        .neq('status', 'paid');
+        .neq('status', 'completed');
     }
 
-    return { charges: updatedCharges || [] };
+    return { charges: updateResponse.data || [] };
   }
 
   // ── Reports ───────────────────────────────────────────────────────────────
@@ -591,14 +602,14 @@ export class ProviderService {
       );
     }
 
-    const { data: existing } = await this.trustDb
+    const reviewResponse = await this.trustDb
       .from('reviews')
       .select('id')
       .eq('booking_id', input.booking_id)
       .eq('reviewer_id', input.reviewer_id)
       .maybeSingle();
 
-    if (existing)
+    if (reviewResponse.data)
       throw new BadRequestException('You have already reviewed this booking.');
 
     const { data: review, error } = await this.trustDb
