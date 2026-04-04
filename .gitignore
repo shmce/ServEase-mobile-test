@@ -30,7 +30,9 @@ frontend/web-build/
 .settings/
 *.sublime-workspace
 .DS_Store
-.agents/
+.agents/*
+!.agents/skills/
+!.agents/workflows/
 .claude/
 .gemini/
 

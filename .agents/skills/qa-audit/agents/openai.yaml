@@ -1,0 +1,4 @@
+interface:
+  display_name: "QA Audit"
+  short_description: "Runs app quality checks and reports risks."
+  default_prompt: "Use $qa-audit to test this app, run quality checks, and report recommendations with reasons."
