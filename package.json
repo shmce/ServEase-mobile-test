@@ -4,11 +4,11 @@
   "description": "ServEase monorepo with frontend and backend",
   "private": true,
   "workspaces": [
-    "frontend",
+    "mobile",
     "backend"
   ],
   "scripts": {
-    "frontend": "cd frontend && npx expo start --ios",
+    "mobile": "cd frontend && npx expo start --ios",
     "backend": "cd backend && npm run start:dev"
   },
   "dependencies": {
