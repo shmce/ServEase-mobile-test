@@ -1,0 +1,16 @@
+appId: com.servease.mobile
+---
+- launchApp
+
+- tapOn:
+    text: "Register as Provider"
+
+- inputText:
+    id: name-input
+    text: "Test Provider"
+
+- tapOn:
+    text: "Continue"
+
+- assertVisible:
+    text: "Upload ID"

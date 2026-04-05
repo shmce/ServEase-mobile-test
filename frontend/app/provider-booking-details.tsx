@@ -1,0 +1,740 @@
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Image, Dimensions, ActivityIndicator, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { supabase } from '@/lib/supabase';
+import { fetchProviderBookingView } from '@/lib/provider-booking';
+
+const { width } = Dimensions.get('window');
+
+const StatusStep = ({ icon, label, completed, active }: { icon: string, label: string, completed: boolean, active: boolean }) => (
+  <View style={styles.statusStep}>
+    <View style={styles.stepIconContainer}>
+      <View style={[styles.stepLine, completed && styles.completedLine]} />
+      <View style={[
+        styles.stepCircle, 
+        completed && styles.completedCircle,
+        active && styles.activeCircle
+      ]}>
+        <Ionicons 
+          name={icon as any} 
+          size={16} 
+          color={completed || active ? '#FFF' : '#AAA'} 
+        />
+      </View>
+    </View>
+    <Text style={[styles.stepLabel, active && styles.activeStepLabel]}>{label}</Text>
+  </View>
+);
+
+export default function ProviderBookingDetailsScreen() {
+  const router = useRouter();
+  const { id } = useLocalSearchParams();
+  const [booking, setBooking] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  useEffect(() => {
+    let channel: any;
+
+    async function fetchBookingDetails() {
+      if (!id) return;
+      setIsLoading(true);
+      const data = await fetchProviderBookingView(id);
+
+      if (data) {
+        setBooking(data);
+
+        // Set up Realtime listener
+        channel = supabase
+          .channel(`provider-booking-updates-${id}`)
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'bookings',
+              filter: `id=eq.${id}`,
+            },
+            (payload: any) => {
+              const newStatus = payload.new.status;
+              const formattedStatus = newStatus.charAt(0).toUpperCase() + newStatus.slice(1).replace(/_/g, ' ');
+              setBooking((prev: any) => ({
+                ...prev,
+                status: formattedStatus,
+                statusRaw: newStatus,
+              }));
+            }
+          )
+          .subscribe();
+      }
+      setIsLoading(false);
+    }
+
+    fetchBookingDetails();
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [id]);
+
+  const handleUpdateStatus = async (newStatus: string) => {
+    if (!id) return;
+    setIsUpdating(true);
+    
+    // Standardize newStatus to snake_case for DB
+    const dbStatus = newStatus.toLowerCase().replace(/ /g, '_');
+    
+    const { error } = await supabase
+      .from('bookings')
+      .update({ status: dbStatus })
+      .eq('id', id);
+
+    if (error) {
+      Alert.alert('Error', error.message);
+    } else {
+      // Map back to Display Case for local state
+      const displayStatus = newStatus.charAt(0).toUpperCase() + newStatus.slice(1).replace(/_/g, ' ');
+      setBooking((prev: any) => ({ ...prev, status: displayStatus }));
+      Alert.alert('Success', `Booking status updated to ${displayStatus}`);
+    }
+    setIsUpdating(false);
+  };
+
+  const statusLower = (booking?.status || '').toLowerCase().replace(/ /g, '_');
+  const isPending = statusLower === 'pending';
+  const isConfirmed = statusLower === 'confirmed';
+  const isOnTheWay = statusLower === 'on_the_way';
+  const isInProgress = statusLower === 'in_progress';
+  const isCompleted = statusLower === 'completed';
+  const isAnyActive = isConfirmed || isOnTheWay || isInProgress;
+
+  const amountNum = booking?.priceRaw || 0;
+  const platformFee = Math.round(amountNum * 0.1);
+  const earnings = amountNum - platformFee;
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" />
+      
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Booking Details</Text>
+      </View>
+
+       {isLoading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#00B761" />
+          <Text style={{ marginTop: 10, color: '#999' }}>Loading details...</Text>
+        </View>
+      ) : !booking ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text>Booking not found</Text>
+        </View>
+      ) : (
+        <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+          <View style={styles.content}>
+            <Text style={styles.bookingId}>{booking.id}</Text>
+            
+            <View style={[
+              styles.statusBadge, 
+              isConfirmed && styles.confirmedBadge,
+              isPending && styles.pendingBadge,
+              isInProgress && styles.inProgressBadge,
+              isCompleted && styles.confirmedBadge
+            ]}>
+              <Text style={[
+                styles.statusBadgeText,
+                isConfirmed && styles.confirmedText,
+                isPending && styles.pendingText,
+                isInProgress && styles.inProgressText,
+                isCompleted && styles.confirmedText
+              ]}>
+                {booking.status === 'Pending' ? 'Pending Confirmation' : booking.status}
+              </Text>
+            </View>
+
+            {/* Timeline - Show if not cancelled */}
+            <View style={styles.timelineContainer}>
+              <StatusStep icon="checkmark" label="Confirmed" completed={isConfirmed || isOnTheWay || isInProgress || isCompleted} active={isConfirmed} />
+              <StatusStep icon="navigate" label="On the Way" completed={isOnTheWay || isInProgress || isCompleted} active={isOnTheWay} />
+              <StatusStep icon="location" label="Started" completed={isInProgress || isCompleted} active={isInProgress} />
+              <StatusStep icon="checkmark-done" label="Completed" completed={isCompleted} active={isCompleted} />
+            </View>
+
+            {/* Customer Card */}
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionLabel}>Customer</Text>
+              <View style={styles.customerRow}>
+                <Image 
+                  source={{ uri: booking.avatar }} 
+                  style={styles.customerAvatar} 
+                />
+            <View style={styles.customerInfo}>
+              <Text style={styles.customerName}>{booking.customer}</Text>
+              <View style={styles.ratingRow}>
+                <Ionicons name="star" size={14} color="#FFB800" />
+                <Text style={styles.ratingText}>4.6 <Text style={styles.reviewCount}>(18 reviews)</Text></Text>
+              </View>
+              <View style={styles.phoneRow}>
+                <Ionicons name="call-outline" size={14} color="#777" />
+                <Text style={styles.phoneText}>{booking.customerPhone}</Text>
+              </View>
+            </View>
+              </View>
+              <View style={styles.contactButtonsRow}>
+                <TouchableOpacity style={styles.callButton}>
+                  <Ionicons name="call" size={18} color="#FFF" />
+                  <Text style={styles.callButtonText}>Call</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.messageButton}
+                  onPress={() => router.push('/provider-messages' as any)}
+                >
+                  <Ionicons name="chatbubble-outline" size={18} color="#00B761" />
+                  <Text style={styles.messageButtonText}>Message</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Service Details */}
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionLabel}>Service Details</Text>
+              <Text style={styles.serviceName}>{booking.service}</Text>
+              
+              <View style={styles.detailItem}>
+                <Ionicons name="calendar-outline" size={18} color="#777" />
+                <Text style={styles.detailText}>{booking.date} at {booking.time}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Ionicons name="time-outline" size={18} color="#777" />
+                <Text style={styles.detailText}>Est. Duration: 3 hours</Text>
+              </View>
+
+              <View style={styles.addressRow}>
+                <Ionicons name="location-outline" size={18} color="#777" />
+                <Text style={styles.addressText}>{booking.address}</Text>
+              </View>
+
+              <View style={styles.descriptionSection}>
+                <Text style={styles.subLabel}>Description</Text>
+                <Text style={styles.descriptionText}>
+                  Booking from mobile app. Refer to service name for details.
+                </Text>
+              </View>
+            </View>
+
+            {/* Pricing Breakdown */}
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionLabel}>Pricing Breakdown</Text>
+              <View style={styles.financeRow}>
+                <Text style={styles.financeLabel}>Service Fee</Text>
+                <Text style={styles.financeValue}>₱{booking.amount}</Text>
+              </View>
+              <View style={styles.financeRow}>
+                <Text style={styles.financeLabel}>Additional Charges</Text>
+                <Text style={styles.financeValue}>₱0</Text>
+              </View>
+              <View style={[styles.financeRow, { marginTop: 12 }]}>
+                <Text style={styles.financeLabel}>Platform Fee (10%)</Text>
+                <Text style={styles.feeValue}>-₱{platformFee.toLocaleString()}</Text>
+              </View>
+              <View style={styles.earningsContainer}>
+                <Text style={styles.earningsLabel}>Your Earnings</Text>
+                <Text style={styles.earningsValue}>₱{earnings.toLocaleString()}</Text>
+              </View>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.actionsFooter}>
+              {isConfirmed && (
+                <TouchableOpacity 
+                  style={styles.startTripButton}
+                  onPress={() => handleUpdateStatus('on_the_way')}
+                  disabled={isUpdating}
+                >
+                  <Ionicons name="navigate" size={20} color="#FFF" />
+                  <Text style={styles.startTripText}>{isUpdating ? 'Updating...' : 'Start Trip'}</Text>
+                </TouchableOpacity>
+              )}
+
+              {isOnTheWay && (
+                <TouchableOpacity 
+                  style={styles.startTripButton}
+                  onPress={() => handleUpdateStatus('in_progress')}
+                  disabled={isUpdating}
+                >
+                  <Ionicons name="location" size={20} color="#FFF" />
+                  <Text style={styles.startTripText}>{isUpdating ? 'Updating...' : 'Start Service'}</Text>
+                </TouchableOpacity>
+              )}
+
+              {isInProgress && (
+                <TouchableOpacity 
+                  style={styles.startTripButton}
+                  onPress={() => handleUpdateStatus('completed')}
+                  disabled={isUpdating}
+                >
+                  <Ionicons name="checkmark-done" size={20} color="#FFF" />
+                  <Text style={styles.startTripText}>{isUpdating ? 'Updating...' : 'Complete Service'}</Text>
+                </TouchableOpacity>
+              )}
+
+              {isPending && (
+                <TouchableOpacity 
+                  style={styles.startTripButton}
+                  onPress={() => handleUpdateStatus('confirmed')}
+                  disabled={isUpdating}
+                >
+                  <Ionicons name="checkmark-circle" size={20} color="#FFF" />
+                  <Text style={styles.startTripText}>{isUpdating ? 'Updating...' : 'Confirm Booking'}</Text>
+                </TouchableOpacity>
+              )}
+              
+              <TouchableOpacity 
+                style={styles.actionButtonOutline}
+                onPress={() => router.push('/provider-additional-charges' as any)}
+              >
+                <Ionicons name="add-circle-outline" size={20} color="#00B761" />
+                <Text style={styles.actionButtonTextOutline}>Add Additional Charges</Text>
+              </TouchableOpacity>
+
+              {!isCompleted && !isPending && (
+                <TouchableOpacity 
+                  style={styles.actionButtonDanger}
+                  onPress={() => handleUpdateStatus('Cancelled')}
+                  disabled={isUpdating}
+                >
+                  <Text style={styles.actionButtonTextDanger}>Cancel Booking</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.footerSpacer} />
+          </View>
+        </ScrollView>
+      )}
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFF',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  backButton: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0D1B2A',
+    marginLeft: 8,
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  content: {
+    padding: 24,
+  },
+  bookingId: {
+    fontSize: 14,
+    color: '#8E8E93',
+    marginBottom: 8,
+  },
+  confirmedBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#E8FBF2',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginBottom: 24,
+  },
+  confirmedText: {
+    color: '#00B761',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginBottom: 24,
+  },
+  statusBadgeText: {
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  pendingBadge: {
+    backgroundColor: '#FFF9E6',
+  },
+  pendingText: {
+    color: '#FFB800',
+  },
+  inProgressBadge: {
+    backgroundColor: '#EBF5FF',
+  },
+  inProgressText: {
+    color: '#007AFF',
+  },
+  timelineContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 32,
+    paddingHorizontal: 4,
+  },
+  statusStep: {
+    alignItems: 'center',
+    width: (width - 48) / 5,
+  },
+  stepIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    marginBottom: 8,
+  },
+  stepLine: {
+    position: 'absolute',
+    left: '50%',
+    width: width / 5,
+    height: 2,
+    backgroundColor: '#F0F0F0',
+    zIndex: -1,
+  },
+  completedLine: {
+    backgroundColor: '#00B761',
+  },
+  stepCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F0F0F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  completedCircle: {
+    backgroundColor: '#00B761',
+  },
+  activeCircle: {
+    backgroundColor: '#00B761',
+    borderWidth: 4,
+    borderColor: '#E8FBF2',
+  },
+  stepLabel: {
+    fontSize: 10,
+    color: '#8E8E93',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  activeStepLabel: {
+    color: '#0D1B2A',
+    fontWeight: '800',
+  },
+  sectionCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.02,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    color: '#8E8E93',
+    fontWeight: '600',
+    marginBottom: 16,
+  },
+  customerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  customerAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    marginRight: 16,
+  },
+  customerInfo: {
+    flex: 1,
+  },
+  customerName: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0D1B2A',
+    marginBottom: 4,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  ratingText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0D1B2A',
+    marginLeft: 4,
+  },
+  reviewCount: {
+    fontWeight: '400',
+    color: '#8E8E93',
+  },
+  phoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  phoneText: {
+    fontSize: 13,
+    color: '#555',
+    marginLeft: 6,
+  },
+  contactButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  callButton: {
+    flex: 1,
+    flexDirection: 'row',
+    height: 48,
+    backgroundColor: '#00B761',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  callButtonText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  messageButton: {
+    flex: 1,
+    flexDirection: 'row',
+    height: 48,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#00B761',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  messageButtonText: {
+    color: '#00B761',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  serviceName: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0D1B2A',
+    marginBottom: 16,
+  },
+  detailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  detailText: {
+    fontSize: 14,
+    color: '#444',
+    marginLeft: 12,
+    fontWeight: '500',
+  },
+  mapContainer: {
+    height: 160,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 16,
+    marginTop: 8,
+    marginBottom: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mapText: {
+    marginTop: 8,
+    color: '#8E8E93',
+    fontWeight: '600',
+  },
+  addressRow: {
+    flexDirection: 'row',
+    marginBottom: 20,
+  },
+  addressText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#555',
+    marginLeft: 12,
+    lineHeight: 20,
+  },
+  subLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0D1B2A',
+    marginBottom: 8,
+  },
+  descriptionSection: {
+    marginBottom: 20,
+  },
+  descriptionText: {
+    fontSize: 14,
+    color: '#555',
+    lineHeight: 22,
+  },
+  specialInstructions: {
+    backgroundColor: '#FFF9E6',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  instructionLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#8B6E12',
+    marginBottom: 4,
+  },
+  instructionText: {
+    fontSize: 14,
+    color: '#8B6E12',
+    lineHeight: 20,
+  },
+  photosSection: {
+    marginBottom: 8,
+  },
+  photoRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  jobPhoto: {
+    width: (width - 100) / 2,
+    height: 120,
+    borderRadius: 16,
+  },
+  financeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  financeLabel: {
+    fontSize: 14,
+    color: '#555',
+  },
+  financeValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0D1B2A',
+  },
+  feeValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FF4D4D',
+  },
+  earningsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#E8FBF2',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  earningsLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#00B761',
+  },
+  earningsValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#00B761',
+  },
+  actionsFooter: {
+    gap: 12,
+    marginTop: 12,
+  },
+  startTripButton: {
+    flexDirection: 'row',
+    height: 56,
+    backgroundColor: '#00B761',
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#00B761',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  startTripText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  actionButtonOutline: {
+    flexDirection: 'row',
+    height: 52,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#00B761',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionButtonTextOutline: {
+    color: '#00B761',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  actionButtonLight: {
+    flexDirection: 'row',
+    height: 52,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionButtonTextLight: {
+    color: '#0D1B2A',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  actionButtonDanger: {
+    height: 52,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FF4D4D',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionButtonTextDanger: {
+    color: '#FF4D4D',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  footerSpacer: {
+    height: 48,
+  },
+});

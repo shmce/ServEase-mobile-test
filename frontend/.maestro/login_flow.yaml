@@ -1,0 +1,20 @@
+appId: com.servease.mobile
+---
+- launchApp
+
+- tapOn:
+    text: "Sign In"
+
+- inputText:
+    id: email-input
+    text: "test@servease.com"
+
+- inputText:
+    id: password-input
+    text: "password123"
+
+- tapOn:
+    text: "Login"
+
+- assertVisible:
+    text: "Home"

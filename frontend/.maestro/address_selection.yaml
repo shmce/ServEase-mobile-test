@@ -1,0 +1,16 @@
+appId: com.servease.mobile
+---
+- launchApp
+
+- tapOn:
+    text: "Add Address"
+
+- inputText:
+    id: street-input
+    text: "123 Main Street"
+
+- tapOn:
+    text: "Save Address"
+
+- assertVisible:
+    text: "Address saved"

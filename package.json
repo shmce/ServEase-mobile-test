@@ -1,0 +1,17 @@
+{
+  "name": "servease-monorepo",
+  "version": "1.0.0",
+  "description": "ServEase monorepo with frontend and backend",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "frontend": "cd frontend && npx expo start --ios",
+    "backend": "cd backend && npm run start:dev"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.101.1"
+  }
+}

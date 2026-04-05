@@ -1,0 +1,4 @@
+// Business domain modules go here
+// e.g. auth/, booking/, customer/, provider/, payment/
+// Each module follows NestJS module pattern:
+//   module.ts, controller.ts, service.ts
