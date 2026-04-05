@@ -1,1 +1,0 @@
-{"files.exclude": {"node_modules": true, "package-lock.json": true, "package.json": true, ".gitignore": true, ".git": true, ".vscode": true, "supabase": true}}
