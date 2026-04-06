@@ -6,6 +6,12 @@ import {
 
 const BASE_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:6000').replace(/\/$/, '') + '/api/v1';
 
+type QueryValue = string | number | boolean | null | undefined;
+
+type RequestOptions = {
+  params?: Record<string, QueryValue>;
+};
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const accessToken = await getStoredAccessToken();
@@ -42,12 +48,22 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  options?: RequestOptions,
   hasRetried = false,
 ): Promise<T> {
   const headers = await getAuthHeaders();
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const url = new URL(`${BASE_URL}${normalizedPath}`);
+
+  for (const [key, value] of Object.entries(options?.params || {})) {
+    if (value === undefined || value === null || value === '') {
+      continue;
+    }
+
+    url.searchParams.set(key, String(value));
+  }
   
-  const res = await fetch(`${BASE_URL}${normalizedPath}`, {
+  const res = await fetch(url.toString(), {
     method,
     headers,
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -58,7 +74,7 @@ async function request<T>(
   if (res.status === 401 && !hasRetried) {
     const didRefresh = await tryRefreshSession();
     if (didRefresh) {
-      return request<T>(method, path, body, true);
+      return request<T>(method, path, body, options, true);
     }
   }
 
@@ -71,7 +87,7 @@ async function request<T>(
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>('GET', path),
+  get: <T>(path: string, options?: RequestOptions) => request<T>('GET', path, undefined, options),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
@@ -96,4 +112,3 @@ export const api = {
     return json.data as T;
   },
 };
-

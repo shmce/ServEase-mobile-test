@@ -268,6 +268,29 @@ export class ProviderController {
   }
 
   @Version('1')
+  @Get(':providerId/availability/check')
+  checkAvailabilityConflict(
+    @Param('providerId') providerId: string,
+    @Query('scheduled_at') scheduledAt: string,
+    @Query('hours_required') hoursRequired: string,
+  ) {
+    return this.providerService.checkProviderAvailabilityConflict(
+      providerId,
+      scheduledAt,
+      Number(hoursRequired),
+    );
+  }
+
+  @Version('1')
+  @Get(':providerId/reserved-slots')
+  getReservedSlots(
+    @Param('providerId') providerId: string,
+    @Query('date') date: string,
+  ) {
+    return this.providerService.getProviderReservedSlots(providerId, date);
+  }
+
+  @Version('1')
   @Put('availability')
   @UseGuards(AppAuthGuard)
   saveOwnAvailability(@Req() req: any, @Body() body: Record<string, any>) {

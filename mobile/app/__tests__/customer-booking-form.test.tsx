@@ -1,7 +1,11 @@
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
-import CustomerBookingFormScreen, { buildBookingPricingSnapshot, pickInitialServiceOption } from '../customer-booking-form';
+import CustomerBookingFormScreen, {
+  buildBookingPricingSnapshot,
+  computeAvailableTimeOptions,
+  pickInitialServiceOption,
+} from '../customer-booking-form';
 import { useLocalSearchParams } from 'expo-router';
 
 const mockCreateBooking = jest.fn<Promise<{ id: string }>, [unknown]>(() => Promise.resolve({ id: '123' }));
@@ -198,5 +202,34 @@ describe('CustomerBookingFormScreen', () => {
     await waitFor(() => {
       expect(queryByTestId('provider-banner-avatar')).toBeNull();
     });
+  });
+
+  it('filters out overlapping time options based on reserved slots and duration', () => {
+    const result = computeAvailableTimeOptions(
+      {
+        weeklySchedule: {
+          Sunday: { active: false, start: '08:00 AM', end: '05:00 PM', break: null },
+          Monday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
+          Tuesday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
+          Wednesday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
+          Thursday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
+          Friday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
+          Saturday: { active: false, start: '08:00 AM', end: '05:00 PM', break: null },
+        },
+        daysOff: [],
+      },
+      '2026-04-06',
+      ['8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM'],
+      2,
+      [
+        {
+          scheduled_at: '2026-04-06T02:00:00.000Z',
+          end_at: '2026-04-06T04:00:00.000Z',
+          hours_required: 2,
+        },
+      ]
+    );
+
+    expect(result).toEqual(['8:00 AM']);
   });
 });

@@ -31,6 +31,12 @@ export type ProviderAvailabilityState = {
   daysOff: { id: string; day: string; reason: string }[];
 };
 
+export type ProviderReservedSlot = {
+  scheduled_at: string;
+  end_at: string;
+  hours_required: number;
+};
+
 const DEFAULT_WEEKLY_SCHEDULE: ProviderAvailabilityState['weeklySchedule'] = {
   Monday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
   Tuesday: { active: true, start: '08:00 AM', end: '05:00 PM', break: null },
@@ -157,9 +163,23 @@ export const saveProviderAvailability = async (
   }
 };
 
+export const getProviderReservedSlots = async (
+  providerId: string,
+  date: string,
+) => {
+  const { reservedSlots } = await api.get<{
+    reservedSlots: ProviderReservedSlot[];
+  }>(`/provider/${providerId}/reserved-slots`, {
+    params: { date },
+  });
+
+  return reservedSlots || [];
+};
+
 export const validateProviderAvailability = async (
   providerId: string,
-  scheduledAt: Date
+  scheduledAt: Date,
+  hoursRequired: number
 ) => {
   try {
     const availability = await getProviderAvailability(providerId);
@@ -213,6 +233,27 @@ export const validateProviderAvailability = async (
           reason: 'The selected time overlaps with the provider break period.',
         };
       }
+    }
+
+    try {
+      const result = await api.get<{ available: boolean; reason?: string }>(
+        `/provider/${providerId}/availability/check`,
+        {
+          params: {
+            scheduled_at: scheduledAt.toISOString(),
+            hours_required: Math.max(1, Number(hoursRequired || 1)),
+          },
+        }
+      );
+
+      if (!result.available) {
+        return {
+          available: false,
+          reason: result.reason || 'This time slot is already booked.',
+        };
+      }
+    } catch {
+      return { available: true };
     }
 
     return { available: true };

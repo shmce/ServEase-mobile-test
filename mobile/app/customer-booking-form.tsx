@@ -27,7 +27,13 @@ import {
 import { createBooking } from '@/services/bookingService';
 import { getPaymentMethodLabel, type PaymentMethod } from '@/services/paymentService';
 import { getErrorMessage } from '@/lib/error-handling';
-import { getProviderAvailability, type ProviderAvailabilityState } from '@/services/providerAvailabilityService';
+import {
+  getProviderAvailability,
+  getProviderReservedSlots,
+  type ProviderReservedSlot,
+  type ProviderAvailabilityState,
+  validateProviderAvailability,
+} from '@/services/providerAvailabilityService';
 import { api } from '@/lib/apiClient';
 
 // Styles moved to top for hoisting/accessibility
@@ -645,6 +651,37 @@ function parseTimeToMinutes(value: string): number | null {
   if (meridiem === 'PM' && hours !== 12) hours += 12;
   return hours * 60 + minutes;
 }
+
+function buildScheduledAtDate(dateKey: string, time: string) {
+  const [year, month, day] = String(dateKey)
+    .split('-')
+    .map((value) => Number(value));
+  const timeInMinutes = parseTimeToMinutes(time);
+
+  if (
+    !year ||
+    !month ||
+    !day ||
+    timeInMinutes === null
+  ) {
+    return null;
+  }
+
+  const scheduledAt = new Date(year, month - 1, day);
+  scheduledAt.setHours(
+    Math.floor(timeInMinutes / 60),
+    timeInMinutes % 60,
+    0,
+    0,
+  );
+  return scheduledAt;
+}
+
+function buildReservedSlotDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 const BOOKABLE_DAYS = 21;
 
 function formatDateValue(date: Date) {
@@ -742,10 +779,12 @@ function buildBookableDays(monthDate: Date, providerAvailability?: ProviderAvail
   return cells;
 }
 
-function computeAvailableTimeOptions(
+export function computeAvailableTimeOptions(
   providerAvailability: ProviderAvailabilityState | null,
   dateKey: string,
-  timeOptions: string[]
+  timeOptions: string[],
+  hoursRequired: number,
+  reservedSlots: ProviderReservedSlot[]
 ) {
   if (!providerAvailability || !dateKey) return timeOptions;
 
@@ -775,7 +814,27 @@ function computeAvailableTimeOptions(
       }
     }
 
-    return true;
+    const candidateStart = buildScheduledAtDate(dateKey, timeOption);
+    if (!candidateStart) return false;
+
+    const candidateEnd = new Date(
+      candidateStart.getTime() +
+        Math.max(1, Number(hoursRequired || 1)) * 60 * 60 * 1000,
+    );
+
+    return !reservedSlots.some((reservedSlot) => {
+      const reservedStart = buildReservedSlotDate(reservedSlot.scheduled_at);
+      const reservedEnd = buildReservedSlotDate(reservedSlot.end_at);
+
+      if (!reservedStart || !reservedEnd) {
+        return false;
+      }
+
+      return (
+        candidateStart.getTime() < reservedEnd.getTime() &&
+        candidateEnd.getTime() > reservedStart.getTime()
+      );
+    });
   });
 }
 
@@ -871,6 +930,8 @@ export default function CustomerBookingFormScreen() {
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
   const [providerAvailability, setProviderAvailability] = useState<ProviderAvailabilityState | null>(null);
+  const [reservedSlots, setReservedSlots] = useState<ProviderReservedSlot[]>([]);
+  const [isReservedSlotsLoading, setIsReservedSlotsLoading] = useState(false);
 
   useEffect(() => {
     let changed = false;
@@ -1000,10 +1061,71 @@ export default function CustomerBookingFormScreen() {
     return () => { active = false; };
   }, [params.providerId]);
 
+  useEffect(() => {
+    if (!params.providerId || !dateKey) {
+      setReservedSlots([]);
+      setIsReservedSlotsLoading(false);
+      return;
+    }
+
+    let active = true;
+
+    async function loadReservedSlots() {
+      setIsReservedSlotsLoading(true);
+
+      try {
+        const nextReservedSlots = await getProviderReservedSlots(
+          String(params.providerId),
+          dateKey,
+        );
+
+        if (active) {
+          setReservedSlots(nextReservedSlots);
+        }
+      } catch (error) {
+        if (active) {
+          setReservedSlots([]);
+          console.error('Failed to load reserved slots', error);
+        }
+      } finally {
+        if (active) {
+          setIsReservedSlotsLoading(false);
+        }
+      }
+    }
+
+    loadReservedSlots();
+
+    return () => {
+      active = false;
+    };
+  }, [dateKey, params.providerId]);
+
+  const selectedService = serviceOptions.find((item) => item.id === serviceId) || null;
+  const isInShopService = selectedService?.service_location_type === 'in_shop';
+  const inShopAddress = selectedService?.service_location_address?.trim() || '';
+  const providerAvatarUrl = String(params.avatarUrl || '').trim();
+  const shouldShowProviderAvatar = providerAvatarUrl.length > 0 && !hasAvatarLoadError;
+  const { effectivePricingMode, isHourly, isFlat, hourlyRate, flatRate, parsedHoursRequired, totalAmount } =
+    buildBookingPricingSnapshot(selectedService, pricingMode, hoursRequired);
+
   const availableTimeOptions = React.useMemo(
-    () => computeAvailableTimeOptions(providerAvailability, dateKey, TIME_OPTIONS),
-    [providerAvailability, dateKey]
+    () =>
+      computeAvailableTimeOptions(
+        providerAvailability,
+        dateKey,
+        TIME_OPTIONS,
+        parsedHoursRequired,
+        reservedSlots,
+      ),
+    [providerAvailability, dateKey, parsedHoursRequired, reservedSlots]
   );
+
+  useEffect(() => {
+    if (!time) return;
+    if (availableTimeOptions.includes(time)) return;
+    setTime('');
+  }, [availableTimeOptions, time]);
 
   // Modal States
   const [isServiceModalVisible, setServiceModalVisible] = useState(false);
@@ -1018,13 +1140,6 @@ export default function CustomerBookingFormScreen() {
   const today = new Date();
   const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const isCurrentMonth = isSameMonth(calendarMonth, currentMonth);
-  const selectedService = serviceOptions.find((item) => item.id === serviceId) || null;
-  const isInShopService = selectedService?.service_location_type === 'in_shop';
-  const inShopAddress = selectedService?.service_location_address?.trim() || '';
-  const providerAvatarUrl = String(params.avatarUrl || '').trim();
-  const shouldShowProviderAvatar = providerAvatarUrl.length > 0 && !hasAvatarLoadError;
-  const { effectivePricingMode, isHourly, isFlat, hourlyRate, flatRate, parsedHoursRequired, totalAmount } =
-    buildBookingPricingSnapshot(selectedService, pricingMode, hoursRequired);
 
   const handleDateSelect = (formattedDate: string, key: string, dateObj: Date) => {
     setDate(formattedDate);
@@ -1061,6 +1176,9 @@ export default function CustomerBookingFormScreen() {
     if (!service || !date || !time) return 'Please fill in all required fields (Service, Date, and Time).';
     if (!dateKey) return 'Please pick a date from the calendar.';
     if (!serviceId) return 'Please select a valid service before confirming.';
+    if ((isHourly || isFlat) && !String(hoursRequired).trim()) {
+      return 'Please enter the estimated duration in hours.';
+    }
     if (serviceOptions.length === 0) {
       return servicesLoadError || 'This provider has no active services yet. Please try another provider.';
     }
@@ -1099,6 +1217,26 @@ export default function CustomerBookingFormScreen() {
 
     setIsSubmitting(true);
     try {
+      const scheduledAt = buildScheduledAtDate(dateKey, time);
+      if (!scheduledAt) {
+        Alert.alert('Error', 'Could not understand the selected booking time.');
+        return;
+      }
+
+      const availability = await validateProviderAvailability(
+        String(params.providerId || ''),
+        scheduledAt,
+        parsedHoursRequired,
+      );
+
+      if (!availability.available) {
+        Alert.alert(
+          'Time Unavailable',
+          availability.reason || 'This time slot is already booked.',
+        );
+        return;
+      }
+
       const payload = {
         customer_id: user!.id,
         provider_id: params.providerId || null,
@@ -1113,7 +1251,7 @@ export default function CustomerBookingFormScreen() {
         pricing_mode: effectivePricingMode || 'flat',
         hourly_rate: isHourly ? hourlyRate : null,
         flat_rate: isFlat ? flatRate : null,
-        hours_required: isHourly ? parsedHoursRequired : null,
+        hours_required: parsedHoursRequired,
         payment_method: paymentMethod,
         customer_notes: notes.trim(),
       };
@@ -1255,9 +1393,9 @@ export default function CustomerBookingFormScreen() {
             </View>
           ) : null}
 
-          {isHourly ? (
+          {(isHourly || isFlat) ? (
             <View style={styles.fieldContainer}>
-              <Text style={styles.fieldLabel}>Hours Required <Text style={styles.requiredAsterisk}>*</Text></Text>
+              <Text style={styles.fieldLabel}>Estimated Duration (hours) <Text style={styles.requiredAsterisk}>*</Text></Text>
               <View style={[styles.dropdownButton, { paddingLeft: 12 }]}>
                 <Ionicons name="hourglass-outline" size={20} color="#0D1B2A" style={styles.inputIcon} />
                 <TextInput
@@ -1268,7 +1406,9 @@ export default function CustomerBookingFormScreen() {
                   placeholder="1"
                 />
               </View>
-              <Text style={styles.fieldHint}>Total: P{totalAmount.toFixed(2)} for {parsedHoursRequired} hour(s)</Text>
+              {isHourly ? (
+                <Text style={styles.fieldHint}>Total: P{totalAmount.toFixed(2)} for {parsedHoursRequired} hour(s)</Text>
+              ) : null}
             </View>
           ) : null}
 
@@ -1357,11 +1497,11 @@ export default function CustomerBookingFormScreen() {
             <TouchableOpacity
               style={styles.dropdownButton}
               onPress={() => setTimeModalVisible(true)}
-              disabled={availableTimeOptions.length === 0 && !!dateKey}
+              disabled={isReservedSlotsLoading || (availableTimeOptions.length === 0 && !!dateKey)}
             >
               <Ionicons name="time-outline" size={20} color={time ? "#0D1B2A" : "#8E8E93"} style={styles.inputIcon} />
               <Text style={[styles.dropdownText, !time && styles.placeholderText]}>
-                {time || (dateKey && availableTimeOptions.length === 0 ? 'No available times' : 'Select Time')}
+                {time || (isReservedSlotsLoading ? 'Loading available times...' : (dateKey && availableTimeOptions.length === 0 ? 'No available times' : 'Select Time'))}
               </Text>
             </TouchableOpacity>
             {dateKey && availableTimeOptions.length === 0 ? (

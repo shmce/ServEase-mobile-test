@@ -33,6 +33,8 @@ describe('BookingService', () => {
       delete: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
       in: jest.fn().mockReturnThis(),
+      gte: jest.fn().mockReturnThis(),
+      lte: jest.fn().mockReturnThis(),
       order: jest.fn().mockReturnThis(),
       single: jest.fn().mockReturnThis(),
       maybeSingle: jest.fn().mockReturnThis(),
@@ -78,6 +80,7 @@ describe('BookingService', () => {
       service_location_type: 'mobile' as const,
       scheduled_at: new Date().toISOString(),
       pricing_mode: 'flat' as const,
+      hours_required: 2,
       payment_method: 'cash_on_service',
     };
 
@@ -102,6 +105,8 @@ describe('BookingService', () => {
           service_location_type: 'mobile',
       }));
 
+      (bookingDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder([]));
+
       // Mock booking insert
       (bookingDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
           id: 'bkg-1',
@@ -117,6 +122,7 @@ describe('BookingService', () => {
 
       expect(result.message).toBe('Booking created successfully.');
       expect(result.booking.total_amount).toBe(500);
+      expect(bookingDb.from).toHaveBeenCalledWith('bookings');
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         BOOKING_EVENTS.CREATED,
         expect.objectContaining({
@@ -136,6 +142,73 @@ describe('BookingService', () => {
       await expect(
         service.createBooking(mockDto as any, 'customer-789'),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('stores hours_required for flat bookings and blocks overlapping active bookings', async () => {
+      const conflictDto = {
+        ...mockDto,
+        scheduled_at: '2026-04-06T15:00:00.000Z',
+        hours_required: 1,
+      };
+
+      (identityDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
+        role: 'provider',
+        status: 'active',
+      }));
+      (catalogDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
+        verification_status: 'approved',
+      }));
+      (catalogDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
+        id: 'service-456',
+        provider_id: 'provider-123',
+        supports_flat: true,
+        flat_rate: 500,
+        service_location_type: 'mobile',
+      }));
+      (bookingDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder([
+        {
+          scheduled_at: '2026-04-06T14:00:00.000Z',
+          hours_required: 2,
+        },
+      ]));
+
+      await expect(
+        service.createBooking(conflictDto as any, 'customer-789'),
+      ).rejects.toThrow('This provider is already booked for the selected time slot.');
+    });
+
+    it('persists flat-booking hours_required when no conflict exists', async () => {
+      const insertBuilder = createMockBuilder({
+        id: 'bkg-2',
+        booking_reference: 'BKG-456',
+        status: 'pending',
+        total_amount: 500,
+      });
+
+      (identityDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
+        role: 'provider',
+        status: 'active',
+      }));
+      (catalogDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
+        verification_status: 'approved',
+      }));
+      (catalogDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
+        id: 'service-456',
+        provider_id: 'provider-123',
+        supports_flat: true,
+        flat_rate: 500,
+        service_location_type: 'mobile',
+      }));
+      (bookingDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder([]));
+      (bookingDb.from as jest.Mock).mockReturnValueOnce(insertBuilder);
+
+      await service.createBooking(mockDto as any, 'customer-789');
+
+      expect(insertBuilder.insert).toHaveBeenCalledWith([
+        expect.objectContaining({
+          hours_required: 2,
+        }),
+      ]);
     });
   });
 

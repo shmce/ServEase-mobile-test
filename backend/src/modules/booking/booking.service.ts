@@ -43,6 +43,11 @@ type BookingListRow = Pick<
   | 'service_location_type'
 >;
 
+type ConflictCheckBookingRow = Pick<
+  Booking,
+  'scheduled_at' | 'hours_required'
+>;
+
 @Injectable()
 export class BookingService {
   constructor(
@@ -207,7 +212,59 @@ export class BookingService {
       }
     }
 
+    await this.checkConflict(
+      dto.provider_id,
+      dto.scheduled_at,
+      Number(dto.hours_required),
+    );
+
     return { userRecord, profileRecord, serviceRecord };
+  }
+
+  private async checkConflict(
+    providerId: string,
+    scheduledAt: string,
+    hoursRequired: number,
+  ): Promise<void> {
+    const newStart = new Date(scheduledAt).getTime();
+    const normalizedHoursRequired = Math.max(1, Number(hoursRequired || 1));
+    const newEnd = newStart + normalizedHoursRequired * 60 * 60 * 1000;
+
+    if (Number.isNaN(newStart)) {
+      throw new BadRequestException('Invalid booking schedule.');
+    }
+
+    const bufferInMilliseconds = 24 * 60 * 60 * 1000;
+    const dayStart = new Date(newStart - bufferInMilliseconds).toISOString();
+    const dayEnd = new Date(newEnd + bufferInMilliseconds).toISOString();
+
+    const existingBookings = await getResult<ConflictCheckBookingRow[]>(
+      this.bookingDb
+        .from('bookings')
+        .select('scheduled_at,hours_required')
+        .eq('provider_id', providerId)
+        .in('status', ['pending', 'confirmed', 'in_progress'])
+        .gte('scheduled_at', dayStart)
+        .lte('scheduled_at', dayEnd),
+      'ConflictCheck',
+      { allowEmpty: true },
+    );
+
+    for (const existingBooking of existingBookings) {
+      const existingStart = new Date(existingBooking.scheduled_at).getTime();
+      const existingEnd =
+        existingStart +
+        Math.max(1, Number(existingBooking.hours_required || 1)) *
+          60 *
+          60 *
+          1000;
+
+      if (newStart < existingEnd && newEnd > existingStart) {
+        throw new BadRequestException(
+          'This provider is already booked for the selected time slot.',
+        );
+      }
+    }
   }
 
   private calculateBookingAmount(
@@ -238,6 +295,7 @@ export class BookingService {
         );
       }
       flatRate = Number(serviceRecord.flat_rate);
+      hoursRequired = Math.max(1, Number(dto.hours_required || 1));
       totalAmount = flatRate;
     }
 

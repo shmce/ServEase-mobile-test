@@ -26,6 +26,17 @@ import {
   ServiceCategory,
 } from '../../common/interfaces/database.interfaces';
 
+type ConflictCheckBookingRow = Pick<
+  Booking,
+  'scheduled_at' | 'hours_required'
+>;
+
+type ReservedSlotRow = {
+  scheduled_at: string;
+  end_at: string;
+  hours_required: number;
+};
+
 @Injectable()
 export class ProviderService {
   constructor(
@@ -485,6 +496,128 @@ export class ProviderService {
       weeklySchedule: weeklyRows || [],
       daysOff: daysOffRows || [],
     };
+  }
+
+  async checkProviderAvailabilityConflict(
+    providerId: string,
+    scheduledAt: string,
+    hoursRequired: number,
+  ) {
+    try {
+      if (!providerId?.trim()) {
+        throw new BadRequestException('Provider ID is required.');
+      }
+
+      const scheduledAtTimestamp = new Date(scheduledAt).getTime();
+      if (!scheduledAt || Number.isNaN(scheduledAtTimestamp)) {
+        throw new BadRequestException('scheduled_at must be a valid ISO date.');
+      }
+
+      const normalizedHoursRequired = Math.max(1, Number(hoursRequired || 1));
+      const newEnd = scheduledAtTimestamp +
+        normalizedHoursRequired * 60 * 60 * 1000;
+      const bufferInMilliseconds = 24 * 60 * 60 * 1000;
+      const dayStart = new Date(
+        scheduledAtTimestamp - bufferInMilliseconds,
+      ).toISOString();
+      const dayEnd = new Date(newEnd + bufferInMilliseconds).toISOString();
+
+      const existingBookings = await this.bookingDb
+        .from('bookings')
+        .select('scheduled_at,hours_required')
+        .eq('provider_id', providerId)
+        .in('status', ['pending', 'confirmed', 'in_progress'])
+        .gte('scheduled_at', dayStart)
+        .lte('scheduled_at', dayEnd);
+
+      if (existingBookings.error) {
+        throw new BadRequestException(existingBookings.error.message);
+      }
+
+      for (const booking of (existingBookings.data || []) as ConflictCheckBookingRow[]) {
+        const existingStart = new Date(booking.scheduled_at).getTime();
+        const existingEnd =
+          existingStart +
+          Math.max(1, Number(booking.hours_required || 1)) *
+            60 *
+            60 *
+            1000;
+
+        if (
+          scheduledAtTimestamp < existingEnd &&
+          newEnd > existingStart
+        ) {
+          throw new BadRequestException(
+            'This provider is already booked for the selected time slot.',
+          );
+        }
+      }
+
+      return { available: true };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        return {
+          available: false,
+          reason: error.message,
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  async getProviderReservedSlots(providerId: string, date: string) {
+    if (!providerId?.trim()) {
+      throw new BadRequestException('Provider ID is required.');
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || '').trim())) {
+      throw new BadRequestException('date must be in YYYY-MM-DD format.');
+    }
+
+    const dayStart = new Date(`${date}T00:00:00.000Z`);
+    const dayEnd = new Date(`${date}T23:59:59.999Z`);
+
+    if (
+      Number.isNaN(dayStart.getTime()) ||
+      Number.isNaN(dayEnd.getTime())
+    ) {
+      throw new BadRequestException('date must be a valid calendar date.');
+    }
+
+    const existingBookings = await this.bookingDb
+      .from('bookings')
+      .select('scheduled_at,hours_required')
+      .eq('provider_id', providerId)
+      .in('status', ['pending', 'confirmed', 'in_progress'])
+      .gte('scheduled_at', dayStart.toISOString())
+      .lte('scheduled_at', dayEnd.toISOString());
+
+    if (existingBookings.error) {
+      throw new BadRequestException(existingBookings.error.message);
+    }
+
+    const reservedSlots: ReservedSlotRow[] = (
+      (existingBookings.data || []) as ConflictCheckBookingRow[]
+    ).map((booking) => {
+      const scheduledAt = new Date(booking.scheduled_at);
+      const normalizedHoursRequired = Math.max(
+        1,
+        Number(booking.hours_required || 1),
+      );
+      const endAt = new Date(
+        scheduledAt.getTime() +
+          normalizedHoursRequired * 60 * 60 * 1000,
+      );
+
+      return {
+        scheduled_at: scheduledAt.toISOString(),
+        end_at: endAt.toISOString(),
+        hours_required: normalizedHoursRequired,
+      };
+    });
+
+    return { reservedSlots };
   }
 
   async saveProviderAvailability(
