@@ -1,3 +1,4 @@
+/* eslint-env jest */
 import '@testing-library/jest-native/extend-expect';
 
 // Mock Expo SecureStore (replacement for AsyncStorage)

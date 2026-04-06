@@ -4,7 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { SupabaseClient } from '@supabase/supabase-js';
+import { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import {
   IDENTITY_CLIENT,
   CATALOG_CLIENT,
@@ -31,11 +31,12 @@ export class AdminService {
     }
 
     // Check if document exists and retrieve the provider_id
-    const { data: document, error: fetchError } = await this.catalogDb
+    type DocRow = { document_id: string; provider_id: string; status: string };
+    const { data: document, error: fetchError } = (await this.catalogDb
       .from('provider_documents')
       .select('document_id, provider_id, status')
       .eq('document_id', documentId)
-      .single();
+      .single()) as { data: DocRow | null; error: PostgrestError | null };
 
     if (fetchError) handleSupabaseError(fetchError, 'DocumentFetch');
     if (!document) {
@@ -45,9 +46,15 @@ export class AdminService {
     const providerId = document.provider_id;
 
     // Update provider_documents status
-    const docUpdatePayload: any = {
+    const docUpdatePayload: {
+      status: string;
+      reject_reason: string | null;
+      reviewed_at: string;
+      reviewed_by?: string;
+    } = {
       status: dto.status,
-      reject_reason: dto.status === 'rejected' ? dto.reject_reason : null,
+      reject_reason:
+        dto.status === 'rejected' ? (dto.reject_reason ?? null) : null,
       reviewed_at: new Date().toISOString(),
     };
 
@@ -56,14 +63,24 @@ export class AdminService {
       docUpdatePayload.reviewed_by = dto.admin_id;
     }
 
-    const { data: updatedDoc, error: updateError } = await this.catalogDb
+    type UpdatedDocRow = {
+      document_id: string;
+      provider_id: string;
+      status: string;
+      reviewed_at: string;
+    };
+    const { data: updatedDoc, error: updateError } = (await this.catalogDb
       .from('provider_documents')
       .update(docUpdatePayload)
       .eq('document_id', documentId)
       .select('document_id, provider_id, status, reviewed_at')
-      .single();
+      .single()) as {
+      data: UpdatedDocRow | null;
+      error: PostgrestError | null;
+    };
 
     if (updateError) handleSupabaseError(updateError, 'DocumentUpdate');
+    if (!updatedDoc) throw new NotFoundException('Updated document not found');
 
     // Update provider_profiles verification status
     const { error: profileError } = await this.catalogDb

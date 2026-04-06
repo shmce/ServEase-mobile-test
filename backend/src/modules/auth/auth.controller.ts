@@ -88,7 +88,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(200)
   @UseGuards(AppAuthGuard)
-  async logout() {
+  logout() {
     return this.authService.logout();
   }
 
@@ -109,7 +109,7 @@ export class AuthController {
   @Version('1')
   @Get('me')
   @UseGuards(AppAuthGuard)
-  async getMe(@Req() req: any) {
-    return this.authService.getMe(req.authUser.sub);
+  async getMe(@Req() req: { authUser?: { sub?: string } }) {
+    return this.authService.getMe(String(req.authUser?.sub ?? ''));
   }
 }

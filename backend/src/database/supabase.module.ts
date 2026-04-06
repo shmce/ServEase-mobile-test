@@ -105,8 +105,10 @@ function createResilientProxy<T extends object>(
       // We only intercept 'from' because it starts the fluent builder chain
       if (prop === 'from' && typeof originalValue === 'function') {
         return (...args: unknown[]) => {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           const builder = originalValue.apply(target, args);
           // Return a proxy of the builder to intercept the final execution methods
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-return
           return createBuilderProxy(builder, breaker);
         };
       }
@@ -142,11 +144,13 @@ function createBuilderProxy<T extends object>(
       if (typeof originalValue === 'function') {
         if (executionMethods.has(prop as string) && prop !== 'then') {
           return (...args: unknown[]) => {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             const next = originalValue.apply(target, args);
             // If it returns another builder (fluent API), proxy it too
             if (next && typeof next === 'object' && next !== target) {
-              return createBuilderProxy(next, breaker);
+              return createBuilderProxy(next as object, breaker);
             }
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-return
             return next;
           };
         }
@@ -154,12 +158,15 @@ function createBuilderProxy<T extends object>(
         // Intercept 'then' to wrap the actual database call with the circuit breaker
         if (prop === 'then') {
           return (
-            onFulfilled: (value: any) => any,
-            onRejected: (reason: any) => any,
+            onFulfilled: (value: unknown) => unknown,
+            onRejected: (reason: unknown) => unknown,
           ) => {
-            return breaker
-              .execute(() => (originalValue as Function).call(target))
-              .then(onFulfilled, onRejected);
+            return (
+              breaker
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+                .execute(() => (originalValue as () => unknown).call(target))
+                .then(onFulfilled, onRejected)
+            );
           };
         }
       }

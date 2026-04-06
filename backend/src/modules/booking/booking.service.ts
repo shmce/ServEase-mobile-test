@@ -43,10 +43,7 @@ type BookingListRow = Pick<
   | 'service_location_type'
 >;
 
-type ConflictCheckBookingRow = Pick<
-  Booking,
-  'scheduled_at' | 'hours_required'
->;
+type ConflictCheckBookingRow = Pick<Booking, 'scheduled_at' | 'hours_required'>;
 
 @Injectable()
 export class BookingService {

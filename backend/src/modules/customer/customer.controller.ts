@@ -29,14 +29,20 @@ export class CustomerController {
   @Version('1')
   @Patch('profile')
   @UseGuards(AppAuthGuard)
-  async updateProfile(@Req() req: any, @Body() body: UpdateCustomerProfileDto) {
-    return this.customerService.updateProfile(req.authUser.sub, body);
+  async updateProfile(
+    @Req() req: { authUser?: { sub?: string } },
+    @Body() body: UpdateCustomerProfileDto,
+  ) {
+    return this.customerService.updateProfile(
+      String(req.authUser?.sub ?? ''),
+      body,
+    );
   }
 
   @Version('1')
   @Get('profile')
   @UseGuards(AppAuthGuard)
-  async getProfile(@Req() req: any) {
-    return this.customerService.getProfile(req.authUser.sub);
+  async getProfile(@Req() req: { authUser?: { sub?: string } }) {
+    return this.customerService.getProfile(String(req.authUser?.sub ?? ''));
   }
 }

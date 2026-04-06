@@ -1,7 +1,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { NOTIFICATION_CLIENT } from '../../database/supabase.module';
-import { getResult, getMaybeSingle } from '../../common/utils/database.utils';
+import { getResult } from '../../common/utils/database.utils';
 import { Notification } from '../../common/interfaces/database.interfaces';
 
 @Injectable()

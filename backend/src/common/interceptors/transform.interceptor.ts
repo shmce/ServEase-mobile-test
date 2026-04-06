@@ -1,11 +1,12 @@
 import {
   Injectable,
   NestInterceptor,
-  ArgumentsHost,
+  ExecutionContext,
   CallHandler,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { Response as ExpressResponse } from 'express';
 
 export interface Response<T> {
   statusCode: number;
@@ -19,12 +20,14 @@ export class TransformInterceptor<T> implements NestInterceptor<
   Response<T>
 > {
   intercept(
-    context: ArgumentsHost,
-    next: CallHandler,
+    context: ExecutionContext,
+    next: CallHandler<T>,
   ): Observable<Response<T>> {
+    const httpResponse = context.switchToHttp().getResponse<ExpressResponse>();
+
     return next.handle().pipe(
       map((data) => ({
-        statusCode: context.switchToHttp().getResponse().statusCode,
+        statusCode: httpResponse.statusCode,
         message: 'Request successful',
         data,
       })),

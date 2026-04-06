@@ -228,13 +228,14 @@ export class ServicesService {
       const response = await query;
       if (response.error) throw new Error(response.error.message);
 
-      const sorted = (response.data || []).sort((a: any, b: any) => {
-        const profileA = a.provider_profiles as Partial<ProviderProfile>;
-        const profileB = b.provider_profiles as Partial<ProviderProfile>;
-        const scoreA = profileA?.average_rating || 0;
-        const scoreB = profileB?.average_rating || 0;
-        return scoreB - scoreA;
-      });
+      type RowWithProfile = { provider_profiles?: Partial<ProviderProfile> };
+      const sorted = ((response.data as RowWithProfile[]) || []).sort(
+        (a, b) => {
+          const scoreA = a.provider_profiles?.average_rating ?? 0;
+          const scoreB = b.provider_profiles?.average_rating ?? 0;
+          return scoreB - scoreA;
+        },
+      );
 
       return { status: 200, message: 'Search successful', results: sorted };
     } catch (err) {

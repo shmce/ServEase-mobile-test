@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Request } from 'express';
 import jwt from 'jsonwebtoken';
 
 type AppTokenPayload = {
@@ -20,7 +21,11 @@ export class AppAuthGuard implements CanActivate {
   constructor(private readonly configService: ConfigService) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
+    const request = context
+      .switchToHttp()
+      .getRequest<
+        Request & { authUser?: AppTokenPayload; authToken?: string }
+      >();
     const header = String(request.headers.authorization || '').trim();
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
 

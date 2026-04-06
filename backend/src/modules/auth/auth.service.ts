@@ -96,7 +96,7 @@ export class AuthService {
         session: this.buildSessionBundle(user),
       };
     } catch (err) {
-      throw new InternalServerErrorException(err.message);
+      throw new InternalServerErrorException((err as Error).message);
     }
   }
 
@@ -149,7 +149,8 @@ export class AuthService {
       };
     } catch (err) {
       if (err instanceof UnauthorizedException) throw err;
-      throw new UnauthorizedException(err.response || err.message);
+      const error = err as Error & { response?: unknown };
+      throw new UnauthorizedException(error.response ?? error.message);
     }
   }
 
@@ -201,7 +202,9 @@ export class AuthService {
       if (updateError) handleSupabaseError(updateError, 'UserUpdate');
     } catch (userError) {
       await this.supabase.auth.admin.deleteUser(newUserId);
-      throw new BadRequestException(`User Profile Error: ${userError.message}`);
+      throw new BadRequestException(
+        `User Profile Error: ${(userError as Error).message}`,
+      );
     }
 
     const profileResponse = await this.catalogDb
@@ -262,7 +265,7 @@ export class AuthService {
     return this.buildSessionBundle(user);
   }
 
-  async logout() {
+  logout() {
     return { ok: true };
   }
 

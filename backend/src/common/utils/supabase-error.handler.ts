@@ -44,6 +44,11 @@ export function handleSupabaseError(
 /**
  * Checks if a Supabase error is a "no rows returned" error.
  */
-export function isNotFound(error: any): boolean {
-  return error?.code === 'PGRST116';
+export function isNotFound(error: unknown): boolean {
+  const errorWithCode =
+    typeof error === 'object' && error !== null
+      ? (error as { code?: unknown })
+      : null;
+
+  return errorWithCode !== null && errorWithCode.code === 'PGRST116';
 }

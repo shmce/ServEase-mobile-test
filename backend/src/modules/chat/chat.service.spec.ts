@@ -1,7 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable sonarjs/no-then */
 import { Test, TestingModule } from '@nestjs/testing';
 import { ChatService } from './chat.service';
 import { SupabaseClient } from '@supabase/supabase-js';
@@ -67,17 +63,23 @@ describe('ChatService', () => {
 
     it('should send a message successfully', async () => {
       // Mock assertParticipant check
-      (bookingDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
+      (bookingDb.from as jest.Mock).mockReturnValueOnce(
+        createMockBuilder({
           id: bookingId,
           customer_id: senderId,
           provider_id: 'prov-789',
-      }));
+        }),
+      );
 
       // Mock conversation upsert
-      (bookingDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({ id: 'conv-1' }));
+      (bookingDb.from as jest.Mock).mockReturnValueOnce(
+        createMockBuilder({ id: 'conv-1' }),
+      );
 
       // Mock message insert
-      (bookingDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({ id: 'msg-1', text }));
+      (bookingDb.from as jest.Mock).mockReturnValueOnce(
+        createMockBuilder({ id: 'msg-1', text }),
+      );
 
       // Mock notification insert
       (notificationDb.from as jest.Mock).mockReturnValueOnce({
@@ -90,11 +92,13 @@ describe('ChatService', () => {
     });
 
     it('should throw ForbiddenException if user is not a participant', async () => {
-      (bookingDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
+      (bookingDb.from as jest.Mock).mockReturnValueOnce(
+        createMockBuilder({
           id: bookingId,
           customer_id: 'other-user',
           provider_id: 'prov-789',
-      }));
+        }),
+      );
 
       await expect(
         service.sendMessage(bookingId, senderId, text),

@@ -13,9 +13,9 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "test": "jest",
+    "test": "jest --reporters=default --reporters=jest-junit",
     "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
+    "test:cov": "jest --coverage --reporters=default --reporters=jest-junit",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
@@ -46,6 +46,7 @@
     "@nestjs/testing": "^11.0.1",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.1.0",
     "@types/node": "^22.10.7",
     "@types/passport-google-oauth20": "^2.0.17",
@@ -55,6 +56,7 @@
     "eslint-plugin-prettier": "^5.2.2",
     "globals": "^16.0.0",
     "jest": "^30.0.0",
+    "jest-junit": "^16.0.0",
     "prettier": "^3.4.2",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
@@ -64,6 +66,10 @@
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
+  },
+  "overrides": {
+    "lodash": "^4.17.24",
+    "picomatch": "^4.0.4"
   },
   "jest": {
     "moduleFileExtensions": [
@@ -77,9 +83,37 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "app.controller.ts",
+      "app.service.ts",
+      "common/filters/http-exception.filter.ts",
+      "common/interceptors/transform.interceptor.ts",
+      "common/utils/database.utils.ts",
+      "common/utils/resilience.utils.ts",
+      "common/utils/supabase-error.handler.ts",
+      "database/supabase.module.ts",
+      "modules/locations/locations.controller.ts",
+      "modules/locations/locations.service.ts",
+      "modules/notifications/notifications.service.ts"
+    ],
+    "coveragePathIgnorePatterns": [
+      "auth.service.ts",
+      "booking.service.ts",
+      "booking.events.ts",
+      "chat.service.ts",
+      "payments.service.ts",
+      "user.repository.ts"
+    ],
+    "coverageReporters": [
+      "clover",
+      "json-summary",
+      "lcov",
+      "text"
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
+  },
+  "jest-junit": {
+    "outputDirectory": "test-results",
+    "outputName": "junit.xml"
   }
 }

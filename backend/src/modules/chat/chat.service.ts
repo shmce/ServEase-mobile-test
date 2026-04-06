@@ -1,10 +1,4 @@
-import {
-  Injectable,
-  Inject,
-  NotFoundException,
-  InternalServerErrorException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, Inject, ForbiddenException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
   BOOKING_CLIENT,
@@ -19,6 +13,26 @@ import {
   ProviderService,
 } from '../../common/interfaces/database.interfaces';
 
+type ConvRow = {
+  id: string;
+  booking_id: string;
+  provider_id: string;
+  customer_id: string;
+  last_message_at: string | null;
+  customer_last_read_at: string | null;
+  provider_last_read_at: string | null;
+};
+
+type MsgRow = {
+  id: string;
+  conversation_id: string;
+  booking_id: string;
+  sender_role: string;
+  body: string;
+  created_at: string;
+  delivery_status: string;
+};
+
 @Injectable()
 export class ChatService {
   constructor(
@@ -31,7 +45,7 @@ export class ChatService {
 
   async getConversations(userId: string, role: 'customer' | 'provider') {
     const filterCol = role === 'customer' ? 'customer_id' : 'provider_id';
-    const rows = await getResult<any[]>(
+    const rows = (await getResult<any[]>(
       this.bookingDb
         .from('conversations')
         .select('*')
@@ -39,13 +53,13 @@ export class ChatService {
         .order('last_message_at', { ascending: false, nullsFirst: false }),
       'ChatConversations',
       { allowEmpty: true },
-    );
+    )) as ConvRow[];
 
     if (!rows.length) return [];
 
     // Collect other-party user IDs
     const otherPartyIds = rows
-      .map((c: any) => (role === 'customer' ? c.provider_id : c.customer_id))
+      .map((c) => (role === 'customer' ? c.provider_id : c.customer_id))
       .filter(Boolean);
 
     const uniqueIds = [...new Set(otherPartyIds)] as string[];
@@ -62,7 +76,7 @@ export class ChatService {
     const userMap = new Map((users || []).map((u) => [u.id, u]));
 
     // Collect service names from bookings
-    const bookingIds = rows.map((c: any) => c.booking_id).filter(Boolean);
+    const bookingIds = rows.map((c) => c.booking_id).filter(Boolean);
     const uniqueBookingIds = [...new Set(bookingIds)] as string[];
 
     const bookings = await getResult<Partial<Booking>[]>(
@@ -75,7 +89,9 @@ export class ChatService {
     );
 
     const bookingMap = new Map((bookings || []).map((b) => [b.id, b]));
-    const serviceIds = [...new Set((bookings || []).map((b) => b.service_id).filter(Boolean))] as string[];
+    const serviceIds = [
+      ...new Set((bookings || []).map((b) => b.service_id).filter(Boolean)),
+    ] as string[];
     const services = serviceIds.length
       ? await getResult<Partial<ProviderService>[]>(
           this.catalogDb
@@ -86,11 +102,13 @@ export class ChatService {
           { allowEmpty: true },
         )
       : [];
-    const serviceMap = new Map((services || []).map((service) => [service.id, service]));
+    const serviceMap = new Map(
+      (services || []).map((service) => [service.id, service]),
+    );
 
     // Load latest messages and unread counts
-    const conversationIds = rows.map((c: any) => c.id).filter(Boolean);
-    const allMessages = await getResult<any[]>(
+    const conversationIds = rows.map((c) => c.id).filter(Boolean);
+    const allMessages = (await getResult<any[]>(
       this.bookingDb
         .from('messages')
         .select(
@@ -101,9 +119,9 @@ export class ChatService {
         .limit(200),
       'ChatLatestMessages',
       { allowEmpty: true },
-    );
+    )) as MsgRow[];
 
-    const messagesByConversation = new Map<string, any[]>();
+    const messagesByConversation = new Map<string, MsgRow[]>();
     for (const msg of allMessages || []) {
       const convId = String(msg.conversation_id);
       if (!messagesByConversation.has(convId)) {
@@ -112,7 +130,7 @@ export class ChatService {
       messagesByConversation.get(convId)!.push(msg);
     }
 
-    return rows.map((conv: any) => {
+    return rows.map((conv) => {
       const otherPartyId =
         role === 'customer' ? conv.provider_id : conv.customer_id;
       const otherPartyUser = userMap.get(otherPartyId);
@@ -125,7 +143,7 @@ export class ChatService {
       // convMessages are ordered desc — first is latest
       const latestMsg = convMessages[0] || null;
 
-      const unreadCount = convMessages.filter((m: any) => {
+      const unreadCount = convMessages.filter((m) => {
         if (String(m.sender_role || '') === role) return false;
         if (!lastReadAt) return true;
         return (
@@ -159,18 +177,18 @@ export class ChatService {
     await this.assertParticipant(bookingId, userId);
 
     // Get conversation row for bookingId
-    const conv = await getMaybeSingle<any>(
+    const conv = (await getMaybeSingle<any>(
       this.bookingDb
         .from('conversations')
         .select('*')
         .eq('booking_id', bookingId)
         .maybeSingle(),
       'ChatConvLookup',
-    );
+    )) as ConvRow | null;
 
     // Get all messages for this conversation
-    const messages = conv?.id
-      ? await getResult<any[]>(
+    const messages: MsgRow[] = conv?.id
+      ? ((await getResult<any[]>(
           this.bookingDb
             .from('messages')
             .select('id,body,sender_role,created_at,delivery_status')
@@ -178,12 +196,15 @@ export class ChatService {
             .order('created_at', { ascending: true }),
           'ChatMessages',
           { allowEmpty: true },
-        )
+        )) as MsgRow[])
       : [];
 
     // Get booking to find other party
     const booking = await getResult<
-      Pick<Booking, 'id' | 'customer_id' | 'provider_id' | 'service_id' | 'status'>
+      Pick<
+        Booking,
+        'id' | 'customer_id' | 'provider_id' | 'service_id' | 'status'
+      >
     >(
       this.bookingDb
         .from('bookings')
@@ -239,7 +260,7 @@ export class ChatService {
       otherPartyName,
       otherPartyPhone,
       serviceName,
-      messages: messages.map((m: any) => ({
+      messages: messages.map((m) => ({
         id: String(m.id),
         text: String(m.body || ''),
         createdAt: String(m.created_at),
@@ -282,7 +303,7 @@ export class ChatService {
     const conversationId = upserted?.id;
 
     // Insert message
-    const msg = await getResult<any>(
+    const msg = await getResult<MsgRow>(
       this.bookingDb
         .from('messages')
         .insert({
@@ -355,7 +376,7 @@ export class ChatService {
   private normalizeDeliveryStatus(
     value: unknown,
   ): 'sent' | 'delivered' | 'failed' {
-    const status = String(value || '').toLowerCase();
+    const status = (typeof value === 'string' ? value : '').toLowerCase();
     if (status === 'sent' || status === 'failed') return status;
     return 'delivered';
   }

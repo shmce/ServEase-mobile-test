@@ -109,14 +109,16 @@ export class LocationsService {
 
   private async fetchOptions(endpoint: string): Promise<LocationOption[]> {
     const response = await fetch(endpoint);
-    const json = await response.json();
+    const json = (await response.json()) as
+      | LocationOption[]
+      | { data?: LocationOption[] };
 
     if (Array.isArray(json)) {
       return json;
     }
 
-    if (Array.isArray(json?.data)) {
-      return json.data;
+    if (Array.isArray((json as { data?: LocationOption[] }).data)) {
+      return (json as { data: LocationOption[] }).data;
     }
 
     return [];

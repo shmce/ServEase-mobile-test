@@ -1,4 +1,4 @@
-# ServEase Mobile Test
+# ServEase Mobile
 
 ServEase is a mobile marketplace app for on-demand services in the Philippines. This repository is an Expo + React Native codebase that currently includes customer and provider flows, Supabase integration, booking-related services, and route-based mobile screens.
 
@@ -7,7 +7,37 @@ ServEase is a mobile marketplace app for on-demand services in the Philippines. 
 - Expo Router
 - React Native + TypeScript
 - Supabase
-- AsyncStorage
+- Expo SecureStore
+
+## 🚀 CI/CD & GitHub Actions
+
+This project uses automated CI/CD with GitHub Actions for quality assurance and deployment.
+
+### Quick Start for CI/CD
+1. See **[CI_CD_SETUP.md](./CI_CD_SETUP.md)** for complete setup instructions
+2. Set `MOBILE_SINGLE_SYSTEMS_JSON` repository variable in GitHub Settings
+3. Push to `test`, `uat`, or `main` to trigger the pipeline
+
+### Local Pre-Push Checks
+Before pushing code, run:
+```bash
+# Windows
+run-ci-checks.bat
+
+# Or validate CI readiness
+scripts\validate-ci-readiness.bat
+```
+
+This checks:
+- ✅ ESLint (code style)
+- ✅ TypeScript (type checking)
+- ✅ Jest tests (80% coverage required)
+- ✅ No committed `.env` files
+
+**Documentation:**
+- [CI_CD_SETUP.md](./CI_CD_SETUP.md) - Complete setup guide
+- [GITHUB_ACTIONS_COMPLETE.md](./GITHUB_ACTIONS_COMPLETE.md) - Summary of fixes
+- [.github/workflows/README.md](./.github/workflows/README.md) - Workflow details
 
 ## Current App Structure
 
@@ -42,10 +72,14 @@ npx expo start --tunnel
 Useful commands:
 
 ```bash
-npm run android
-npm run ios
-npm run web
-npm run lint
+npm run android     # Run on Android
+npm run ios         # Run on iOS
+npm run web         # Run on web
+npm run lint        # Run ESLint
+npm run typecheck   # TypeScript validation
+npm run test        # Run tests with coverage
+npm run test:watch  # Run tests in watch mode
+npm run test:e2e    # Run Maestro E2E tests
 ```
 
 ## Prompt Package
@@ -76,12 +110,21 @@ We use a dual-layered testing strategy to ensure app stability.
 ### Unit & Integration (Jest + RTL)
 Tests are located in `__tests__` directories throughout the project.
 - **Run all tests**: `npm test`
-- **Mocking**: Global mocks for Supabase, Expo Router, and AsyncStorage are configured in `jest-setup.js`.
+- **Run tests with coverage**: `npm run test:ci`
+- **Watch mode**: `npm run test:watch`
+- **Coverage threshold**: 80% (branches, functions, lines, statements)
+- **Mocking**: Global mocks for Supabase, Expo Router, and Expo SecureStore are configured in `jest-setup.js`.
+
+**Coverage reports:**
+- Console output (on test run)
+- HTML report: `coverage/lcov-report/index.html`
+- LCOV format: `coverage/lcov.info` (for CI/SonarCloud)
 
 ### End-to-End (Maestro)
 Maestro flows are located in the `.maestro/` directory.
 - **Prerequisite**: Install [Maestro CLI](https://maestro.mobile.dev/getting-started/installing-maestro).
 - **Run Flow**: `maestro test .maestro/booking_journey.yaml`
+- **Run all E2E tests**: `npm run test:e2e`
 - **Key flows**:
   - `login_flow.yaml`: Basic authentication.
   - `booking_journey.yaml`: Complete customer booking funnel.

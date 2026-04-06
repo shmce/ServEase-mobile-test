@@ -1,0 +1,7 @@
+# Trivy ignore list for documented non-runtime findings.
+# Keep entries narrow and revisit them as base images and toolchains change.
+
+# npm-bundled picomatch inside the base Node image was flagged during image scans.
+# The runtime image removes npm/npx after install, so this package is not shipped
+# as part of the running application layer.
+CVE-2026-33671

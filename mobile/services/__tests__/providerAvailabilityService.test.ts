@@ -17,6 +17,10 @@ describe('validateProviderAvailability', () => {
   });
 
   it('returns a conflict reason when the backend overlap check says the slot is unavailable', async () => {
+    // Use a date that is within the 8 AM - 5 PM window (10 AM local time)
+    const scheduledDate = new Date('2026-04-06');
+    scheduledDate.setHours(10, 0, 0, 0);
+
     (api.get as jest.Mock)
       .mockResolvedValueOnce({
         weeklySchedule: [
@@ -39,7 +43,7 @@ describe('validateProviderAvailability', () => {
 
     const result = await validateProviderAvailability(
       'provider-1',
-      new Date('2026-04-06T01:00:00.000Z'),
+      scheduledDate,
       2,
     );
 
@@ -52,7 +56,7 @@ describe('validateProviderAvailability', () => {
       '/provider/provider-1/availability/check',
       {
         params: {
-          scheduled_at: '2026-04-06T01:00:00.000Z',
+          scheduled_at: scheduledDate.toISOString(),
           hours_required: 2,
         },
       },
@@ -60,6 +64,10 @@ describe('validateProviderAvailability', () => {
   });
 
   it('falls back to available when the backend overlap check is unreachable', async () => {
+    // Use a date that is within the 8 AM - 5 PM window (10 AM local time)
+    const scheduledDate = new Date('2026-04-06');
+    scheduledDate.setHours(10, 0, 0, 0);
+
     (api.get as jest.Mock)
       .mockResolvedValueOnce({
         weeklySchedule: [
@@ -79,7 +87,7 @@ describe('validateProviderAvailability', () => {
 
     const result = await validateProviderAvailability(
       'provider-1',
-      new Date('2026-04-06T01:00:00.000Z'),
+      scheduledDate,
       2,
     );
 

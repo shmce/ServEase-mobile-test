@@ -4,7 +4,6 @@ import {
   IsEnum,
   MinLength,
   IsNotEmpty,
-  IsUUID,
 } from 'class-validator';
 
 export enum DocumentType {

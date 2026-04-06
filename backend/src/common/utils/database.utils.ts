@@ -1,4 +1,5 @@
 import {
+  PostgrestError,
   PostgrestResponse,
   PostgrestSingleResponse,
 } from '@supabase/supabase-js';
@@ -36,10 +37,11 @@ export async function getResult<T>(
  * Type-safe helper for .maybeSingle() calls where null is a valid success state.
  */
 export async function getMaybeSingle<T>(
-  promise: PromiseLike<{ data: T | null; error: any }>,
+  promise: PromiseLike<{ data: T | null; error: PostgrestError | null }>,
   context = 'Database',
 ): Promise<T | null> {
-  const { data, error } = await promise;
+  const result = await promise;
+  const { data, error } = result;
 
   if (error) {
     handleSupabaseError(error, context);

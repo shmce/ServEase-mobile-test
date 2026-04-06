@@ -205,6 +205,11 @@ describe('CustomerBookingFormScreen', () => {
   });
 
   it('filters out overlapping time options based on reserved slots and duration', () => {
+    // A 9:00 AM - 1:00 PM reservation blocks every 2-hour candidate here,
+    // including 8:00 AM because 8:00-10:00 still overlaps 9:00-1:00.
+    const reservedStart = new Date(2026, 3, 6, 9, 0, 0, 0);
+    const reservedEnd = new Date(2026, 3, 6, 13, 0, 0, 0);
+
     const result = computeAvailableTimeOptions(
       {
         weeklySchedule: {
@@ -223,13 +228,13 @@ describe('CustomerBookingFormScreen', () => {
       2,
       [
         {
-          scheduled_at: '2026-04-06T02:00:00.000Z',
-          end_at: '2026-04-06T04:00:00.000Z',
+          scheduled_at: reservedStart.toISOString(),
+          end_at: reservedEnd.toISOString(),
           hours_required: 2,
         },
       ]
     );
 
-    expect(result).toEqual(['8:00 AM']);
+    expect(result).toEqual([]);
   });
 });

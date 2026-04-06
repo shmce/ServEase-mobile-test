@@ -61,7 +61,7 @@ export class CircuitBreaker {
     this.failureCount = 0;
   }
 
-  private onFailure(error: any) {
+  private onFailure(_error: any) {
     this.failureCount++;
     this.lastFailureTime = Date.now();
 

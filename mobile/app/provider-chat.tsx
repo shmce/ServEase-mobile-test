@@ -265,6 +265,7 @@ export default function ProviderChatScreen() {
     otherPartyName: String(name || 'Customer'),
     initials: String(initials || 'CU'),
     otherPartyPhone: String(phone || ''),
+    avatar: '',
     online: true,
   };
   const resolvedBookingState = bookingState || getProviderBookingActionState(undefined);

@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
   ForbiddenException,
 } from '@nestjs/common';
-import { SupabaseClient } from '@supabase/supabase-js';
+import { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import {
   IDENTITY_CLIENT,
   CATALOG_CLIENT,
@@ -23,13 +23,11 @@ import {
   Booking,
   User,
   ProviderReview,
-  ServiceCategory,
+  BookingRescheduleRequest,
+  AdditionalCharge,
 } from '../../common/interfaces/database.interfaces';
 
-type ConflictCheckBookingRow = Pick<
-  Booking,
-  'scheduled_at' | 'hours_required'
->;
+type ConflictCheckBookingRow = Pick<Booking, 'scheduled_at' | 'hours_required'>;
 
 type ReservedSlotRow = {
   scheduled_at: string;
@@ -112,11 +110,17 @@ export class ProviderService {
     if (!profileResponse.data)
       throw new NotFoundException('Provider profile not found');
 
-    const profileData = profileResponse.data as any;
+    type ProfileWithDocs = ProviderProfile & {
+      provider_documents?: {
+        document_file_path: string;
+        [key: string]: unknown;
+      }[];
+    };
+    const profileData = profileResponse.data as unknown as ProfileWithDocs;
 
     const documentsWithUrls = await Promise.all(
-      (profileData.provider_documents || []).map(async (doc: any) => {
-        const filePath = doc.document_file_path as string;
+      (profileData.provider_documents || []).map(async (doc) => {
+        const filePath = doc.document_file_path;
         const { data: urlData } = await this.supabase.storage
           .from('verification-docs')
           .createSignedUrl(filePath, 60);
@@ -173,7 +177,10 @@ export class ProviderService {
       .from('provider_profiles')
       .select('verification_status')
       .eq('user_id', userId)
-      .single()) as { data: Partial<ProviderProfile> | null; error: any };
+      .single()) as {
+      data: Partial<ProviderProfile> | null;
+      error: PostgrestError | null;
+    };
 
     if (profileErr || !profile)
       throw new NotFoundException('Provider profile not found');
@@ -277,7 +284,7 @@ export class ProviderService {
       .from('bookings')
       .select('*')
       .eq('id', bookingId)
-      .maybeSingle()) as { data: Booking | null; error: any };
+      .maybeSingle()) as { data: Booking | null; error: PostgrestError | null };
     if (error) throw new BadRequestException(error.message);
     if (!data) throw new NotFoundException('Booking not found.');
     if (providerId && String(data.provider_id) !== String(providerId)) {
@@ -327,7 +334,7 @@ export class ProviderService {
       .eq('id', bookingId)
       .eq('provider_id', providerId)
       .select('*')
-      .maybeSingle()) as { data: Booking | null; error: any };
+      .maybeSingle()) as { data: Booking | null; error: PostgrestError | null };
 
     if (error || !data) {
       const { data: fallback, error: fallbackErr } = (await this.bookingDb
@@ -335,7 +342,10 @@ export class ProviderService {
         .update({ status: target })
         .eq('id', bookingId)
         .select('*')
-        .maybeSingle()) as { data: Booking | null; error: any };
+        .maybeSingle()) as {
+        data: Booking | null;
+        error: PostgrestError | null;
+      };
 
       if (fallbackErr || !fallback)
         throw new BadRequestException(
@@ -406,7 +416,8 @@ export class ProviderService {
         input.flat_rate === null || input.flat_rate === undefined
           ? null
           : Number(input.flat_rate),
-      default_pricing_mode: input.default_pricing_mode || null,
+      default_pricing_mode:
+        (input.default_pricing_mode as string | null) || null,
       service_location_type:
         input.service_location_type === 'in_shop' ? 'in_shop' : 'mobile',
       service_location_address: input.service_location_address
@@ -514,8 +525,8 @@ export class ProviderService {
       }
 
       const normalizedHoursRequired = Math.max(1, Number(hoursRequired || 1));
-      const newEnd = scheduledAtTimestamp +
-        normalizedHoursRequired * 60 * 60 * 1000;
+      const newEnd =
+        scheduledAtTimestamp + normalizedHoursRequired * 60 * 60 * 1000;
       const bufferInMilliseconds = 24 * 60 * 60 * 1000;
       const dayStart = new Date(
         scheduledAtTimestamp - bufferInMilliseconds,
@@ -534,19 +545,14 @@ export class ProviderService {
         throw new BadRequestException(existingBookings.error.message);
       }
 
-      for (const booking of (existingBookings.data || []) as ConflictCheckBookingRow[]) {
+      for (const booking of (existingBookings.data ||
+        []) as ConflictCheckBookingRow[]) {
         const existingStart = new Date(booking.scheduled_at).getTime();
         const existingEnd =
           existingStart +
-          Math.max(1, Number(booking.hours_required || 1)) *
-            60 *
-            60 *
-            1000;
+          Math.max(1, Number(booking.hours_required || 1)) * 60 * 60 * 1000;
 
-        if (
-          scheduledAtTimestamp < existingEnd &&
-          newEnd > existingStart
-        ) {
+        if (scheduledAtTimestamp < existingEnd && newEnd > existingStart) {
           throw new BadRequestException(
             'This provider is already booked for the selected time slot.',
           );
@@ -578,10 +584,7 @@ export class ProviderService {
     const dayStart = new Date(`${date}T00:00:00.000Z`);
     const dayEnd = new Date(`${date}T23:59:59.999Z`);
 
-    if (
-      Number.isNaN(dayStart.getTime()) ||
-      Number.isNaN(dayEnd.getTime())
-    ) {
+    if (Number.isNaN(dayStart.getTime()) || Number.isNaN(dayEnd.getTime())) {
       throw new BadRequestException('date must be a valid calendar date.');
     }
 
@@ -606,8 +609,7 @@ export class ProviderService {
         Number(booking.hours_required || 1),
       );
       const endAt = new Date(
-        scheduledAt.getTime() +
-          normalizedHoursRequired * 60 * 60 * 1000,
+        scheduledAt.getTime() + normalizedHoursRequired * 60 * 60 * 1000,
       );
 
       return {
@@ -623,18 +625,25 @@ export class ProviderService {
   async saveProviderAvailability(
     providerId: string,
     input: {
-      weeklySchedule?: Record<string, any>[];
-      daysOff?: Record<string, any>[];
+      weeklySchedule?: {
+        day_of_week?: string;
+        is_active?: boolean;
+        start_time?: string | null;
+        end_time?: string | null;
+        break_start_time?: string | null;
+        break_end_time?: string | null;
+      }[];
+      daysOff?: { off_date?: string; day?: string; reason?: string }[];
     },
   ) {
     const weeklyPayload = (input.weeklySchedule || []).map((item) => ({
       user_id: providerId,
       day_of_week: String(item.day_of_week || ''),
       is_active: Boolean(item.is_active),
-      start_time: item.start_time || null,
-      end_time: item.end_time || null,
-      break_start_time: item.break_start_time || null,
-      break_end_time: item.break_end_time || null,
+      start_time: item.start_time ?? null,
+      end_time: item.end_time ?? null,
+      break_start_time: item.break_start_time ?? null,
+      break_end_time: item.break_end_time ?? null,
     }));
 
     if (weeklyPayload.length > 0) {
@@ -694,7 +703,7 @@ export class ProviderService {
     proposedDate: string;
     proposedTime: string;
   }) {
-    const { data, error } = await this.bookingDb
+    const { data, error } = (await this.bookingDb
       .from('booking_reschedule_requests')
       .insert({
         booking_id: input.bookingId,
@@ -706,7 +715,10 @@ export class ProviderService {
         status: 'pending',
       })
       .select()
-      .single();
+      .single()) as {
+      data: BookingRescheduleRequest | null;
+      error: PostgrestError | null;
+    };
 
     if (error) throw new BadRequestException(error.message);
     return { request: data };
@@ -729,17 +741,20 @@ export class ProviderService {
     customerId: string;
     decision: 'approved' | 'declined';
   }) {
-    const { data: request, error: reqErr } = await this.bookingDb
+    const { data: request, error: reqErr } = (await this.bookingDb
       .from('booking_reschedule_requests')
       .select('*')
       .eq('id', input.requestId)
       .eq('booking_id', input.bookingId)
-      .maybeSingle();
+      .maybeSingle()) as {
+      data: BookingRescheduleRequest | null;
+      error: PostgrestError | null;
+    };
 
     if (reqErr || !request)
       throw new NotFoundException('Reschedule request not found.');
 
-    const { data: updatedRequest, error: updateErr } = await this.bookingDb
+    const { data: updatedRequest, error: updateErr } = (await this.bookingDb
       .from('booking_reschedule_requests')
       .update({
         status: input.decision,
@@ -748,7 +763,10 @@ export class ProviderService {
       })
       .eq('id', input.requestId)
       .select('*')
-      .maybeSingle();
+      .maybeSingle()) as {
+      data: BookingRescheduleRequest | null;
+      error: PostgrestError | null;
+    };
 
     if (updateErr) throw new BadRequestException(updateErr.message);
 
@@ -810,26 +828,31 @@ export class ProviderService {
     chargeIds: string[];
     decision: 'approved' | 'declined';
   }) {
-    const bookingResponse = await this.bookingDb
+    const bookingResponse = (await this.bookingDb
       .from('bookings')
       .select('id,customer_id,total_amount')
       .eq('id', input.bookingId)
-      .maybeSingle();
+      .maybeSingle()) as {
+      data: Pick<Booking, 'id' | 'customer_id' | 'total_amount'> | null;
+      error: PostgrestError | null;
+    };
 
     if (
       !bookingResponse.data ||
-      String((bookingResponse.data as any).customer_id) !==
-        String(input.customerId)
+      String(bookingResponse.data.customer_id) !== String(input.customerId)
     )
       throw new BadRequestException(
         'You can only review charges for your own booking.',
       );
 
-    const chargesResponse = await this.bookingDb
+    const chargesResponse = (await this.bookingDb
       .from('additional_charges')
       .select('*')
       .eq('booking_id', input.bookingId)
-      .in('id', input.chargeIds);
+      .in('id', input.chargeIds)) as {
+      data: AdditionalCharge[] | null;
+      error: PostgrestError | null;
+    };
 
     const updateResponse = await this.bookingDb
       .from('additional_charges')
@@ -851,8 +874,7 @@ export class ProviderService {
         0,
       );
       const nextTotal =
-        Number((bookingResponse.data as any).total_amount || 0) +
-        approvedAmount;
+        Number(bookingResponse.data?.total_amount || 0) + approvedAmount;
       await this.bookingDb
         .from('bookings')
         .update({ total_amount: nextTotal })
@@ -883,7 +905,7 @@ export class ProviderService {
       throw new BadRequestException('Please choose a report reason.');
     }
 
-    const { data, error } = await this.trustDb
+    const { data, error } = (await this.trustDb
       .from('provider_profile_reports')
       .insert({
         provider_id: input.providerId,
@@ -894,7 +916,10 @@ export class ProviderService {
         status: 'submitted',
       })
       .select('*')
-      .maybeSingle();
+      .maybeSingle()) as {
+      data: Record<string, unknown> | null;
+      error: PostgrestError | null;
+    };
 
     if (error) throw new BadRequestException(error.message);
     return data;
@@ -940,7 +965,7 @@ export class ProviderService {
     if (reviewResponse.data)
       throw new BadRequestException('You have already reviewed this booking.');
 
-    const { data: review, error } = await this.trustDb
+    const { data: review, error } = (await this.trustDb
       .from('reviews')
       .insert([
         {
@@ -952,7 +977,10 @@ export class ProviderService {
         },
       ])
       .select('*')
-      .single();
+      .single()) as {
+      data: ProviderReview | null;
+      error: PostgrestError | null;
+    };
 
     if (error) throw new BadRequestException(error.message);
 
@@ -987,29 +1015,38 @@ export class ProviderService {
   // ── Provider Profile Draft ────────────────────────────────────────────────
 
   async getProviderProfileDraft(userId: string) {
-    const { data, error } = await this.catalogDb
+    const { data, error } = (await this.catalogDb
       .from('provider_profiles')
       .select('*')
       .eq('user_id', userId)
-      .maybeSingle();
+      .maybeSingle()) as {
+      data: ProviderProfile | null;
+      error: PostgrestError | null;
+    };
 
     if (error) handleSupabaseError(error, 'ProviderProfileDraft');
-    return { draft: (data as ProviderProfile) || null };
+    return { draft: data || null };
   }
 
-  async saveProviderProfileDraft(userId: string, draft: Record<string, any>) {
-    const { data, error } = await this.catalogDb
+  async saveProviderProfileDraft(
+    userId: string,
+    draft: Record<string, unknown>,
+  ) {
+    const { data, error } = (await this.catalogDb
       .from('provider_profiles')
       .upsert({ user_id: userId, ...draft }, { onConflict: 'user_id' })
       .select()
-      .maybeSingle();
+      .maybeSingle()) as {
+      data: ProviderProfile | null;
+      error: PostgrestError | null;
+    };
 
     if (error) handleSupabaseError(error, 'ProviderProfileDraftSave');
     return data as ProviderProfile;
   }
 
   async updateProfile(userId: string, dto: UpdateProviderProfileDto) {
-    const { data, error } = await this.catalogDb
+    const { data, error } = (await this.catalogDb
       .from('provider_profiles')
       .upsert(
         {
@@ -1020,7 +1057,10 @@ export class ProviderService {
         { onConflict: 'user_id' },
       )
       .select()
-      .maybeSingle();
+      .maybeSingle()) as {
+      data: ProviderProfile | null;
+      error: PostgrestError | null;
+    };
 
     if (error) handleSupabaseError(error, 'ProviderProfileUpdate');
     return data as ProviderProfile;

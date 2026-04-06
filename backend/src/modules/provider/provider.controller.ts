@@ -70,14 +70,17 @@ export class ProviderController {
   @Version('1')
   @UseGuards(AppAuthGuard)
   @Get('bookings')
-  getOwnProviderBookings(@Req() req: any) {
+  getOwnProviderBookings(@Req() req: { authUser?: { sub?: string } }) {
     return this.providerService.getProviderBookings(this.getAuthUserId(req));
   }
 
   @Version('1')
   @UseGuards(AppAuthGuard)
   @Get(':id/bookings')
-  getProviderBookings(@Param('id') id: string, @Req() req: any) {
+  getProviderBookings(
+    @Param('id') id: string,
+    @Req() req: { authUser?: { sub?: string } },
+  ) {
     this.assertSameUser(req, id);
     return this.providerService.getProviderBookings(id);
   }
@@ -87,7 +90,7 @@ export class ProviderController {
   @Get('booking/:bookingId')
   getProviderBookingById(
     @Param('bookingId') bookingId: string,
-    @Req() req: any,
+    @Req() req: { authUser?: { sub?: string } },
   ) {
     return this.providerService.getProviderBookingById(
       bookingId,
@@ -99,7 +102,7 @@ export class ProviderController {
   @UseGuards(AppAuthGuard)
   @Patch('booking/:bookingId/status')
   updateProviderBookingStatus(
-    @Req() req: any,
+    @Req() req: { authUser?: { sub?: string } },
     @Param('bookingId') bookingId: string,
     @Body() body: { provider_id: string; status: string },
   ) {
@@ -204,41 +207,57 @@ export class ProviderController {
   @Version('1')
   @Patch('profile')
   @UseGuards(AppAuthGuard)
-  updateProfile(@Req() req: any, @Body() body: UpdateProviderProfileDto) {
-    return this.providerService.updateProfile(req.authUser.sub, body);
+  updateProfile(
+    @Req() req: { authUser?: { sub?: string } },
+    @Body() body: UpdateProviderProfileDto,
+  ) {
+    return this.providerService.updateProfile(
+      String(req.authUser?.sub ?? ''),
+      body,
+    );
   }
 
   @Version('1')
   @Get('profile')
   @UseGuards(AppAuthGuard)
-  getOwnProfile(@Req() req: any) {
-    return this.providerService.getProviderProfile(req.authUser.sub);
+  getOwnProfile(@Req() req: { authUser?: { sub?: string } }) {
+    return this.providerService.getProviderProfile(
+      String(req.authUser?.sub ?? ''),
+    );
   }
 
   @Version('1')
   @Get('my-services')
   @UseGuards(AppAuthGuard)
-  getOwnServices(@Req() req: any) {
-    return this.providerService.getProviderServices(req.authUser.sub);
+  getOwnServices(@Req() req: { authUser?: { sub?: string } }) {
+    return this.providerService.getProviderServices(
+      String(req.authUser?.sub ?? ''),
+    );
   }
 
   @Version('1')
   @Post('my-services')
   @UseGuards(AppAuthGuard)
-  createOwnService(@Req() req: any, @Body() body: Record<string, any>) {
-    return this.providerService.saveProviderService(req.authUser.sub, body);
+  createOwnService(
+    @Req() req: { authUser?: { sub?: string } },
+    @Body() body: Record<string, any>,
+  ) {
+    return this.providerService.saveProviderService(
+      String(req.authUser?.sub ?? ''),
+      body,
+    );
   }
 
   @Version('1')
   @Patch('my-services/:serviceId')
   @UseGuards(AppAuthGuard)
   updateOwnService(
-    @Req() req: any,
+    @Req() req: { authUser?: { sub?: string } },
     @Param('serviceId') serviceId: string,
     @Body() body: Record<string, any>,
   ) {
     return this.providerService.saveProviderService(
-      req.authUser.sub,
+      String(req.authUser?.sub ?? ''),
       body,
       serviceId,
     );
@@ -247,9 +266,12 @@ export class ProviderController {
   @Version('1')
   @Delete('my-services/:serviceId')
   @UseGuards(AppAuthGuard)
-  deleteOwnService(@Req() req: any, @Param('serviceId') serviceId: string) {
+  deleteOwnService(
+    @Req() req: { authUser?: { sub?: string } },
+    @Param('serviceId') serviceId: string,
+  ) {
     return this.providerService.deleteProviderService(
-      req.authUser.sub,
+      String(req.authUser?.sub ?? ''),
       serviceId,
     );
   }
@@ -257,8 +279,10 @@ export class ProviderController {
   @Version('1')
   @Get('availability')
   @UseGuards(AppAuthGuard)
-  getOwnAvailability(@Req() req: any) {
-    return this.providerService.getProviderAvailability(req.authUser.sub);
+  getOwnAvailability(@Req() req: { authUser?: { sub?: string } }) {
+    return this.providerService.getProviderAvailability(
+      String(req.authUser?.sub ?? ''),
+    );
   }
 
   @Version('1')
@@ -293,9 +317,12 @@ export class ProviderController {
   @Version('1')
   @Put('availability')
   @UseGuards(AppAuthGuard)
-  saveOwnAvailability(@Req() req: any, @Body() body: Record<string, any>) {
+  saveOwnAvailability(
+    @Req() req: { authUser?: { sub?: string } },
+    @Body() body: Record<string, any>,
+  ) {
     return this.providerService.saveProviderAvailability(
-      req.authUser.sub,
+      String(req.authUser?.sub ?? ''),
       body,
     );
   }
@@ -334,10 +361,7 @@ export class ProviderController {
 
   @Version('1')
   @Get()
-  getProviders(
-    @Query('serviceId') serviceId: string,
-    @Query('search') search: string,
-  ) {
+  getProviders() {
     return { providers: [] }; // kept for backward compat, use /services instead
   }
 

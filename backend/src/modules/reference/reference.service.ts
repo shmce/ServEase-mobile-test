@@ -22,7 +22,7 @@ export class ReferenceService {
 
       if (error) throw new Error(error.message);
       return { message: 'Categories:', data };
-    } catch (err) {
+    } catch {
       throw new InternalServerErrorException(
         'Failed to GET service categories',
       );

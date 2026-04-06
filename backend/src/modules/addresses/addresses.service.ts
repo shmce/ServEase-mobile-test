@@ -5,7 +5,7 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { SupabaseClient } from '@supabase/supabase-js';
+import { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import { IDENTITY_CLIENT } from '../../database/supabase.module';
 
 @Injectable()
@@ -28,16 +28,14 @@ export class AddressesService {
   async addAddress(userId: string, address: Record<string, any>) {
     await this.assertAddressWritable(userId, address.id);
 
-    const { data, error } = await this.supabase
+    const { data, error } = (await this.supabase
       .from('user_addresses')
-      .insert([
-        {
-          ...address,
-          user_id: userId,
-        },
-      ])
+      .insert([{ ...address, user_id: userId }])
       .select()
-      .single();
+      .single()) as {
+      data: Record<string, unknown> | null;
+      error: PostgrestError | null;
+    };
 
     if (error) throw new BadRequestException(error.message);
     return { address: data };
@@ -50,15 +48,15 @@ export class AddressesService {
   ) {
     await this.assertAddressWritable(userId, id);
 
-    const { data, error } = await this.supabase
+    const { data, error } = (await this.supabase
       .from('user_addresses')
-      .update({
-        ...updates,
-        user_id: userId,
-      })
+      .update({ ...updates, user_id: userId })
       .eq('id', id)
       .select()
-      .maybeSingle();
+      .maybeSingle()) as {
+      data: Record<string, unknown> | null;
+      error: PostgrestError | null;
+    };
 
     if (error) throw new BadRequestException(error.message);
     if (!data) throw new NotFoundException('Address not found.');

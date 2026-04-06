@@ -45,9 +45,10 @@ export class CreateBookingDto {
   @Min(0)
   flat_rate?: number;
 
+  @IsOptional()
   @IsNumber()
   @Min(1)
-  hours_required: number;
+  hours_required?: number;
 
   @IsString()
   @IsOptional()
