@@ -48,7 +48,7 @@ describe('PaymentsService', () => {
         customer_id: 'cust-1',
         provider_id: 'prov-1',
         amount: 1000,
-        method: 'cash' as const,
+        method: 'cash_on_service' as const,
       };
 
       (paymentDb.from as jest.Mock).mockReturnValueOnce({
@@ -74,7 +74,7 @@ describe('PaymentsService', () => {
           id: 'p1',
           amount: 1000,
           status: 'completed',
-          method: 'cash',
+          method: 'cash_on_service',
           booking_id: 'b1',
         },
       ];
@@ -106,7 +106,7 @@ describe('PaymentsService', () => {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
         maybeSingle: jest.fn().mockResolvedValue({
-          data: { id: 'pay-1', method: 'cash' },
+          data: { id: 'pay-1', method: 'cash_on_service' },
           error: null,
         }),
       });

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { NOTIFICATION_CLIENT } from '../../database/supabase.module';
-import { handleSupabaseError } from '../../common/utils/supabase-error.handler';
+import { getMaybeSingle } from '../../common/utils/database.utils';
 import { UserProfileDto } from './dto/user-profile.dto';
 import { UserRepository } from './repositories/user.repository';
 import { SupportTicket } from '../../common/interfaces/database.interfaces';
@@ -60,20 +60,22 @@ export class UsersService {
       );
     }
 
-    const { data, error } = await this.notificationDb
-      .from('support_tickets')
-      .insert({
-        user_id: input.userId,
-        subject: input.subject,
-        message: input.message,
-        category: input.category || null,
-        requester_role: input.role || null,
-        status: 'open',
-      })
-      .select('*')
-      .maybeSingle();
+    const ticket = await getMaybeSingle<SupportTicket>(
+      this.notificationDb
+        .from('support_tickets')
+        .insert({
+          user_id: input.userId,
+          subject: input.subject,
+          message: input.message,
+          category: input.category || null,
+          requester_role: input.role || null,
+          status: 'open',
+        })
+        .select('*')
+        .maybeSingle(),
+      'SupportTicketSubmit',
+    );
 
-    if (error) handleSupabaseError(error, 'SupportTicket');
-    return { ticket: data as SupportTicket };
+    return { ticket };
   }
 }

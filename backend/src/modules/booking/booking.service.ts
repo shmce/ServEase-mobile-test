@@ -13,7 +13,7 @@ import {
   NOTIFICATION_CLIENT,
 } from '../../database/supabase.module';
 import { CreateBookingDto } from './dto/create-booking.dto';
-import { handleSupabaseError } from '../../common/utils/supabase-error.handler';
+import { getResult, getMaybeSingle } from '../../common/utils/database.utils';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   BookingCreatedEvent,
@@ -56,37 +56,85 @@ export class BookingService {
   ) {}
 
   async createBooking(dto: CreateBookingDto, customerId: string) {
-    const userResponse = await this.identityDb
-      .from('users')
-      .select('role, status')
-      .eq('id', dto.provider_id)
-      .single();
-    const userRecord = userResponse.data as Pick<
-      User,
-      'role' | 'status'
-    > | null;
-    const userError = userResponse.error;
+    const { serviceRecord } = await this.validateBookingRequest(dto);
 
-    if (userError || !userRecord)
-      throw new NotFoundException('Provider not found.');
-    if (userRecord.role !== 'provider')
+    const { totalAmount, hourlyRate, flatRate, hoursRequired } =
+      this.calculateBookingAmount(dto, serviceRecord);
+
+    const newBooking = await getResult<
+      Pick<Booking, 'id' | 'booking_reference' | 'status' | 'total_amount'>
+    >(
+      this.bookingDb
+        .from('bookings')
+        .insert([
+          {
+            customer_id: customerId,
+            provider_id: dto.provider_id,
+            service_id: dto.service_id,
+            booking_reference: `BKG-${Math.floor(100000 + Math.random() * 900000)}`,
+            service_address: dto.service_address,
+            service_location_type: dto.service_location_type,
+            scheduled_at: dto.scheduled_at,
+            pricing_mode: dto.pricing_mode,
+            hourly_rate: hourlyRate,
+            flat_rate: flatRate,
+            hours_required: hoursRequired,
+            total_amount: totalAmount,
+            status: 'pending',
+          },
+        ])
+        .select('id, booking_reference, status, total_amount')
+        .single(),
+      'BookingInsert',
+    );
+
+    // Emit event for asynchronous side-effects (conversation, payment)
+    this.eventEmitter.emit(
+      BOOKING_EVENTS.CREATED,
+      new BookingCreatedEvent(
+        newBooking.id,
+        newBooking.booking_reference,
+        customerId,
+        totalAmount,
+        dto,
+      ),
+    );
+
+    return {
+      message: 'Booking created successfully.',
+      booking: newBooking as Booking,
+    };
+  }
+
+  private async validateBookingRequest(dto: CreateBookingDto) {
+    const userRecord = await getResult<Pick<User, 'role' | 'status'>>(
+      this.identityDb
+        .from('users')
+        .select('role, status')
+        .eq('id', dto.provider_id)
+        .single(),
+      'ProviderLookup',
+      { notFoundMessage: 'Provider not found.' },
+    );
+
+    if (userRecord.role !== 'provider') {
       throw new BadRequestException(
         'Bookings can only be made with registered providers.',
       );
+    }
 
-    const profileResponse = await this.catalogDb
-      .from('provider_profiles')
-      .select('verification_status')
-      .eq('user_id', dto.provider_id)
-      .single();
-    const profileRecord = profileResponse.data as Pick<
-      ProviderProfile,
-      'verification_status'
-    > | null;
-    const profileError = profileResponse.error;
+    const profileRecord = await getResult<
+      Pick<ProviderProfile, 'verification_status'>
+    >(
+      this.catalogDb
+        .from('provider_profiles')
+        .select('verification_status')
+        .eq('user_id', dto.provider_id)
+        .single(),
+      'ProviderProfile',
+      { notFoundMessage: 'Provider profile missing.' },
+    );
 
-    if (profileError || !profileRecord)
-      throw new BadRequestException('Provider profile missing.');
     if (
       userRecord.status !== 'active' ||
       profileRecord.verification_status !== 'approved'
@@ -94,33 +142,36 @@ export class BookingService {
       throw new BadRequestException('Provider is not fully verified.');
     }
 
-    const serviceResponse = await this.catalogDb
-      .from('provider_services')
-      .select(
-        'id,provider_id,supports_hourly,hourly_rate,supports_flat,flat_rate,service_location_type,service_location_address',
-      )
-      .eq('id', dto.service_id)
-      .single();
-    const serviceRecord = serviceResponse.data as Pick<
-      IProviderService,
-      | 'id'
-      | 'provider_id'
-      | 'supports_hourly'
-      | 'hourly_rate'
-      | 'supports_flat'
-      | 'flat_rate'
-      | 'service_location_type'
-      | 'service_location_address'
-    > | null;
-    const serviceError = serviceResponse.error;
+    const serviceRecord = await getResult<
+      Pick<
+        IProviderService,
+        | 'id'
+        | 'provider_id'
+        | 'supports_hourly'
+        | 'hourly_rate'
+        | 'supports_flat'
+        | 'flat_rate'
+        | 'service_location_type'
+        | 'service_location_address'
+      >
+    >(
+      this.catalogDb
+        .from('provider_services')
+        .select(
+          'id,provider_id,supports_hourly,hourly_rate,supports_flat,flat_rate,service_location_type,service_location_address',
+        )
+        .eq('id', dto.service_id)
+        .single(),
+      'ServiceLookup',
+      { notFoundMessage: 'Service not found.' },
+    );
 
-    if (serviceError || !serviceRecord)
-      throw new NotFoundException('Service not found.');
     if (serviceRecord.provider_id !== dto.provider_id) {
       throw new BadRequestException(
         'Service does not belong to the selected provider.',
       );
     }
+
     if (
       (serviceRecord.service_location_type || 'mobile') !==
       dto.service_location_type
@@ -129,6 +180,7 @@ export class BookingService {
         'Booking location type does not match the current service configuration.',
       );
     }
+
     if (
       dto.service_location_type === 'in_shop' &&
       (!serviceRecord.service_location_address ||
@@ -155,6 +207,16 @@ export class BookingService {
       }
     }
 
+    return { userRecord, profileRecord, serviceRecord };
+  }
+
+  private calculateBookingAmount(
+    dto: CreateBookingDto,
+    serviceRecord: Pick<
+      IProviderService,
+      'supports_hourly' | 'hourly_rate' | 'supports_flat' | 'flat_rate'
+    >,
+  ) {
     let totalAmount = 0;
     let hourlyRate: number | null = null;
     let flatRate: number | null = null;
@@ -179,76 +241,21 @@ export class BookingService {
       totalAmount = flatRate;
     }
 
-    const insertResponse = await this.bookingDb
-      .from('bookings')
-      .insert([
-        {
-          customer_id: customerId,
-          provider_id: dto.provider_id,
-          service_id: dto.service_id,
-          booking_reference: `BKG-${Math.floor(100000 + Math.random() * 900000)}`,
-          service_address: dto.service_address,
-          service_location_type: dto.service_location_type,
-          scheduled_at: dto.scheduled_at,
-          pricing_mode: dto.pricing_mode,
-          hourly_rate: hourlyRate,
-          flat_rate: flatRate,
-          hours_required: hoursRequired,
-          total_amount: totalAmount,
-          status: 'pending',
-        },
-      ])
-      .select('id, booking_reference, status, total_amount')
-      .single();
-
-    const newBooking = insertResponse.data as Pick<
-      Booking,
-      'id' | 'booking_reference' | 'status' | 'total_amount'
-    > | null;
-    const bookingError = insertResponse.error;
-    if (bookingError || !newBooking) {
-      handleSupabaseError(
-        bookingError ||
-          ({
-            message: 'Insert failed',
-            code: 'INSERT_FAILED',
-            details: '',
-            hint: '',
-          } as any),
-        'Booking',
-      );
-    }
-
-    // Emit event for asynchronous side-effects (conversation, payment)
-    this.eventEmitter.emit(
-      BOOKING_EVENTS.CREATED,
-      new BookingCreatedEvent(
-        newBooking.id,
-        newBooking.booking_reference,
-        customerId,
-        totalAmount,
-        dto,
-      ),
-    );
-
-    return {
-      message: 'Booking created successfully.',
-      booking: newBooking as Booking,
-    };
+    return { totalAmount, hourlyRate, flatRate, hoursRequired };
   }
 
   async getCustomerBookings(customerId: string) {
-    const { data, error } = await this.bookingDb
-      .from('bookings')
-      .select(
-        'id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, created_at, service_address, service_location_type',
-      )
-      .eq('customer_id', customerId)
-      .order('created_at', { ascending: false });
-
-    if (error) handleSupabaseError(error, 'BookingsFetch');
-
-    const rows = (data || []) as BookingListRow[];
+    const rows = await getResult<BookingListRow[]>(
+      this.bookingDb
+        .from('bookings')
+        .select(
+          'id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, created_at, service_address, service_location_type',
+        )
+        .eq('customer_id', customerId)
+        .order('created_at', { ascending: false }),
+      'BookingsFetch',
+      { allowEmpty: true },
+    );
     if (!rows.length) return { bookings: [] };
 
     const providerIds = [
@@ -268,13 +275,13 @@ export class BookingService {
             .from('users')
             .select('id,full_name,contact_number')
             .in('id', providerIds)
-        : Promise.resolve({ data: [] }),
+        : Promise.resolve({ data: [], error: null }),
       serviceIds.length
         ? this.catalogDb
             .from('provider_services')
             .select('id,title,price')
             .in('id', serviceIds)
-        : Promise.resolve({ data: [] }),
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
     const providerMap = new Map(
@@ -300,25 +307,20 @@ export class BookingService {
   }
 
   async getBookingById(bookingId: string) {
-    const query = this.isUuid(bookingId)
-      ? this.bookingDb
-          .from('bookings')
-          .select(
-            'id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, cancellation_reason, cancellation_explanation, service_address, service_location_type',
-          )
-          .eq('id', bookingId)
-      : this.bookingDb
-          .from('bookings')
-          .select(
-            'id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, cancellation_reason, cancellation_explanation, service_address, service_location_type',
-          )
-          .eq('booking_reference', bookingId);
+    const isUuid = this.isUuid(bookingId);
+    const booking = await getResult<Booking>(
+      this.bookingDb
+        .from('bookings')
+        .select(
+          'id, booking_reference, provider_id, service_id, scheduled_at, status, total_amount, cancellation_reason, cancellation_explanation, service_address, service_location_type',
+        )
+        .eq(isUuid ? 'id' : 'booking_reference', bookingId)
+        .single(),
+      'BookingDetail',
+      { notFoundMessage: `Booking not found for: ${bookingId}` },
+    );
 
-    const { data, error } = await query.maybeSingle();
-    if (error) handleSupabaseError(error, 'BookingFetchDetail');
-    if (!data)
-      throw new NotFoundException(`Booking not found for: ${bookingId}`);
-    return { booking: data };
+    return { booking };
   }
 
   async cancelBooking(
@@ -327,6 +329,7 @@ export class BookingService {
     reason: string,
     explanation: string,
   ) {
+    const isUuid = this.isUuid(bookingId);
     let query = this.bookingDb.from('bookings').update({
       status: 'cancelled',
       cancellation_reason: reason || null,
@@ -335,18 +338,13 @@ export class BookingService {
       cancelled_by: customerId,
     });
 
-    if (this.isUuid(bookingId)) {
-      query = query.eq('id', bookingId);
-    } else {
-      query = query.eq('booking_reference', bookingId);
-    }
+    query = query.eq(isUuid ? 'id' : 'booking_reference', bookingId);
 
-    const { data: booking, error } = (await query
-      .eq('customer_id', customerId)
-      .select('*')
-      .maybeSingle()) as { data: Booking | null; error: any };
+    const booking = await getMaybeSingle<Booking>(
+      query.eq('customer_id', customerId).select('*').maybeSingle(),
+      'BookingCancel',
+    );
 
-    if (error) throw new BadRequestException(error.message);
     if (!booking)
       throw new NotFoundException(
         'Booking not found or not owned by this customer.',
@@ -368,124 +366,132 @@ export class BookingService {
       ),
     );
 
-    return { message: 'Booking cancelled.', booking: booking };
+    return { message: 'Booking cancelled.', booking };
   }
 
   async getHistory() {
-    const { data, error } = await this.bookingDb
-      .from('bookings')
-      .select(
-        'id, booking_reference, provider_id, status, total_amount, scheduled_at',
-      )
-      .in('status', ['completed', 'cancelled', 'disputed']);
-
-    if (error) handleSupabaseError(error, 'BookingHistory');
-    return { history: data };
+    const history = await getResult<Partial<Booking>[]>(
+      this.bookingDb
+        .from('bookings')
+        .select(
+          'id, booking_reference, provider_id, status, total_amount, scheduled_at',
+        )
+        .in('status', ['completed', 'cancelled', 'disputed']),
+      'BookingHistory',
+      { allowEmpty: true },
+    );
+    return { history };
   }
 
   async getRequests() {
-    const { data, error } = await this.bookingDb
-      .from('bookings')
-      .select(
-        'id, booking_reference, customer_id, service_id, scheduled_at, total_amount',
-      )
-      .eq('status', 'pending');
-
-    if (error) handleSupabaseError(error, 'BookingRequests');
-    return { requests: data ?? [] };
+    const requests = await getResult<Partial<Booking>[]>(
+      this.bookingDb
+        .from('bookings')
+        .select(
+          'id, booking_reference, customer_id, service_id, scheduled_at, total_amount',
+        )
+        .eq('status', 'pending'),
+      'BookingRequests',
+      { allowEmpty: true },
+    );
+    return { requests };
   }
 
   async updateStatus(id: string, status: string) {
-    const query = this.isUuid(id)
-      ? this.bookingDb.from('bookings').update({ status }).eq('id', id)
-      : this.bookingDb
-          .from('bookings')
-          .update({ status })
-          .eq('booking_reference', id);
+    const isUuid = this.isUuid(id);
+    const data = await getMaybeSingle<Booking>(
+      this.bookingDb
+        .from('bookings')
+        .update({ status })
+        .eq(isUuid ? 'id' : 'booking_reference', id)
+        .select(
+          'id, status, booking_reference, customer_id, provider_id, service_id',
+        )
+        .maybeSingle(),
+      'BookingStatusUpdate',
+    );
 
-    const response = await query
-      .select(
-        'id, status, booking_reference, customer_id, provider_id, service_id',
-      )
-      .maybeSingle();
-
-    const data = response?.data as Booking | null;
-    const error = response?.error;
-
-    if (error) handleSupabaseError(error, 'BookingStatusUpdate');
     if (!data) throw new NotFoundException(`Booking not found for: ${id}`);
 
-    const result = data as Pick<
-      Booking,
-      | 'id'
-      | 'status'
-      | 'booking_reference'
-      | 'customer_id'
-      | 'provider_id'
-      | 'service_id'
-    >;
     this.eventEmitter.emit(
       BOOKING_EVENTS.STATUS_UPDATED,
       new BookingStatusUpdatedEvent(
-        result.id,
-        result.booking_reference,
-        result.customer_id,
-        result.provider_id,
-        result.service_id,
-        result.status,
+        data.id,
+        data.booking_reference,
+        data.customer_id,
+        data.provider_id,
+        data.service_id,
+        data.status,
       ),
     );
 
-    return { message: 'Status updated.', booking: result as Booking };
+    return { message: 'Status updated.', booking: data };
+  }
+
+  // ── Attachments ───────────────────────────────────────────────────────────
+
+  async getBookingAttachments(bookingId: string) {
+    const attachments = await getResult<any[]>(
+      this.bookingDb
+        .from('booking_attachments')
+        .select(
+          'id,booking_id,file_url,file_name,mime_type,created_at,storage_path',
+        )
+        .eq('booking_id', bookingId)
+        .order('created_at', { ascending: true }),
+      'AttachmentsFetch',
+      { allowEmpty: true },
+    );
+    return { attachments };
   }
 
   // ── Disputes ──────────────────────────────────────────────────────────────
 
   async createDispute(bookingId: string, raisedBy: string, reason: string) {
-    if (!reason || !reason.trim()) {
+    if (!reason?.trim()) {
       throw new BadRequestException('Reason is required to file a dispute.');
     }
 
-    // Verify booking
-    const response = await this.bookingDb
-      .from('bookings')
-      .select(
-        'id, booking_reference, customer_id, provider_id, service_id, status',
-      )
-      .eq('id', bookingId)
-      .maybeSingle();
-
-    const booking = response.data as Pick<
-      Booking,
-      | 'id'
-      | 'booking_reference'
-      | 'customer_id'
-      | 'provider_id'
-      | 'service_id'
-      | 'status'
-    > | null;
-    const bookingError = response.error;
-
-    if (bookingError) throw new BadRequestException(bookingError.message);
-    if (!booking) throw new NotFoundException('Booking not found.');
+    // Verify booking exists and get IDs
+    await getResult<
+      Pick<
+        Booking,
+        | 'id'
+        | 'booking_reference'
+        | 'customer_id'
+        | 'provider_id'
+        | 'service_id'
+        | 'status'
+      >
+    >(
+      this.bookingDb
+        .from('bookings')
+        .select(
+          'id, booking_reference, customer_id, provider_id, service_id, status',
+        )
+        .eq('id', bookingId)
+        .single(),
+      'DisputeBookingVerify',
+    );
 
     // Write into notification_svc disputes
-    const { data, error } = await this.notificationDb
-      .from('disputes')
-      .insert({
-        booking_id: bookingId,
-        raised_by: raisedBy,
-        reason: reason.trim(),
-        status: 'open',
-      })
-      .select('*')
-      .maybeSingle();
-
-    if (error) throw new BadRequestException(error.message);
+    const dispute = await getResult<Dispute>(
+      this.notificationDb
+        .from('disputes')
+        .insert({
+          booking_id: bookingId,
+          raised_by: raisedBy,
+          reason: reason.trim(),
+          status: 'open',
+        })
+        .select('*')
+        .single(),
+      'DisputeInsert',
+    );
 
     // Optionally update booking status to disputed
     await this.updateStatus(bookingId, 'disputed');
 
-    return { dispute: data as unknown as Dispute };
+    return { dispute };
   }
 }

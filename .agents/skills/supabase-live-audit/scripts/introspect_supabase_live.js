@@ -38,7 +38,7 @@ function getCredentials(args) {
   const fileEnv = {
     ...readEnvFile(path.join(cwd, ".env")),
     ...readEnvFile(path.join(cwd, "backend/.env")),
-    ...readEnvFile(path.join(cwd, "frontend/.env")),
+    ...readEnvFile(path.join(cwd, "mobile/.env")),
   };
   return {
     url: args.url || process.env.SUPABASE_URL || fileEnv.SUPABASE_URL || "",

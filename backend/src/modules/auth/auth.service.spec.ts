@@ -7,6 +7,7 @@ import {
 } from '../../database/supabase.module';
 import { UserRepository } from '../users/repositories/user.repository';
 import { UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -20,6 +21,12 @@ describe('AuthService', () => {
         signOut: jest.fn(),
       },
     };
+    const mockConfigService = {
+      get: jest.fn((key: string) => {
+        if (key === 'JWT_SECRET') return 'test-secret';
+        return undefined;
+      }),
+    };
 
     const mockUserRepository = {
       findById: jest.fn(),
@@ -29,6 +36,7 @@ describe('AuthService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
+        { provide: ConfigService, useValue: mockConfigService },
         { provide: SupabaseClient, useValue: mockSupabase },
         { provide: IDENTITY_CLIENT, useValue: mockSupabase },
         { provide: CATALOG_CLIENT, useValue: mockSupabase },
@@ -48,23 +56,39 @@ describe('AuthService', () => {
         password: 'Password123!',
       };
       const mockUser = { id: 'uuid-123', email: 'test@example.com' };
-      const mockUserData = { role: 'customer', status: 'active' };
+      const mockUserData = {
+        id: 'uuid-123',
+        email: 'test@example.com',
+        full_name: 'Test User',
+        contact_number: '09123456789',
+        role: 'customer',
+        status: 'active',
+      };
 
       (supabase.auth.signInWithPassword as jest.Mock).mockResolvedValueOnce({
         data: { user: mockUser, session: { access_token: 'valid-token' } },
         error: null,
       } as any);
 
+      userRepository.findById.mockResolvedValueOnce({
+        role: 'customer',
+        status: 'active',
+      } as any);
       userRepository.findById.mockResolvedValueOnce(mockUserData as any);
 
       const result = await service.login(loginDto);
 
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         message: 'STATUS 200 OK',
-        access_token: 'valid-token',
-        user_id: 'uuid-123',
         role: 'customer',
+        user: {
+          id: 'uuid-123',
+          email: 'test@example.com',
+          role: 'customer',
+        },
       });
+      expect(result.access_token).toBeTruthy();
+      expect(result.refresh_token).toBeTruthy();
     });
 
     it('should throw UnauthorizedException for invalid credentials', async () => {

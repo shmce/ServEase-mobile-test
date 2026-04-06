@@ -12,7 +12,7 @@ import {
 import { CustomerService } from './customer.service';
 import { CustomerDashboardResponseDto } from './dto/customer-dashboard.dto';
 import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
-import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
+import { AppAuthGuard } from '../auth/guards/app-auth.guard';
 
 @Controller('customer')
 export class CustomerController {
@@ -28,15 +28,15 @@ export class CustomerController {
 
   @Version('1')
   @Patch('profile')
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(AppAuthGuard)
   async updateProfile(@Req() req: any, @Body() body: UpdateCustomerProfileDto) {
-    return this.customerService.updateProfile(req.user.id, body);
+    return this.customerService.updateProfile(req.authUser.sub, body);
   }
 
   @Version('1')
   @Get('profile')
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(AppAuthGuard)
   async getProfile(@Req() req: any) {
-    return this.customerService.getProfile(req.user.id);
+    return this.customerService.getProfile(req.authUser.sub);
   }
 }

@@ -33,6 +33,25 @@ export class BookingListeners {
     private readonly notificationDb: SupabaseClient,
   ) {}
 
+  private normalizePaymentMethod(paymentMethod?: string | null) {
+    const normalized = String(paymentMethod || '')
+      .trim()
+      .toLowerCase();
+    if (normalized === 'cash') {
+      return 'cash_on_service';
+    }
+
+    return normalized || 'cash_on_service';
+  }
+
+  private getErrorMessage(error: unknown) {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return String(error);
+  }
+
   private async getLookupData(
     customerId: string,
     providerId: string,
@@ -109,7 +128,7 @@ export class BookingListeners {
             customer_id: event.customerId,
             provider_id: event.dto.provider_id,
             amount: event.totalAmount,
-            method: 'cash',
+            method: this.normalizePaymentMethod(event.dto.payment_method),
             status: 'pending',
             transaction_reference: `PAY-${Date.now()}`,
           },
@@ -172,7 +191,7 @@ export class BookingListeners {
       );
     } catch (error) {
       this.logger.error(
-        `Failed to complete post-booking actions for ${event.bookingReference}: ${error.message}`,
+        `Failed to complete post-booking actions for ${event.bookingReference}: ${this.getErrorMessage(error)}`,
       );
     }
   }
@@ -234,7 +253,7 @@ export class BookingListeners {
       });
     } catch (error) {
       this.logger.error(
-        `Failed to emit cancellation notification: ${error.message}`,
+        `Failed to emit cancellation notification: ${this.getErrorMessage(error)}`,
       );
     }
   }
@@ -334,7 +353,7 @@ export class BookingListeners {
       });
     } catch (error) {
       this.logger.error(
-        `Failed to emit status update notification: ${error.message}`,
+        `Failed to emit status update notification: ${this.getErrorMessage(error)}`,
       );
     }
   }

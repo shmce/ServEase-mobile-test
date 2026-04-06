@@ -4,6 +4,7 @@ import {
   BadRequestException,
   NotFoundException,
   InternalServerErrorException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
@@ -22,6 +23,7 @@ import {
   Booking,
   User,
   ProviderReview,
+  ServiceCategory,
 } from '../../common/interfaces/database.interfaces';
 
 @Injectable()
@@ -259,7 +261,7 @@ export class ProviderService {
     };
   }
 
-  async getProviderBookingById(bookingId: string) {
+  async getProviderBookingById(bookingId: string, providerId?: string) {
     const { data, error } = (await this.bookingDb
       .from('bookings')
       .select('*')
@@ -267,6 +269,9 @@ export class ProviderService {
       .maybeSingle()) as { data: Booking | null; error: any };
     if (error) throw new BadRequestException(error.message);
     if (!data) throw new NotFoundException('Booking not found.');
+    if (providerId && String(data.provider_id) !== String(providerId)) {
+      throw new ForbiddenException('You can only access your own bookings.');
+    }
 
     const booking = data;
 
@@ -354,6 +359,196 @@ export class ProviderService {
     }
 
     return { booking: data };
+  }
+
+  async getProviderServices(providerId: string) {
+    const { data, error } = await this.catalogDb
+      .from('provider_services')
+      .select(
+        'id,title,description,price,category_id,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode,service_location_type,service_location_address',
+      )
+      .eq('provider_id', providerId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw new BadRequestException(error.message);
+    return { services: (data || []) as Partial<IProviderService>[] };
+  }
+
+  async saveProviderService(
+    providerId: string,
+    input: Record<string, any>,
+    serviceId?: string,
+  ) {
+    const payload = {
+      provider_id: providerId,
+      title: String(input.title || '').trim(),
+      description: input.description ? String(input.description).trim() : null,
+      price: Number(input.price || 0),
+      category_id: String(input.category_id || '').trim(),
+      supports_hourly: Boolean(input.supports_hourly),
+      hourly_rate:
+        input.hourly_rate === null || input.hourly_rate === undefined
+          ? null
+          : Number(input.hourly_rate),
+      supports_flat: Boolean(input.supports_flat),
+      flat_rate:
+        input.flat_rate === null || input.flat_rate === undefined
+          ? null
+          : Number(input.flat_rate),
+      default_pricing_mode: input.default_pricing_mode || null,
+      service_location_type:
+        input.service_location_type === 'in_shop' ? 'in_shop' : 'mobile',
+      service_location_address: input.service_location_address
+        ? String(input.service_location_address).trim()
+        : null,
+    };
+
+    if (!payload.title || !payload.category_id) {
+      throw new BadRequestException('title and category_id are required.');
+    }
+
+    const { data: profile, error: profileError } = await this.catalogDb
+      .from('provider_profiles')
+      .select('user_id')
+      .eq('user_id', providerId)
+      .maybeSingle();
+
+    if (profileError) throw new BadRequestException(profileError.message);
+    if (!profile) {
+      await this.ensureProviderIdentityRows(providerId);
+    }
+
+    if (serviceId) {
+      const { data, error } = await this.catalogDb
+        .from('provider_services')
+        .update(payload)
+        .eq('id', serviceId)
+        .eq('provider_id', providerId)
+        .select(
+          'id,title,description,price,category_id,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode,service_location_type,service_location_address',
+        )
+        .maybeSingle();
+
+      if (error) throw new BadRequestException(error.message);
+      if (!data) throw new NotFoundException('Provider service not found.');
+      return { service: data };
+    }
+
+    const { data, error } = await this.catalogDb
+      .from('provider_services')
+      .insert(payload)
+      .select(
+        'id,title,description,price,category_id,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode,service_location_type,service_location_address',
+      )
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    return { service: data };
+  }
+
+  async deleteProviderService(providerId: string, serviceId: string) {
+    const { data, error } = await this.catalogDb
+      .from('provider_services')
+      .delete()
+      .eq('id', serviceId)
+      .eq('provider_id', providerId)
+      .select('id')
+      .maybeSingle();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Provider service not found.');
+    return { deleted: true };
+  }
+
+  async getProviderAvailability(providerId: string) {
+    const [
+      { data: weeklyRows, error: weeklyError },
+      { data: daysOffRows, error: daysOffError },
+    ] = await Promise.all([
+      this.bookingDb
+        .from('provider_availability')
+        .select(
+          'user_id,day_of_week,is_active,start_time,end_time,break_start_time,break_end_time',
+        )
+        .eq('user_id', providerId),
+      this.bookingDb
+        .from('provider_days_off')
+        .select('id,user_id,off_date,reason')
+        .eq('user_id', providerId)
+        .order('off_date', { ascending: true }),
+    ]);
+
+    if (weeklyError) throw new BadRequestException(weeklyError.message);
+    if (daysOffError) throw new BadRequestException(daysOffError.message);
+
+    return {
+      weeklySchedule: weeklyRows || [],
+      daysOff: daysOffRows || [],
+    };
+  }
+
+  async saveProviderAvailability(
+    providerId: string,
+    input: {
+      weeklySchedule?: Record<string, any>[];
+      daysOff?: Record<string, any>[];
+    },
+  ) {
+    const weeklyPayload = (input.weeklySchedule || []).map((item) => ({
+      user_id: providerId,
+      day_of_week: String(item.day_of_week || ''),
+      is_active: Boolean(item.is_active),
+      start_time: item.start_time || null,
+      end_time: item.end_time || null,
+      break_start_time: item.break_start_time || null,
+      break_end_time: item.break_end_time || null,
+    }));
+
+    if (weeklyPayload.length > 0) {
+      const { error } = await this.bookingDb
+        .from('provider_availability')
+        .upsert(weeklyPayload, { onConflict: 'user_id,day_of_week' });
+      if (error) throw new BadRequestException(error.message);
+    }
+
+    const { error: deleteError } = await this.bookingDb
+      .from('provider_days_off')
+      .delete()
+      .eq('user_id', providerId);
+    if (deleteError) throw new BadRequestException(deleteError.message);
+
+    const daysOffPayload = (input.daysOff || []).map((item) => ({
+      user_id: providerId,
+      off_date: String(item.off_date || item.day || ''),
+      reason: item.reason ? String(item.reason) : null,
+    }));
+
+    if (daysOffPayload.length > 0) {
+      const { error } = await this.bookingDb
+        .from('provider_days_off')
+        .insert(daysOffPayload);
+      if (error) throw new BadRequestException(error.message);
+    }
+
+    return this.getProviderAvailability(providerId);
+  }
+
+  private async ensureProviderIdentityRows(providerId: string) {
+    const user = await this.identityDb
+      .from('users')
+      .select('id,full_name,email,contact_number,role')
+      .eq('id', providerId)
+      .maybeSingle();
+
+    if (user.error) throw new BadRequestException(user.error.message);
+    if (!user.data)
+      throw new ForbiddenException('Provider identity row is missing.');
+
+    const userData = user.data as Partial<User>;
+    await this.catalogDb.from('provider_profiles').upsert({
+      user_id: providerId,
+      business_name: userData.full_name || 'Provider',
+    });
   }
 
   // ── Reschedule Requests ───────────────────────────────────────────────────

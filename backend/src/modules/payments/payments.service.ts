@@ -13,7 +13,7 @@ import {
   CATALOG_CLIENT,
 } from '../../database/supabase.module';
 import { CreatePaymentDto } from './dto/create-payment.dto';
-import { handleSupabaseError } from '../../common/utils/supabase-error.handler';
+import { getResult, getMaybeSingle } from '../../common/utils/database.utils';
 import {
   Payment,
   Booking,
@@ -21,8 +21,27 @@ import {
   ProviderService as IProviderService,
 } from '../../common/interfaces/database.interfaces';
 
+type PaymentWriteResult = Pick<
+  Payment,
+  'id' | 'amount' | 'status' | 'transaction_reference'
+>;
+
 const createRef = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+const PLATFORM_FEE_RATE = 0.1; // 10% platform fee
+const DEFAULT_PAYMENT_METHOD = 'cash_on_service';
+
+const normalizePaymentMethod = (paymentMethod?: string | null) => {
+  const normalized = String(paymentMethod || '')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'cash') {
+    return DEFAULT_PAYMENT_METHOD;
+  }
+
+  return normalized || DEFAULT_PAYMENT_METHOD;
+};
 
 @Injectable()
 export class PaymentsService {
@@ -34,75 +53,90 @@ export class PaymentsService {
   ) {}
 
   async createPayment(dto: CreatePaymentDto) {
-    const { data, error } = await this.paymentDb
-      .from('payments')
-      .insert([
-        {
-          booking_id: dto.booking_id,
-          customer_id: dto.customer_id,
-          provider_id: dto.provider_id,
-          amount: dto.amount,
-          method: dto.method,
-          status: dto.status || 'pending',
-          paid_at: dto.status === 'completed' ? new Date().toISOString() : null,
-          transaction_reference: dto.transaction_reference || null,
-        },
-      ])
-      .select('id, amount, status, transaction_reference')
-      .single();
+    const data = await getResult<PaymentWriteResult>(
+      this.paymentDb
+        .from('payments')
+        .insert([
+          {
+            booking_id: dto.booking_id,
+            customer_id: dto.customer_id,
+            provider_id: dto.provider_id,
+            amount: dto.amount,
+            method: normalizePaymentMethod(dto.method),
+            status: dto.status || 'pending',
+            paid_at:
+              dto.status === 'completed' ? new Date().toISOString() : null,
+            transaction_reference: dto.transaction_reference || null,
+          },
+        ])
+        .select('id, amount, status, transaction_reference')
+        .single(),
+      'PaymentCreate',
+    );
 
-    if (error) handleSupabaseError(error, 'PaymentCreate');
     return { status: 'success', message: 'Payment processed.', data };
   }
 
   async getPaymentByBookingId(bookingId: string) {
-    const { data, error } = await this.paymentDb
-      .from('payments')
-      .select(
-        'id,booking_id,customer_id,provider_id,amount,method,status,transaction_reference,paid_at,created_at',
-      )
-      .eq('booking_id', bookingId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const data = await getMaybeSingle<Payment | null>(
+      this.paymentDb
+        .from('payments')
+        .select(
+          'id,booking_id,customer_id,provider_id,amount,method,status,transaction_reference,paid_at,created_at',
+        )
+        .eq('booking_id', bookingId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      'PaymentFetchByBooking',
+    );
 
-    if (error) handleSupabaseError(error, 'PaymentFetchByBooking');
     return { payment: data || null };
   }
 
   async getProviderPaymentHistory(providerId: string) {
-    const { data: payments, error } = await this.paymentDb
-      .from('payments')
-      .select(
-        'id,booking_id,customer_id,provider_id,amount,method,status,transaction_reference,paid_at,created_at',
-      )
-      .eq('provider_id', providerId)
-      .order('paid_at', { ascending: false, nullsFirst: false });
+    const rows = await getResult<Payment[]>(
+      this.paymentDb
+        .from('payments')
+        .select(
+          'id,booking_id,customer_id,provider_id,amount,method,status,transaction_reference,paid_at,created_at',
+        )
+        .eq('provider_id', providerId)
+        .order('paid_at', { ascending: false, nullsFirst: false }),
+      'PaymentHistoryFetch',
+      { allowEmpty: true },
+    );
 
-    if (error) handleSupabaseError(error, 'PaymentHistoryFetch');
-    const rows = payments || [];
     if (!rows.length) return { payments: [] };
 
     const bookingIds = [
-      ...new Set(rows.map((p: Payment) => p.booking_id).filter(Boolean)),
+      ...new Set(rows.map((p) => p.booking_id).filter(Boolean)),
     ];
     const customerIds = [
-      ...new Set(rows.map((p: Payment) => p.customer_id).filter(Boolean)),
+      ...new Set(rows.map((p) => p.customer_id).filter(Boolean)),
     ];
 
-    const [{ data: bookings }, { data: customers }] = await Promise.all([
+    const [bookings, customers] = await Promise.all([
       bookingIds.length
-        ? this.bookingDb
-            .from('bookings')
-            .select('id,booking_reference,service_id,scheduled_at')
-            .in('id', bookingIds)
-        : Promise.resolve({ data: [] }),
+        ? getResult<Partial<Booking>[]>(
+            this.bookingDb
+              .from('bookings')
+              .select('id,booking_reference,service_id,scheduled_at')
+              .in('id', bookingIds),
+            'PaymentHistoryBookings',
+            { allowEmpty: true },
+          )
+        : Promise.resolve([]),
       customerIds.length
-        ? this.identityDb
-            .from('users')
-            .select('id,full_name')
-            .in('id', customerIds)
-        : Promise.resolve({ data: [] }),
+        ? getResult<Partial<User>[]>(
+            this.identityDb
+              .from('users')
+              .select('id,full_name')
+              .in('id', customerIds),
+            'PaymentHistoryCustomers',
+            { allowEmpty: true },
+          )
+        : Promise.resolve([]),
     ]);
 
     const serviceIds = [
@@ -112,12 +146,16 @@ export class PaymentsService {
           .filter(Boolean),
       ),
     ];
-    const { data: services } = serviceIds.length
-      ? await this.catalogDb
-          .from('provider_services')
-          .select('id,title')
-          .in('id', serviceIds)
-      : { data: [] as any[] };
+    const services = serviceIds.length
+      ? await getResult<Partial<IProviderService>[]>(
+          this.catalogDb
+            .from('provider_services')
+            .select('id,title')
+            .in('id', serviceIds),
+          'PaymentHistoryServices',
+          { allowEmpty: true },
+        )
+      : [];
 
     const bookingMap = new Map(
       (bookings || []).map((b: Partial<Booking>) => [String(b.id), b]),
@@ -135,9 +173,9 @@ export class PaymentsService {
       ]),
     );
 
-    const history = rows.map((p: Payment) => {
+    const history = rows.map((p) => {
       const booking = bookingMap.get(String(p.booking_id));
-      const platformFee = Number(p.amount || 0) * 0.1;
+      const platformFee = Number(p.amount || 0) * PLATFORM_FEE_RATE;
       return {
         ...p,
         booking_reference: String(
@@ -177,7 +215,9 @@ export class PaymentsService {
       0,
     );
     const cashOnHand = paidPayments
-      .filter((p) => String(p.method).toLowerCase() === 'cash')
+      .filter((p) =>
+        ['cash', 'cash_on_service'].includes(String(p.method).toLowerCase()),
+      )
       .reduce((sum, p) => sum + Number(p.amount || 0), 0);
     const averagePerService = paidPayments.length
       ? totalNetEarnings / paidPayments.length
@@ -199,14 +239,17 @@ export class PaymentsService {
   async getEarnings(providerId: string) {
     if (!providerId) throw new BadRequestException('Provider ID is required');
 
-    const { data, error } = await this.paymentDb
-      .from('payments')
-      .select('amount')
-      .eq('provider_id', providerId)
-      .eq('status', 'completed');
+    const data = await getResult<{ amount: number }[]>(
+      this.paymentDb
+        .from('payments')
+        .select('amount')
+        .eq('provider_id', providerId)
+        .eq('status', 'completed'),
+      'EarningsFetch',
+      { allowEmpty: true },
+    );
 
-    if (error) handleSupabaseError(error, 'EarningsFetch');
-    const totalEarnings = ((data as { amount: number }[]) || []).reduce(
+    const totalEarnings = (data || []).reduce(
       (acc: number, curr: { amount: number }) => acc + Number(curr.amount),
       0,
     );
@@ -224,30 +267,35 @@ export class PaymentsService {
     amount: number;
     method?: string;
   }) {
-    const { data: existing } = await this.paymentDb
-      .from('payments')
-      .select('id, status, amount')
-      .eq('booking_id', input.bookingId)
-      .maybeSingle();
+    const existing = await getMaybeSingle<Partial<Payment>>(
+      this.paymentDb
+        .from('payments')
+        .select('id, status, amount')
+        .eq('booking_id', input.bookingId)
+        .maybeSingle(),
+      'PaymentCheckExisting',
+    );
     if (existing) return { payment: existing };
 
-    const { data, error } = await this.paymentDb
-      .from('payments')
-      .insert([
-        {
-          booking_id: input.bookingId,
-          customer_id: input.customerId,
-          provider_id: input.providerId,
-          amount: Number(input.amount || 0),
-          method: input.method || 'cash',
-          status: 'pending',
-          transaction_reference: createRef('PAY'),
-        },
-      ])
-      .select('id, status, amount, transaction_reference')
-      .maybeSingle();
+    const data = await getMaybeSingle<Partial<Payment>>(
+      this.paymentDb
+        .from('payments')
+        .insert([
+          {
+            booking_id: input.bookingId,
+            customer_id: input.customerId,
+            provider_id: input.providerId,
+            amount: Number(input.amount || 0),
+            method: normalizePaymentMethod(input.method),
+            status: 'pending',
+            transaction_reference: createRef('PAY'),
+          },
+        ])
+        .select('id, status, amount, transaction_reference')
+        .maybeSingle(),
+      'PaymentEnsure',
+    );
 
-    if (error) handleSupabaseError(error, 'PaymentEnsure');
     return { payment: data };
   }
 
@@ -259,11 +307,14 @@ export class PaymentsService {
     method?: string;
   }) {
     const now = new Date().toISOString();
-    const { data: existing } = await this.paymentDb
-      .from('payments')
-      .select('id, method, transaction_reference')
-      .eq('booking_id', input.bookingId)
-      .maybeSingle();
+    const existing = await getMaybeSingle<Partial<Payment>>(
+      this.paymentDb
+        .from('payments')
+        .select('id, method, transaction_reference')
+        .eq('booking_id', input.bookingId)
+        .maybeSingle(),
+      'PaymentCheckMarkPaid',
+    );
 
     if (!existing) {
       const created = await this.ensureBookingPayment({
@@ -271,77 +322,91 @@ export class PaymentsService {
         customerId: input.customerId || '',
         providerId: input.providerId || '',
         amount: input.amount || 0,
-        method: input.method || 'cash',
+        method: normalizePaymentMethod(input.method),
       });
       if (!created.payment)
         throw new InternalServerErrorException(
           'Failed to ensure payment creation',
         );
-      const { data, error } = await this.paymentDb
+      const data = await getMaybeSingle<Partial<Payment>>(
+        this.paymentDb
+          .from('payments')
+          .update({
+            status: 'completed',
+            paid_at: now,
+            transaction_reference: createRef('PAID'),
+          })
+          .eq('id', created.payment.id)
+          .select('id, status, paid_at')
+          .maybeSingle(),
+        'PaymentMarkPaidNew',
+      );
+      return { payment: data };
+    }
+
+    const data = await getMaybeSingle<Partial<Payment>>(
+      this.paymentDb
         .from('payments')
         .update({
           status: 'completed',
           paid_at: now,
-          transaction_reference: createRef('PAID'),
+          method: normalizePaymentMethod(input.method || existing.method),
+          transaction_reference:
+            existing.transaction_reference || createRef('PAID'),
         })
-        .eq('id', created.payment.id)
+        .eq('id', existing.id)
         .select('id, status, paid_at')
-        .maybeSingle();
-      if (error) handleSupabaseError(error, 'PaymentMarkPaidNew');
-      return { payment: data };
-    }
+        .maybeSingle(),
+      'PaymentMarkPaidExisting',
+    );
 
-    const { data, error } = await this.paymentDb
-      .from('payments')
-      .update({
-        status: 'completed',
-        paid_at: now,
-        method: input.method || existing.method || 'cash',
-        transaction_reference:
-          existing.transaction_reference || createRef('PAID'),
-      })
-      .eq('id', existing.id)
-      .select('id, status, paid_at')
-      .maybeSingle();
-
-    if (error) handleSupabaseError(error, 'PaymentMarkPaidExisting');
     return { payment: data };
   }
 
   async cancelBookingPayment(bookingId: string) {
-    const { data: existing } = await this.paymentDb
-      .from('payments')
-      .select('id')
-      .eq('booking_id', bookingId)
-      .maybeSingle();
+    const existing = await getMaybeSingle<{ id: string }>(
+      this.paymentDb
+        .from('payments')
+        .select('id')
+        .eq('booking_id', bookingId)
+        .maybeSingle(),
+      'PaymentCancelCheck',
+    );
     if (!existing) return { payment: null };
 
-    const { data, error } = await this.paymentDb
-      .from('payments')
-      .update({ status: 'cancelled' })
-      .eq('id', existing.id)
-      .select('id, status')
-      .maybeSingle();
-    if (error) handleSupabaseError(error, 'PaymentCancel');
+    const data = await getMaybeSingle<Partial<Payment>>(
+      this.paymentDb
+        .from('payments')
+        .update({ status: 'cancelled' })
+        .eq('id', existing.id)
+        .select('id, status')
+        .maybeSingle(),
+      'PaymentCancel',
+    );
     return { payment: data };
   }
 
   async updateBookingPaymentAmount(bookingId: string, amount: number) {
-    const { data: existing } = await this.paymentDb
-      .from('payments')
-      .select('id')
-      .eq('booking_id', bookingId)
-      .maybeSingle();
+    const existing = await getMaybeSingle<{ id: string }>(
+      this.paymentDb
+        .from('payments')
+        .select('id')
+        .eq('booking_id', bookingId)
+        .maybeSingle(),
+      'PaymentAmountUpdateCheck',
+    );
     if (!existing)
       throw new NotFoundException('Payment not found for this booking.');
 
-    const { data, error } = await this.paymentDb
-      .from('payments')
-      .update({ amount: Number(amount || 0) })
-      .eq('id', existing.id)
-      .select('id, amount')
-      .maybeSingle();
-    if (error) handleSupabaseError(error, 'PaymentAmountUpdate');
+    const data = await getMaybeSingle<Partial<Payment>>(
+      this.paymentDb
+        .from('payments')
+        .update({ amount: Number(amount || 0) })
+        .eq('id', existing.id)
+        .select('id, amount')
+        .maybeSingle(),
+      'PaymentAmountUpdate',
+    );
     return { payment: data };
   }
 }

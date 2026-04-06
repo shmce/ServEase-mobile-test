@@ -123,9 +123,9 @@ The review note must be compact, evidence-based, and written for product and eng
 
 In this repo, prefer checking for:
 
-- Expo app launch scripts in `frontend/package.json`
-- existing Maestro flows in `frontend/.maestro/`
-- customer booking, address, login, and profile journeys in `frontend/app/`
+- Expo app launch scripts in `mobile/package.json`
+- existing Maestro flows in `mobile/.maestro/`
+- customer booking, address, login, and profile journeys in `mobile/app/`
 - backend contract or booking-state logic only when a UI symptom points there
 
 When a journey crosses layers, include contract notes such as:

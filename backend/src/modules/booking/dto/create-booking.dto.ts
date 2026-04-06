@@ -49,4 +49,9 @@ export class CreateBookingDto {
   @IsNumber()
   @Min(1)
   hours_required?: number;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['cash', 'cash_on_service', 'card', 'wallet', 'gcash', 'paymaya'])
+  payment_method?: string;
 }

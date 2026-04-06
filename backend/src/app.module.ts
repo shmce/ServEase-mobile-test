@@ -13,6 +13,9 @@ import { ReferenceModule } from './modules/reference/reference.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
@@ -30,6 +33,9 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     PaymentsModule,
     LocationsModule,
     AddressesModule,
+    ChatModule,
+    NotificationsModule,
+    UploadsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

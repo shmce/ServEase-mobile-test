@@ -9,8 +9,8 @@ import {
   Req,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { UserProfileDto } from './dto/user-profile.dto';
+import { AppAuthGuard } from '../auth/guards/app-auth.guard';
 
 @Controller('users')
 export class UsersController {
@@ -18,29 +18,30 @@ export class UsersController {
 
   @Version('1')
   @Get('profile')
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(AppAuthGuard)
   async getProfile(
-    @Req() req: { user: { id: string } },
+    @Req() req: { authUser: { sub: string } },
   ): Promise<UserProfileDto> {
-    const userId = req.user.id;
+    const userId = req.authUser.sub;
     return this.usersService.getProfile(userId);
   }
 
   @Version('1')
   @Patch('profile')
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(AppAuthGuard)
   async updateProfile(
-    @Req() req: { user: { id: string } },
+    @Req() req: { authUser: { sub: string } },
     @Body() body: Partial<UserProfileDto>,
   ) {
-    const userId = req.user.id;
+    const userId = req.authUser.sub;
     return this.usersService.updateProfile(userId, body);
   }
 
   @Version('1')
   @Post('support-tickets')
+  @UseGuards(AppAuthGuard)
   async submitSupportTicket(
-    @Req() req: { user: { id: string } },
+    @Req() req: { authUser: { sub: string } },
     @Body()
     body: {
       subject: string;
@@ -49,7 +50,7 @@ export class UsersController {
       role?: 'customer' | 'provider';
     },
   ) {
-    const userId = req.user.id;
+    const userId = req.authUser.sub;
     return this.usersService.submitSupportTicket({
       userId,
       subject: body.subject,

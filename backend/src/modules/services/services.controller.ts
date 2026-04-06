@@ -29,6 +29,12 @@ export class ServicesController {
     return this.servicesService.getProviderProfileData(providerId);
   }
 
+  @Version('1')
+  @Get('provider/:providerId/services')
+  getProviderServices(@Param('providerId') providerId: string) {
+    return this.servicesService.getProviderServices(providerId);
+  }
+
   @Version('2')
   @Get('search')
   async search(@Query('keyword') keyword: string) {

@@ -70,7 +70,9 @@ export class ServicesService {
   async getTopProviders() {
     const response = await this.catalogDb
       .from('provider_profiles')
-      .select('user_id,business_name,average_rating,verification_status,avatar_url')
+      .select(
+        'user_id,business_name,average_rating,verification_status,avatar_url',
+      )
       .eq('verification_status', 'approved')
       .order('average_rating', { ascending: false })
       .limit(5);
@@ -83,7 +85,9 @@ export class ServicesService {
   async getFeaturedProviders() {
     const response = await this.catalogDb
       .from('provider_profiles')
-      .select('user_id,business_name,average_rating,verification_status,avatar_url')
+      .select(
+        'user_id,business_name,average_rating,verification_status,avatar_url',
+      )
       .eq('verification_status', 'approved')
       .order('average_rating', { ascending: false })
       .limit(5);
@@ -153,6 +157,21 @@ export class ServicesService {
         };
       }),
     };
+  }
+
+  async getProviderServices(providerId: string) {
+    const response = await this.catalogDb
+      .from('provider_services')
+      .select(
+        'id,title,price,description,supports_hourly,hourly_rate,supports_flat,flat_rate,default_pricing_mode,service_location_type,service_location_address',
+      )
+      .eq('provider_id', providerId)
+      .order('title', { ascending: true });
+
+    if (response.error)
+      throw new InternalServerErrorException(response.error.message);
+
+    return { services: response.data || [] };
   }
 
   async getProvidersByServiceName(serviceName: string) {

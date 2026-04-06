@@ -8,12 +8,15 @@ import {
   Req,
   UnauthorizedException,
   Version,
+  UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { BookingService } from './booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingStatusDto } from './dto/update-booking-status.dto';
+import { AppAuthGuard } from '../auth/guards/app-auth.guard';
 
 @Controller('booking')
 export class BookingController {
@@ -22,30 +25,64 @@ export class BookingController {
     private readonly supabase: SupabaseClient,
   ) {}
 
-  private async getUserFromRequest(req: Request) {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) throw new UnauthorizedException('No token provided.');
-    const token = authHeader.split(' ')[1];
-    const {
-      data: { user },
-      error,
-    } = await this.supabase.auth.getUser(token);
-    if (error || !user)
+  private getAuthUserId(req: Request & { authUser?: { sub?: string } }) {
+    const userId = String(req.authUser?.sub || '').trim();
+    if (!userId) {
       throw new UnauthorizedException('Invalid or expired token.');
-    return user;
+    }
+    return userId;
+  }
+
+  private assertSameUser(
+    req: Request & { authUser?: { sub?: string } },
+    userId: string,
+  ) {
+    const actorId = this.getAuthUserId(req);
+    if (actorId !== userId) {
+      throw new ForbiddenException('You can only access your own bookings.');
+    }
+    return actorId;
   }
 
   @Version('1')
+  @UseGuards(AppAuthGuard)
   @Post('create')
   async createBooking(@Body() dto: CreateBookingDto, @Req() req: Request) {
-    const user = await this.getUserFromRequest(req);
-    return this.bookingService.createBooking(dto, user.id);
+    const userId = this.getAuthUserId(
+      req as Request & { authUser?: { sub?: string } },
+    );
+    return this.bookingService.createBooking(dto, userId);
   }
 
   @Version('1')
+  @UseGuards(AppAuthGuard)
+  @Get('customer')
+  async getOwnCustomerBookings(@Req() req: Request) {
+    const userId = this.getAuthUserId(
+      req as Request & { authUser?: { sub?: string } },
+    );
+    return this.bookingService.getCustomerBookings(userId);
+  }
+
+  @Version('1')
+  @UseGuards(AppAuthGuard)
   @Get('customer/:customerId')
-  async getCustomerBookings(@Param('customerId') customerId: string) {
+  async getCustomerBookings(
+    @Param('customerId') customerId: string,
+    @Req() req: Request,
+  ) {
+    this.assertSameUser(
+      req as Request & { authUser?: { sub?: string } },
+      customerId,
+    );
     return this.bookingService.getCustomerBookings(customerId);
+  }
+
+  @Version('1')
+  @UseGuards(AppAuthGuard)
+  @Get(':bookingId/attachments')
+  getBookingAttachments(@Param('bookingId') bookingId: string) {
+    return this.bookingService.getBookingAttachments(bookingId);
   }
 
   @Version('1')
@@ -76,29 +113,35 @@ export class BookingController {
   }
 
   @Version('1')
+  @UseGuards(AppAuthGuard)
   @Patch(':id/cancel')
   async cancelBooking(
     @Param('id') id: string,
     @Body() body: { reason?: string; explanation?: string },
     @Req() req: Request,
   ) {
-    const user = await this.getUserFromRequest(req);
+    const userId = this.getAuthUserId(
+      req as Request & { authUser?: { sub?: string } },
+    );
     return this.bookingService.cancelBooking(
       id,
-      user.id,
+      userId,
       body.reason || '',
       body.explanation || '',
     );
   }
 
   @Version('1')
+  @UseGuards(AppAuthGuard)
   @Post(':id/disputes')
   async createDispute(
     @Param('id') id: string,
     @Body() body: { reason: string },
     @Req() req: Request,
   ) {
-    const user = await this.getUserFromRequest(req);
-    return this.bookingService.createDispute(id, user.id, body.reason);
+    const userId = this.getAuthUserId(
+      req as Request & { authUser?: { sub?: string } },
+    );
+    return this.bookingService.createDispute(id, userId, body.reason);
   }
 }

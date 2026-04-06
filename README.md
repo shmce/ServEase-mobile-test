@@ -9,7 +9,7 @@ This workspace is a monorepo organized into specialized directories:
 | Directory | Component | Technology Stack |
 | :--- | :--- | :--- |
 | [`backend/`](./backend) | **NestJS API** | NestJS, TypeScript, Supabase (Service Role) |
-| [`frontend/`](./frontend) | **Mobile App** | Expo, React Native, Supabase, Expo Router |
+| [`mobile/`](./mobile) | **Mobile App** | Expo, React Native, Supabase, Expo Router |
 
 ## 🚀 Getting Started
 
@@ -25,12 +25,12 @@ npm run start:dev  # Runs on http://localhost:3001
 To allow the mobile app to talk to the local backend during development:
 1. Run `ngrok http 3001`.
 2. Copy the forwarding URL.
-3. Update `EXPO_PUBLIC_API_URL` in `frontend/.env`.
+3. Update `EXPO_PUBLIC_API_URL` in `mobile/.env`.
 
 ### 3. Mobile Frontend Setup
 The mobile app uses Expo Router and a feature-based architecture.
 ```bash
-cd frontend
+cd mobile
 npm install
 npx expo start     # Runs via Expo / Metro Bundler
 ```
@@ -96,19 +96,19 @@ Verified core business logic for Auth, Bookings, and Payments modules.
 
 ### 🧪 Mobile Unit & Integration (Jest + RTL)
 Comprehensive verification for complex components (e.g., `BookingForm`) and session persistence.
-- **Run Tests**: `cd frontend && npm test`
+- **Run Tests**: `cd mobile && npm test`
 
 ### 📱 End-to-End Orchestration (Maestro)
 Automated user journeys covering the entire system from onboarding to booking completion.
-- **Maestro Directory**: `frontend/.maestro/`
+- **Maestro Directory**: `mobile/.maestro/`
 - **Key Flows**: `booking_journey.yaml`, `provider_onboarding.yaml`, `login_flow.yaml`.
 - **Run Flow**: `maestro test .maestro/booking_journey.yaml`
 
 ---
 
 ## 📄 Documentation
-- **[PROJECT_HANDOVER.md](./frontend/docs/PROJECT_HANDOVER.md)**: Vital for new developers.
-- **[SQL Schema](./frontend/supabase/addresses_schema.sql)**: Latest address management schema definition.
+- **[PROJECT_HANDOVER.md](./mobile/docs/PROJECT_HANDOVER.md)**: Vital for new developers.
+- **[SQL Schema](./mobile/supabase/addresses_schema.sql)**: Latest address management schema definition.
 
 ---
 *Developed for the ServEase platform.*

@@ -7,34 +7,51 @@ import {
   Param,
   Body,
   Version,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import { AddressesService } from './addresses.service';
+import { AppAuthGuard } from '../auth/guards/app-auth.guard';
 
 @Controller('addresses')
 export class AddressesController {
   constructor(private readonly addressesService: AddressesService) {}
 
   @Version('1')
-  @Get(':userId')
-  getUserAddresses(@Param('userId') userId: string) {
-    return this.addressesService.getUserAddresses(userId);
+  @Get()
+  @UseGuards(AppAuthGuard)
+  getUserAddresses(@Req() req: { authUser: { sub: string } }) {
+    return this.addressesService.getUserAddresses(req.authUser.sub);
   }
 
   @Version('1')
   @Post()
-  addAddress(@Body() body: Record<string, any>) {
-    return this.addressesService.addAddress(body);
+  @UseGuards(AppAuthGuard)
+  addAddress(
+    @Req() req: { authUser: { sub: string } },
+    @Body() body: Record<string, any>,
+  ) {
+    return this.addressesService.addAddress(req.authUser.sub, body);
   }
 
   @Version('1')
   @Patch(':id')
-  updateAddress(@Param('id') id: string, @Body() body: Record<string, any>) {
-    return this.addressesService.updateAddress(id, body);
+  @UseGuards(AppAuthGuard)
+  updateAddress(
+    @Req() req: { authUser: { sub: string } },
+    @Param('id') id: string,
+    @Body() body: Record<string, any>,
+  ) {
+    return this.addressesService.updateAddress(req.authUser.sub, id, body);
   }
 
   @Version('1')
   @Delete(':id')
-  deleteAddress(@Param('id') id: string) {
-    return this.addressesService.deleteAddress(id);
+  @UseGuards(AppAuthGuard)
+  deleteAddress(
+    @Req() req: { authUser: { sub: string } },
+    @Param('id') id: string,
+  ) {
+    return this.addressesService.deleteAddress(req.authUser.sub, id);
   }
 }

@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable sonarjs/no-then */
 import { Test, TestingModule } from '@nestjs/testing';
 import { BookingService } from './booking.service';
 import { SupabaseClient } from '@supabase/supabase-js';
@@ -20,20 +24,26 @@ describe('BookingService', () => {
   let paymentDb: jest.Mocked<SupabaseClient>;
   let eventEmitter: jest.Mocked<EventEmitter2>;
 
+  const createMockBuilder = (data: any, error: any = null) => {
+    const builder = {
+      from: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      insert: jest.fn().mockReturnThis(),
+      update: jest.fn().mockReturnThis(),
+      delete: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      in: jest.fn().mockReturnThis(),
+      order: jest.fn().mockReturnThis(),
+      single: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockReturnThis(),
+      then: (onfulfilled: any) => Promise.resolve(onfulfilled({ data, error })),
+    } as any;
+    return builder;
+  };
+
   beforeEach(async () => {
     const mockDb = {
-      from: jest.fn(() => ({
-        select: jest.fn().mockReturnThis(),
-        insert: jest.fn().mockReturnThis(),
-        update: jest.fn().mockReturnThis(),
-        delete: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        in: jest.fn().mockReturnThis(),
-        order: jest.fn().mockReturnThis(),
-        single: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockReturnThis(),
-        select_single: jest.fn().mockReturnThis(),
-      })),
+      from: jest.fn(() => createMockBuilder({ data: [], error: null })),
     };
 
     const mockEventEmitter = {
@@ -65,60 +75,40 @@ describe('BookingService', () => {
       provider_id: 'provider-123',
       service_id: 'service-456',
       service_address: '123 Main St',
+      service_location_type: 'mobile' as const,
       scheduled_at: new Date().toISOString(),
       pricing_mode: 'flat' as const,
+      payment_method: 'cash_on_service',
     };
 
     it('should create a booking successfully and emit event', async () => {
       // Mock identity check
-      (identityDb.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({
-          data: { role: 'provider', status: 'active' },
-          error: null,
-        }),
-      });
+      (identityDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
+          role: 'provider',
+          status: 'active',
+      }));
 
       // Mock catalog profile check
-      (catalogDb.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({
-          data: { verification_status: 'approved' },
-          error: null,
-        }),
-      });
+      (catalogDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
+          verification_status: 'approved',
+      }));
 
       // Mock service check
-      (catalogDb.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({
-          data: {
-            id: 'service-456',
-            provider_id: 'provider-123',
-            supports_flat: true,
-            flat_rate: 500,
-          },
-          error: null,
-        }),
-      });
+      (catalogDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
+          id: 'service-456',
+          provider_id: 'provider-123',
+          supports_flat: true,
+          flat_rate: 500,
+          service_location_type: 'mobile',
+      }));
 
       // Mock booking insert
-      (bookingDb.from as jest.Mock).mockReturnValueOnce({
-        insert: jest.fn().mockReturnThis(),
-        select: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({
-          data: {
-            id: 'bkg-1',
-            booking_reference: 'BKG-123',
-            status: 'pending',
-            total_amount: 500,
-          },
-          error: null,
-        }),
-      });
+      (bookingDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
+          id: 'bkg-1',
+          booking_reference: 'BKG-123',
+          status: 'pending',
+          total_amount: 500,
+      }));
 
       const result = await service.createBooking(
         mockDto as any,
@@ -129,19 +119,19 @@ describe('BookingService', () => {
       expect(result.booking.total_amount).toBe(500);
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         BOOKING_EVENTS.CREATED,
-        expect.any(Object),
+        expect.objectContaining({
+          dto: expect.objectContaining({
+            payment_method: 'cash_on_service',
+          }),
+        }),
       );
     });
 
     it('should throw BadRequestException if provider is not verified', async () => {
-      (identityDb.from as jest.Mock).mockReturnValueOnce({
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({
-          data: { role: 'provider', status: 'pending' },
-          error: null,
-        }),
-      });
+      (identityDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
+          role: 'provider',
+          status: 'pending',
+      }));
 
       await expect(
         service.createBooking(mockDto as any, 'customer-789'),
@@ -154,15 +144,10 @@ describe('BookingService', () => {
       const bookingId = 'bkg-1';
       const customerId = 'customer-789';
 
-      (bookingDb.from as jest.Mock).mockReturnValueOnce({
-        update: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        select: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockResolvedValue({
-          data: { id: bookingId, status: 'cancelled' },
-          error: null,
-        }),
-      });
+      (bookingDb.from as jest.Mock).mockReturnValueOnce(createMockBuilder({
+          id: bookingId,
+          status: 'cancelled',
+      }));
 
       const result = await service.cancelBooking(
         bookingId,

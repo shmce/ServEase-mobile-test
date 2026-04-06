@@ -272,6 +272,6 @@ If agents disagree:
 Use these defaults unless the user instructs otherwise:
 
 - Store durable specs in `docs/superpowers/specs/`
-- Keep implementation changes focused within the touched slice of `frontend/` or `backend/`
+- Keep implementation changes focused within the touched slice of `mobile/` or `backend/`
 - Use review passes for auth, storage, Supabase, and schema-related work
 - Favor small tasks with explicit acceptance criteria over large bundled changes

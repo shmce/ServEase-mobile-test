@@ -129,6 +129,8 @@ export interface Payment {
   amount: number;
   method: 'cash' | 'card' | 'wallet';
   status: 'pending' | 'completed' | 'failed' | 'cancelled' | 'refunded';
+  paid_at?: string | null;
+  transaction_reference?: string | null;
   transaction_ref?: string;
   created_at: string;
 }
