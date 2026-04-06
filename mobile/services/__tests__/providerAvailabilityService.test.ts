@@ -13,7 +13,7 @@ jest.mock('@/lib/apiClient', () => ({
 
 describe('validateProviderAvailability', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
   });
 
   it('returns a conflict reason when the backend overlap check says the slot is unavailable', async () => {
