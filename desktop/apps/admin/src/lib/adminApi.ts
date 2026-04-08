@@ -13,10 +13,12 @@ export function getStoredToken(): string | null {
 }
 
 export function storeToken(token: string): void {
+  if (typeof window === 'undefined') return;
   localStorage.setItem(TOKEN_KEY, token);
 }
 
 export function clearToken(): void {
+  if (typeof window === 'undefined') return;
   localStorage.removeItem(TOKEN_KEY);
 }
 
@@ -33,7 +35,8 @@ async function handleResponse<T>(res: Response): Promise<T> {
   let message = `Request failed: ${res.status}`;
   try {
     const body = await res.json();
-    message = (body as { message?: string })?.message ?? message;
+    const raw = (body as { message?: string | string[] })?.message;
+    message = Array.isArray(raw) ? raw[0] : (raw ?? message);
   } catch {
     // ignore parse error, use default message
   }
@@ -146,7 +149,7 @@ export async function adminLogin(
     };
   }>(res);
 
-  if (data.role !== 'admin') {
+  if (!data.role || data.role !== 'admin') {
     throw new Error('Access denied: not an admin account.');
   }
 
