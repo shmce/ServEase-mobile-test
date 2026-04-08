@@ -71,3 +71,6 @@ Current mission-critical coverage including resilience verification:
 
 ## Support & Maintainance
 Developed for the **ServEase** platform. For deployment or schema updates, refer to the root `README.md`.
+
+<!-- CI trigger: 2026-04-09 02:00 -->
+

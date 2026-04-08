@@ -21,7 +21,7 @@ on:
       enable_k6:
         description: "Run Grafana k6 performance tests"
         type: boolean
-        default: true
+        default: false
       k6_script_path:
         description: "k6 performance test path"
         type: string
@@ -76,7 +76,10 @@ jobs:
       pipeline_mode: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.pipeline_mode || 'auto' }}
       enable_security_scan: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.enable_security_scan || 'true') || true }}
       enable_sonar: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.enable_sonar || 'true') || true }}
-      enable_k6: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.enable_k6 || 'true') || true }}
+      # This repository does not ship k6 assets by default, and the shared
+      # workflow hard-fails when the performance test directory is missing.
+      # Keep k6 opt-in until tests/performance and Grafana Cloud secrets exist.
+      enable_k6: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.enable_k6 || 'false') || false }}
       k6_script_path: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.k6_script_path || 'tests/performance' }}
       k6_base_url: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.k6_base_url || '' }}
       k6_run_only_on_branch: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.k6_run_only_on_branch || 'test,main' }}
