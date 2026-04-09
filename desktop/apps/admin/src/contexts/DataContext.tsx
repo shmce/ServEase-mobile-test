@@ -7,6 +7,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   ReactNode,
 } from "react";
 import * as adminApi from "../lib/adminApi";
@@ -168,22 +169,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ── Computed dashboard stats ───────────────────────────────────────────────
-  const dashboardStats: DashboardStats = {
-    totalRevenue: bookings
-      .filter((b) => b.status === "Completed" && b.paymentStatus === "Paid")
-      .reduce((sum, b) => sum + b.amount, 0),
-    totalBookings: bookings.length,
-    activeProviders: serviceProviders.filter((p) => p.status === "Active").length,
-    activeCustomers: customers.filter((c) => c.status === "Active").length,
-    completionRate:
-      bookings.length > 0
-        ? (bookings.filter((b) => b.status === "Completed").length / bookings.length) * 100
-        : 0,
-    avgBookingValue:
-      bookings.length > 0
-        ? bookings.reduce((sum, b) => sum + b.amount, 0) / bookings.length
-        : 0,
-  };
+  const dashboardStats = useMemo<DashboardStats>(
+    () => ({
+      totalRevenue: bookings
+        .filter((b) => b.status === "Completed" && b.paymentStatus === "Paid")
+        .reduce((sum, b) => sum + b.amount, 0),
+      totalBookings: bookings.length,
+      activeProviders: serviceProviders.filter((p) => p.status === "Active").length,
+      activeCustomers: customers.filter((c) => c.status === "Active").length,
+      completionRate:
+        bookings.length > 0
+          ? (bookings.filter((b) => b.status === "Completed").length / bookings.length) * 100
+          : 0,
+      avgBookingValue:
+        bookings.length > 0
+          ? bookings.reduce((sum, b) => sum + b.amount, 0) / bookings.length
+          : 0,
+    }),
+    [bookings, serviceProviders, customers],
+  );
 
   // ── Helper functions ───────────────────────────────────────────────────────
   const getCustomerById = useCallback(
@@ -257,37 +261,35 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // TODO: updateBookingStatus → PATCH /api/v1/admin/bookings/:id/status
   const updateBookingStatus = useCallback(
     (bookingId: string, status: BookingStatus) => {
+      const booking = bookings.find((b) => b.id === bookingId);
       setBookings((prev) =>
-        prev.map((booking) =>
-          booking.id === bookingId
+        prev.map((b) =>
+          b.id === bookingId
             ? {
-                ...booking,
+                ...b,
                 status,
                 completedDate:
-                  status === "Completed" ? new Date().toISOString() : booking.completedDate,
+                  status === "Completed" ? new Date().toISOString() : b.completedDate,
               }
-            : booking,
+            : b,
         ),
       );
-      if (status === "Completed") {
-        const booking = bookings.find((b) => b.id === bookingId);
-        if (booking) {
-          setTransactions((prev) => [
-            ...prev,
-            {
-              id: `TXN-${Date.now()}`,
-              bookingId: booking.id,
-              customerId: booking.customerId,
-              providerId: booking.providerId,
-              amount: booking.amount,
-              commissionAmount: booking.commissionAmount,
-              providerEarnings: booking.providerEarnings,
-              paymentMethod: booking.paymentMethod,
-              paymentStatus: booking.paymentStatus,
-              timestamp: new Date().toISOString(),
-            },
-          ]);
-        }
+      if (status === "Completed" && booking) {
+        setTransactions((prev) => [
+          ...prev,
+          {
+            id: `TXN-${Date.now()}`,
+            bookingId: booking.id,
+            customerId: booking.customerId,
+            providerId: booking.providerId,
+            amount: booking.amount,
+            commissionAmount: booking.commissionAmount,
+            providerEarnings: booking.providerEarnings,
+            paymentMethod: booking.paymentMethod,
+            paymentStatus: booking.paymentStatus,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
       }
     },
     [bookings],
@@ -296,14 +298,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // TODO: approveRefund → PATCH /api/v1/admin/refunds/:id/approve
   const approveRefund = useCallback(
     (refundId: string) => {
+      const refund = refunds.find((r) => r.id === refundId);
       setRefunds((prev) =>
-        prev.map((refund) =>
-          refund.id === refundId
-            ? { ...refund, status: "Approved" as const, processedDate: new Date().toISOString() }
-            : refund,
+        prev.map((r) =>
+          r.id === refundId
+            ? { ...r, status: "Approved" as const, processedDate: new Date().toISOString() }
+            : r,
         ),
       );
-      const refund = refunds.find((r) => r.id === refundId);
       if (refund) {
         setBookings((prev) =>
           prev.map((booking) =>
@@ -318,10 +320,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   // TODO: rejectRefund → PATCH /api/v1/admin/refunds/:id/reject
-  const rejectRefund = useCallback((_refundId: string, _reason: string) => {
+  const rejectRefund = useCallback((refundId: string, _reason: string) => {
     setRefunds((prev) =>
       prev.map((refund) =>
-        refund.id === _refundId
+        refund.id === refundId
           ? { ...refund, status: "Rejected" as const, processedDate: new Date().toISOString() }
           : refund,
       ),
