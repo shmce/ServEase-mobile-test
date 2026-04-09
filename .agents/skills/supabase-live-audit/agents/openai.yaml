@@ -1,4 +1,0 @@
-interface:
-  display_name: "Supabase Live Audit"
-  short_description: "Inspect live Supabase database state"
-  default_prompt: "Use $supabase-live-audit to inspect the live Supabase project, explain the current schemas and security posture, and recommend fixes without making changes."

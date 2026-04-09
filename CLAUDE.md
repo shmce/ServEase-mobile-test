@@ -4,39 +4,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Layout
 
-This workspace contains two independent subprojects:
+Monorepo with three independent subprojects:
 
-| Directory | Purpose |
-|---|---|
-| `ServEase-BE-API-main/` | NestJS REST API (TypeScript) |
-| `ServEase-mobile-test-expov3/` | Expo + React Native mobile app (TypeScript) |
+| Directory | Purpose | Stack |
+|---|---|---|
+| `backend/` | REST API | NestJS, TypeScript |
+| `mobile/` | Mobile app | Expo + React Native, TypeScript |
+| `desktop/` | Admin/landing web apps | React (Vite) |
 
-**They connect to different Supabase projects and are not yet integrated.**
+The `backend/` and `mobile/` connect to the **same** Supabase project (`strtoeeidqnsmbszhjhe`). The `desktop/` apps are UI prototypes from a Figma community file.
 
 ---
 
-## Backend — `ServEase-BE-API-main/`
+## Backend — `backend/`
 
 ### Commands
 
 ```bash
-cd ServEase-BE-API-main
+cd backend
 
-npm install          # install deps
-npm run start:dev    # dev server with watch (port 5000)
-npm run build        # compile to dist/
-npm run start:prod   # run compiled output
+npm install
+npm run start:dev    # dev server with watch — port 3001
+npm run build
+npm run start:prod
 
-npm run test         # unit tests (jest, matches *.spec.ts)
-npm run test:e2e     # e2e tests
-npm run test:cov     # coverage report
-npm run lint         # eslint --fix
+npm run test                          # all unit tests
+npm run test -- --testPathPattern=booking  # run a single test file
+npm run test:e2e
+npm run test:cov
+npm run lint
 ```
-
-### Known Issues
-
-- `src/config/supabaseClient.js` has the Supabase URL and anon key **hardcoded** — it ignores `.env`. This file should be updated to read from `process.env` to match how `SupabaseModule` works.
-- The backend connects to a **different Supabase project** (`onbojolpltzjyyruwevk`) than the mobile app (`strtoeeidqnsmbszhjhe`). No microservice schema migration has been applied to the backend.
 
 ### Environment
 
@@ -45,93 +42,144 @@ Copy `.env.example` and fill in:
 SUPABASE_URL=
 SUPABASE_SECRET_KEY=   # service role key (not anon)
 JWT_SECRET=
-PORT=5000
+PORT=3001
+ALLOWED_ORIGINS=       # comma-separated, optional
 ```
 
 ### Architecture
 
 NestJS module-per-domain layout under `src/modules/`:
 
-- **auth** — registration (customer + provider), login, JWT; uses `SupabaseAuthGuard` to verify bearer tokens via Supabase
+- **auth** — registration (customer + provider), login, JWT, token refresh
 - **users** — customer profile reads/updates
 - **customer** — customer-specific dashboard and booking queries
 - **provider** — provider profile, trust score, reviews, dashboard
 - **booking** — booking CRUD and status transitions
 - **payments** — payment creation and provider earnings
+- **addresses** — customer address management
+- **chat** — real-time messaging
+- **notifications** — push/in-app notifications
+- **uploads** — file/image uploads to Supabase Storage
 - **admin** — document status management
 - **services** — service category listings
-- **locations** — Philippine location reference data
-- **reference** — generic reference/lookup data
+- **locations** — Philippine location reference data (PSGC)
+- **reference** — generic lookup data
 
-`SupabaseModule` is `@Global()` and injects a single `SupabaseClient` (service-role key) everywhere via DI.
+**Guards**: `AppAuthGuard` (not `SupabaseAuthGuard`) protects all controllers unless decorated `@Public()`.
 
-All controllers are protected by `SupabaseAuthGuard` unless explicitly public. DTOs use `class-validator` decorators; `ValidationPipe` is applied globally.
+**Database DI — `src/database/supabase.module.ts`**
+
+`SupabaseModule` is `@Global()` and exposes per-schema injection tokens, each wrapped in a Circuit Breaker (trips after 5 failures, resets after 30 s):
+
+```typescript
+import { IDENTITY_CLIENT, CATALOG_CLIENT, BOOKING_CLIENT,
+         PAYMENT_CLIENT, TRUST_CLIENT, NOTIFICATION_CLIENT } from '../../database/supabase.module';
+
+// Inject with @Inject(IDENTITY_CLIENT) private identityClient: SupabaseClient
+```
+
+**Resilience patterns** (`src/common/utils/resilience.utils.ts`): Circuit Breaker + exponential backoff retries via RxJS. Side effects (e.g. creating payments after a booking) are handled with `@nestjs/event-emitter`.
+
+**Known Issue**: `src/config/supabaseClient.js` still has hardcoded credentials — it is unused by the NestJS DI path but should still be fixed to read from `process.env`.
 
 ---
 
-## Mobile App — `ServEase-mobile-test-expov3/`
+## Mobile App — `mobile/`
 
 ### Commands
 
 ```bash
-cd ServEase-mobile-test-expov3
+cd mobile
 
 npm install
-npm run start        # Expo dev server
+npx expo start           # Expo dev server
+npx expo start --tunnel  # use if LAN fails
 npm run android
 npm run ios
-npm run web
-npm run lint
 
-# If local network fails:
-npx expo start --tunnel
+npm test                                    # all Jest tests
+npm test -- --testPathPattern=BookingForm   # run a single test file
+npm run lint
 ```
+
+### Environment
+
+Create `mobile/.env`:
+```
+EXPO_PUBLIC_SUPABASE_URL=https://strtoeeidqnsmbszhjhe.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=
+EXPO_PUBLIC_API_URL=http://localhost:3001   # or ngrok URL when testing on device
+```
+
+For device testing, run `ngrok http 3001` and set `EXPO_PUBLIC_API_URL` to the forwarding URL.
 
 ### Architecture
 
-Expo Router (file-based routing). Two tab groups:
+**Routing** — Expo Router (file-based). `app/` contains thin route files only.
 
-- `app/(tabs)/` — customer tabs: home, bookings, messages, more
-- `app/(provider-tabs)/` — provider tabs: home, bookings, messages, pricing, ratings, metrics, more
+- `app/(tabs)/` — customer tab group: home, bookings, messages, more
+- `app/(provider-tabs)/` — provider tab group: home, bookings, messages, pricing, ratings, metrics, more
+- Flat screens outside tabs are prefixed by role: `customer-*`, `provider-*`
 
-Flat screens outside tabs are prefixed by role: `customer-*`, `provider-*`.
+**Feature-Based Modules** — business logic lives in `src/features/`:
 
-**State / Auth**
-- `context/AuthContext.tsx` — wraps Supabase auth session; exposes `session`, `role`, `loading`
-- `app/_layout.tsx` → `AuthGate` — reads `db_role` from user metadata and redirects to customer or provider tab group on login
+- `src/features/auth/screens/` — login, signup, forgot-password screens (customer + provider)
+- `src/features/bookings/screens/` — booking details, cancel, list screens
+- `src/features/common/` — shared feature utilities
 
-**Supabase clients (`lib/db.ts`)**
+**Shared UI** — `src/components/common/`: `AppButton`, `AppPressable`, `AppTextInput`. These are built on design tokens from `constants/tokens.ts` and `constants/theme.ts`.
 
-The database is being migrated from `public` schema to 6 microservice schemas. All service files use schema-scoped clients:
+**State / Auth** (`lib/auth-session.ts` + `context/AuthContext.tsx`):
+- `lib/auth-session.ts` — snapshot store for `{ session, user }`, backed by SecureStore; use `useSyncExternalStore` to subscribe
+- `context/AuthContext.tsx` — React context wrapping the snapshot; exposes `session`, `user`, `isLoading`, `passwordResetPending`
+- `app/_layout.tsx` → `AuthGate` — reads `db_role` from user metadata and redirects to the correct tab group
+
+**Backend communication** (`lib/apiClient.ts`):
+All calls to the NestJS backend go through `lib/apiClient.ts`, which handles auth headers, 401 token refresh, and query-string serialization. Direct Supabase queries still use the schema-scoped clients below.
+
+**Supabase clients (`lib/db.ts`)**:
 
 ```typescript
 import { identityDb, providerCatalogDb, bookingDb, paymentDb, trustDb, notificationDb, supabase } from '../lib/db';
 
-identityDb.from('users')                         // identity_svc
-providerCatalogDb.from('provider_profiles')      // provider_catalog_svc
-bookingDb.from('bookings')                       // booking_svc
-paymentDb.from('payments')                       // payment_svc
-trustDb.from('reviews')                          // trust_svc
-notificationDb.from('notifications')             // notification_svc
+identityDb.from('users')                // identity_svc
+providerCatalogDb.from('provider_profiles') // provider_catalog_svc
+bookingDb.from('bookings')              // booking_svc
+paymentDb.from('payments')              // payment_svc
+trustDb.from('reviews')                 // trust_svc
+notificationDb.from('notifications')    // notification_svc
 
 supabase.auth / supabase.storage / supabase.channel()  // always bare client
 ```
-
-> The migration SQL is in `supabase/microservices/` (00–03). The tables still live in `public` until an Supabase org admin exposes the new schemas. Check `CLAUDE.md` inside the mobile app for migration status.
-
-**Services layer (`services/`)**
-One file per domain — `bookingService.ts`, `chatService.ts`, `providerProfileService.ts`, etc. — all thin wrappers over the schema-scoped Supabase clients above.
-
-**Theme**
-Single source of truth: `constants/theme.ts`. Use `ThemedText` / `ThemedView` components for colour-aware rendering.
 
 ### Schema Map
 
 | Schema | Key Tables |
 |---|---|
-| `identity_svc` | users, customer_profiles, user_addresses |
-| `provider_catalog_svc` | provider_profiles, provider_verification, provider_services, service_categories |
-| `booking_svc` | bookings, booking_attachments, conversations, messages, provider_availability |
+| `identity_svc` | users, customer_profiles, user_addresses, auth_sessions, otp_codes |
+| `provider_catalog_svc` | provider_profiles, provider_verification, provider_services, service_categories, provider_documents |
+| `booking_svc` | bookings, booking_attachments, booking_reschedule_requests, additional_charges, provider_availability, provider_days_off, conversations, messages |
 | `payment_svc` | payments, provider_payouts |
 | `trust_svc` | reviews, provider_profile_reports |
 | `notification_svc` | notifications, support_tickets, disputes |
+
+### Microservice Migration Status
+
+SQL migration files are in `mobile/supabase/microservices/` (00–03). Tables still live in `public` until a Supabase org admin runs the migrations and exposes the new schemas. See `mobile/CLAUDE.md` for the full migration checklist and rollback SQL.
+
+### Testing
+
+- **Unit/integration**: Jest + React Testing Library. Test files live in `__tests__/` directories and alongside feature screens.
+- **E2E**: Maestro flows in `mobile/.maestro/` — run with `maestro test .maestro/<flow>.yaml`.
+
+---
+
+## Desktop — `desktop/`
+
+Three Vite/React apps under `desktop/apps/`: `admin`, `landing`, `provider`. These are UI prototypes generated from a Figma community file and are not yet integrated with the backend.
+
+```bash
+cd desktop
+npm install
+npm run dev
+```
