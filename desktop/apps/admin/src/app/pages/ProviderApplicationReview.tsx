@@ -1116,7 +1116,7 @@ export function ProviderApplicationReview() {
       </Dialog>
 
       {/* ─── APPROVE MODAL ─── */}
-      <Dialog open={showApproveModal} onOpenChange={setShowApproveModal}>
+      <Dialog open={showApproveModal} onOpenChange={(open) => { if (!isSubmitting) setShowApproveModal(open); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1137,7 +1137,7 @@ export function ProviderApplicationReview() {
             </ul>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setShowApproveModal(false)}>Cancel</Button>
+            <Button variant="outline" disabled={isSubmitting} onClick={() => setShowApproveModal(false)}>Cancel</Button>
             <Button
               className="bg-[#16A34A] hover:bg-[#15803D] gap-2"
               disabled={isSubmitting}
@@ -1149,6 +1149,7 @@ export function ProviderApplicationReview() {
                     status: "approved",
                     admin_id: admin?.id,
                   });
+                  toast.success("Application approved successfully.");
                   setShowApproveModal(false);
                   navigate("/provider-applications");
                 } catch (err) {
@@ -1170,7 +1171,7 @@ export function ProviderApplicationReview() {
       </Dialog>
 
       {/* ─── REJECT MODAL ─── */}
-      <Dialog open={showRejectModal} onOpenChange={setShowRejectModal}>
+      <Dialog open={showRejectModal} onOpenChange={(open) => { if (!isSubmitting) setShowRejectModal(open); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1193,7 +1194,7 @@ export function ProviderApplicationReview() {
             />
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setShowRejectModal(false)}>Cancel</Button>
+            <Button variant="outline" disabled={isSubmitting} onClick={() => setShowRejectModal(false)}>Cancel</Button>
             <Button
               variant="destructive"
               disabled={!rejectionReason.trim() || isSubmitting}
@@ -1206,6 +1207,7 @@ export function ProviderApplicationReview() {
                     reject_reason: rejectionReason,
                     admin_id: admin?.id,
                   });
+                  toast.success("Application rejected.");
                   setShowRejectModal(false);
                   navigate("/provider-applications");
                 } catch (err) {
