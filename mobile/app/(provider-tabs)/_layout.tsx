@@ -86,8 +86,13 @@ export default function ProviderTabsLayout() {
         options={{
           title: 'More',
           tabBarIcon: ({ color, focused }: TabBarIconProps) => (
-            <Ionicons name={focused ? "settings" : "settings-outline"} size={24} color={color} />
-          ),
+            // Replaced "settings-outline" and "More" with the correct 3-dot icons
+            <Ionicons 
+              name={focused ? "ellipsis-horizontal" : "ellipsis-horizontal-outline"} 
+              size={24} 
+              color={color} 
+            />
+          ),  
         }}
       />
       {/* Hide secondary routes from bottom bar but keep them accessible via router if needed */}

@@ -1,44 +1,154 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Platform, Dimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useAuth } from '@/hooks/useAuth';
-import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
-import { NotificationBadge } from '@/components/ui/notification-badge';
-import { getErrorMessage } from '@/lib/error-handling';
-import { getProviderBookings, normalizeProviderBookingStatus } from '@/services/providerBookingService';
-import { getProviderEarningsSummary } from '@/services/paymentService';
-import { supabase } from '@/lib/supabase';
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  SafeAreaView,
+  ActivityIndicator,
+  Dimensions,
+  Image,
+  StatusBar,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect, useRouter } from "expo-router";
+
+// --- Backend Hooks & Services from your structured code ---
+import { useAuth } from "@/hooks/useAuth";
+import { useUnreadNotifications } from "@/hooks/useUnreadNotifications";
+import { NotificationBadge } from "@/components/ui/notification-badge";
+import { getErrorMessage } from "@/lib/error-handling";
+import { getProviderBookings, normalizeProviderBookingStatus } from "@/services/providerBookingService";
+import { getProviderEarningsSummary } from "@/services/paymentService";
+import { supabase } from "@/lib/supabase";
 import {
   getProviderChatSummaries,
   subscribeToChatSummaries,
   type ChatSummary,
-} from '@/services/chatService';
+} from "@/services/chatService";
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const { width } = Dimensions.get("window");
 
-const STATUS_ACCENT: Record<string, string> = {
-  pending: '#F59E0B',
-  confirmed: '#3B82F6',
-  in_progress: '#00B761',
-  completed: '#6366F1',
-  cancelled: '#EF4444',
-};
-
+// --- Helper Functions from your structured code ---
 const formatScheduleShort = (ts?: string) => {
-  if (!ts) return { date: '--', time: '--', day: '--' };
+  if (!ts) return { date: "--", time: "--", day: "--" };
   const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return { date: '--', time: '--', day: '--' };
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  if (Number.isNaN(d.getTime())) return { date: "--", time: "--", day: "--" };
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   return {
-    date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    time: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+    date: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    time: d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
     day: days[d.getDay()],
   };
 };
 
+// Formats your backend status string to match your UI exact strings
+const formatUIStatus = (status: string) => {
+  const norm = normalizeProviderBookingStatus(status);
+  if (norm === 'in_progress') return 'In Progress';
+  return norm.charAt(0).toUpperCase() + norm.slice(1);
+};
+
+
+// --- Your UI Components (Kept exactly the same visually) ---
+const ActiveBookingItem = ({ id, customer, service, amount, status, avatar, onPress }: any) => (
+  <TouchableOpacity style={styles.bookingRow} onPress={onPress}>
+    <View style={styles.customerCell}>
+      <Image source={{ uri: avatar }} style={styles.tinyAvatar} />
+      <Text style={styles.customerName}>{customer}</Text>
+    </View>
+    <Text style={styles.serviceCell} numberOfLines={1}>
+      {service}
+    </Text>
+    <Text style={styles.amountCell}>₱{amount}</Text>
+    <View
+      style={[
+        styles.statusPill,
+        status === "Confirmed"
+          ? styles.statusConfirmed
+          : status === "Pending"
+          ? styles.statusPending
+          : styles.statusInProgress,
+      ]}
+    >
+      <Text
+        style={[
+          styles.statusText,
+          status === "Confirmed"
+            ? styles.textConfirmed
+            : status === "Pending"
+            ? styles.textPending
+            : styles.textInProgress,
+        ]}
+      >
+        {status}
+      </Text>
+    </View>
+  </TouchableOpacity>
+);
+
+const QuickAction = ({ icon, label, color, onPress }: any) => (
+  <TouchableOpacity style={styles.actionCard} activeOpacity={0.7} onPress={onPress}>
+    <View style={[styles.actionIconContainer, { backgroundColor: color + "15" }]}>
+      <Ionicons name={icon} size={24} color={color} />
+    </View>
+    <Text style={styles.actionLabel}>{label}</Text>
+  </TouchableOpacity>
+);
+
+const UpcomingBooking = ({ id, date, time, customer, service, location, status, onPress }: any) => (
+  <View style={styles.upcomingCard}>
+    <View style={styles.upcomingHeader}>
+      <Text style={styles.upcomingDateTime}>
+        {date} at {time}
+      </Text>
+      <View
+        style={[
+          styles.statusPillSmall,
+          status === "Confirmed" ? styles.statusConfirmed : styles.statusPending,
+        ]}
+      >
+        <Text
+          style={[
+            styles.statusTextSmall,
+            status === "Confirmed" ? styles.textConfirmed : styles.textPending,
+          ]}
+        >
+          {status}
+        </Text>
+      </View>
+    </View>
+    <Text style={styles.upcomingCustomer}>{customer}</Text>
+    <Text style={styles.upcomingService}>{service}</Text>
+    <View style={styles.locationRow}>
+      <Ionicons name="location-outline" size={14} color="#777" />
+      <Text style={styles.upcomingLocation} numberOfLines={1}>{location}</Text>
+    </View>
+    <TouchableOpacity style={styles.viewDetailsButton} onPress={onPress}>
+      <Text style={styles.viewDetailsText}>View Details</Text>
+    </TouchableOpacity>
+  </View>
+);
+
+const MetricItem = ({ label, value, progress }: any) => (
+  <View style={styles.metricRow}>
+    <View style={styles.metricLabelRow}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricValue}>{value}</Text>
+    </View>
+    <View style={styles.progressBarBg}>
+      <View style={[styles.progressBarFill, { width: progress }]} />
+    </View>
+  </View>
+);
+
+
+// --- Main Screen ---
 export default function ProviderDashboard() {
   const router = useRouter();
+  
+  // -- REAL LOGIC ENGINE --
   const { user } = useAuth();
   const unreadNotifications = useUnreadNotifications();
   const [rows, setRows] = useState<any[]>([]);
@@ -46,12 +156,12 @@ export default function ProviderDashboard() {
   const [pendingCollections, setPendingCollections] = useState(0);
   const [chatSummaries, setChatSummaries] = useState<ChatSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const providerFirstName = useMemo(() => {
     const meta = (user?.user_metadata ?? {}) as Record<string, any>;
-    const fullName = String(meta.full_name || meta.name || '').trim();
-    return fullName.split(/\s+/)[0] || 'Provider';
+    const fullName = String(meta.full_name || meta.name || "").trim();
+    return fullName.split(/\s+/)[0] || "Provider";
   }, [user]);
 
   const loadDashboard = React.useCallback(async () => {
@@ -61,7 +171,7 @@ export default function ProviderDashboard() {
       return;
     }
     setIsLoading(true);
-    setError('');
+    setError("");
     try {
       const [data, earningsSummary] = await Promise.all([
         getProviderBookings(user.id),
@@ -71,7 +181,7 @@ export default function ProviderDashboard() {
       setPaidEarnings(earningsSummary.totalNetEarnings);
       setPendingCollections(earningsSummary.pendingRevenue);
     } catch (err) {
-      setError(getErrorMessage(err, 'Failed to load provider dashboard.'));
+      setError(getErrorMessage(err, "Failed to load provider dashboard."));
     } finally {
       setIsLoading(false);
     }
@@ -85,20 +195,12 @@ export default function ProviderDashboard() {
 
   useEffect(() => {
     if (!user?.id) return;
-
     const channel = supabase
       .channel(`provider-dashboard-bookings-${user.id}`)
       .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'booking_svc',
-          table: 'bookings',
-          filter: `provider_id=eq.${user.id}`,
-        },
-        () => {
-          void loadDashboard();
-        }
+        "postgres_changes",
+        { event: "*", schema: "booking_svc", table: "bookings", filter: `provider_id=eq.${user.id}` },
+        () => void loadDashboard()
       )
       .subscribe();
 
@@ -112,7 +214,6 @@ export default function ProviderDashboard() {
       setChatSummaries([]);
       return;
     }
-
     try {
       const summaries = await getProviderChatSummaries(user.id);
       setChatSummaries(summaries);
@@ -127,754 +228,625 @@ export default function ProviderDashboard() {
 
   React.useEffect(() => {
     if (!user?.id) return;
-
     return subscribeToChatSummaries({
-      role: 'provider',
+      role: "provider",
       userId: user.id,
-      onChange: () => {
-        void loadChatSummaries();
-      },
+      onChange: () => void loadChatSummaries(),
     });
   }, [loadChatSummaries, user?.id]);
 
+  // -- CALCULATIONS FOR YOUR UI --
   const stats = useMemo(() => {
     const total = rows.length;
-    const upcoming = rows.filter((r) => !String(r.status).toLowerCase().includes('cancel') && !String(r.status).toLowerCase().includes('complete')).length;
-    const completed = rows.filter((r) => String(r.status).toLowerCase().includes('complete')).length;
-    const cancelled = rows.filter((r) => String(r.status).toLowerCase().includes('cancel')).length;
-    return { total, upcoming, completed, cancelled };
+    const upcoming = rows.filter((r) => !String(r.status).toLowerCase().includes("cancel") && !String(r.status).toLowerCase().includes("complete")).length;
+    return { total, upcoming };
   }, [rows]);
 
   const upcomingRows = useMemo(() => {
     const summaryMap = new Map(chatSummaries.map((summary) => [summary.bookingId, summary]));
-
     return rows
       .filter((r) => {
         const s = String(r.status).toLowerCase();
-        return !s.includes('cancel') && !s.includes('complete');
+        return !s.includes("cancel") && !s.includes("complete");
       })
       .sort((left, right) => {
         const leftUnread = summaryMap.get(String(left.id))?.unreadCount || 0;
         const rightUnread = summaryMap.get(String(right.id))?.unreadCount || 0;
         if (rightUnread !== leftUnread) return rightUnread - leftUnread;
-        const leftTime = new Date(left.scheduled_at || 0).getTime();
-        const rightTime = new Date(right.scheduled_at || 0).getTime();
-        return leftTime - rightTime;
+        return new Date(left.scheduled_at || 0).getTime() - new Date(right.scheduled_at || 0).getTime();
       })
       .slice(0, 5);
   }, [chatSummaries, rows]);
 
-  const chatSummaryMap = useMemo(
-    () => new Map(chatSummaries.map((summary) => [summary.bookingId, summary])),
-    [chatSummaries]
-  );
-
   const needsAttentionCount = useMemo(() => {
     let count = 0;
+    const chatSummaryMap = new Map(chatSummaries.map((summary) => [summary.bookingId, summary]));
     for (const row of upcomingRows) {
       const summary = chatSummaryMap.get(String(row.id));
       if (summary && summary.unreadCount > 0) count++;
     }
     return count;
-  }, [upcomingRows, chatSummaryMap]);
+  }, [upcomingRows, chatSummaries]);
 
-  const quickActions = useMemo(() => [
-    { icon: 'calendar' as const, label: 'Bookings', route: '/provider-bookings', accent: '#3B82F6' },
-    { icon: 'today' as const, label: 'Calendar', route: '/provider-calendar', accent: '#EF4444' },
-    { icon: 'pricetag' as const, label: 'Pricing', route: '/(provider-tabs)/pricing', accent: '#00B761' },
-    { icon: 'timer' as const, label: 'History', route: '/provider-history', accent: '#8B5CF6' },
-    { icon: 'shield-checkmark' as const, label: 'Availability', route: '/provider-availability', accent: '#F59E0B' },
-    { icon: 'construct' as const, label: 'More', route: '/(provider-tabs)/more', accent: '#64748B' },
-  ], []);
 
   return (
-    <View style={s.root}>
-      {/* ── Dark header zone ── */}
-      <View style={s.headerBg}>
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      
+      {/* Dynamic Header */}
+      <View style={styles.header}>
         <SafeAreaView>
-          <View style={s.headerInner}>
-            <View style={s.headerLeft}>
-              <Text style={s.greeting}>Good day,</Text>
-              <Text style={s.providerName}>{providerFirstName}</Text>
+          <View style={styles.headerContent}>
+            <View>
+              <Text style={styles.welcomeText}>Welcome back,</Text>
+              <Text style={styles.providerName}>{providerFirstName}</Text> 
             </View>
-            <View style={s.headerRight}>
-              <TouchableOpacity
-                style={s.notifBtn}
-                onPress={() => router.push('/notifications' as any)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="notifications" size={20} color="#FFF" />
-                <NotificationBadge
-                  count={unreadNotifications}
-                  top={-5}
-                  right={-5}
-                  borderColor="#0D1B2A"
-                />
-              </TouchableOpacity>
-            </View>
+            
+            {/* Added back the Notification bell mapped to your backend variables */}
+            <TouchableOpacity onPress={() => router.push("/notifications" as any)}>
+              <Ionicons name="notifications-outline" size={28} color="#FFF" />
+              <NotificationBadge count={unreadNotifications} top={0} right={-2} />
+            </TouchableOpacity>
           </View>
         </SafeAreaView>
-
-        {/* ── Earnings hero ── */}
-        <View style={s.earningsHero}>
-          <View style={s.earningsMain}>
-            <Text style={s.earningsLabel}>Total Earnings</Text>
-            <Text style={s.earningsAmount}>
-              <Text style={s.earningsCurrency}>P</Text>
-              {paidEarnings.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </Text>
-          </View>
-          <View style={s.earningsDivider} />
-          <View style={s.pendingWrap}>
-            <Text style={s.pendingLabel}>Pending</Text>
-            <Text style={s.pendingAmount}>P{pendingCollections.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-          </View>
-        </View>
       </View>
 
-      <ScrollView
-        style={s.scrollView}
-        contentContainerStyle={s.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {isLoading ? <ActivityIndicator size="large" color="#00B761" style={{ marginTop: 20 }} /> : null}
-        {error ? (
-          <View style={s.errorCard}>
-            <Ionicons name="alert-circle" size={16} color="#EF4444" />
-            <Text style={s.errorText}>{error}</Text>
+      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        
+        {/* Loading / Error States injected natively */}
+        {isLoading && <ActivityIndicator size="large" color="#00B761" style={{ marginTop: 20 }} />}
+        {error ? <Text style={{ color: 'red', textAlign: 'center', marginTop: 10 }}>{error}</Text> : null}
+
+        {/* Dynamic Earnings Card */}
+        <View style={styles.earningsCard}>
+          <View style={styles.earningsHeader}>
+            <Text style={styles.earningsLabel}>Total Earnings</Text>
+            <TouchableOpacity style={styles.walletIconContainer} onPress={() => router.push("/provider-earnings" as any)}>
+              <Ionicons name="wallet-outline" size={20} color="#00B761" />
+            </TouchableOpacity>
           </View>
-        ) : null}
-
-        {/* ── Stats strip ── */}
-        <View style={s.statsStrip}>
-          {[
-            { label: 'Total', value: String(stats.total), color: '#0D1B2A' },
-            { label: 'Active', value: String(stats.upcoming), color: '#00B761' },
-            { label: 'Done', value: String(stats.completed), color: '#3B82F6' },
-            { label: 'Cancelled', value: String(stats.cancelled), color: '#EF4444' },
-          ].map((item) => (
-            <TouchableOpacity
-              key={item.label}
-              style={s.statItem}
-              activeOpacity={0.7}
-              onPress={() => router.push('/provider-bookings' as any)}
-            >
-              <Text style={[s.statValue, { color: item.color }]}>{item.value}</Text>
-              <Text style={s.statLabel}>{item.label}</Text>
-            </TouchableOpacity>
-          ))}
+          <Text style={styles.earningsAmount}>
+            ₱{paidEarnings.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          </Text>
+          <View style={styles.trendRow}>
+            {/* Using pending collections here as an extra stat! */}
+            <Ionicons name="time-outline" size={16} color="#F59E0B" />
+            <Text style={[styles.trendText, { color: '#F59E0B' }]}>
+              ₱{pendingCollections.toLocaleString('en-US')} pending collections
+            </Text>
+          </View>
         </View>
 
-        {/* ── Quick actions ── */}
-        <View style={s.sectionHeader}>
-          <Text style={s.sectionTitle}>Quick Actions</Text>
+        {/* Dynamic Today's Jobs */}
+        <View style={styles.statsRow}>
+          <TouchableOpacity style={styles.statCard} onPress={() => router.push("/provider-calendar" as any)}>
+            <Text style={styles.statLabel}>Active{"\n"}Jobs</Text>
+            <Text style={styles.statValue}>{stats.upcoming}</Text>
+          </TouchableOpacity>
         </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.actionsScroll}
-        >
-          {quickActions.map((action) => (
-            <TouchableOpacity
-              key={action.label}
-              style={s.actionChip}
-              activeOpacity={0.75}
-              onPress={() => router.push(action.route as any)}
-            >
-              <View style={[s.actionIconWrap, { backgroundColor: action.accent + '14' }]}>
-                <Ionicons name={action.icon} size={18} color={action.accent} />
-              </View>
-              <Text style={s.actionLabel}>{action.label}</Text>
-            </TouchableOpacity>
+
+        {/* Static Rating Card (Since logic didn't have rating data) */}
+        <TouchableOpacity style={styles.ratingCardFull} onPress={() => router.push("/ratings" as any)}>
+          <View>
+            <Text style={styles.statLabel}>Rating</Text>
+            <View style={styles.ratingBox}>
+              <Text style={styles.statValue}>4.9</Text>
+              <Ionicons name="star" size={18} color="#FFD700" style={{ marginLeft: 4 }} />
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={24} color="#CCC" />
+        </TouchableOpacity>
+
+        {/* Dynamic Booking Alert */}
+        {needsAttentionCount > 0 && (
+          <TouchableOpacity style={styles.bookingAlert} onPress={() => router.push("/provider-bookings" as any)}>
+            <View style={styles.alertLeft}>
+              <Text style={styles.alertTitle}>{needsAttentionCount} Needs Reply</Text>
+              <Text style={styles.alertSubtitle}>Tap to check unread messages</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#FFF" />
+          </TouchableOpacity>
+        )}
+
+        {/* Dynamic Active Bookings Section */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Active Bookings</Text>
+          <TouchableOpacity onPress={() => router.push("/provider-bookings" as any)}>
+            <Text style={styles.viewAllText}>View All</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.tableContainer}>
+          <View style={styles.tableHeader}>
+            <Text style={[styles.headerText, { flex: 1.2 }]}>Customer</Text>
+            <Text style={[styles.headerText, { flex: 1.5 }]}>Service</Text>
+            <Text style={[styles.headerText, { flex: 1 }]}>Amount</Text>
+            <Text style={[styles.headerText, { flex: 1 }]}>Status</Text>
+          </View>
+
+          {/* Rendering the dynamic array into your Custom UI Table Rows */}
+          {rows.slice(0, 4).map((b) => (
+            <ActiveBookingItem
+              key={b.id}
+              id={b.id}
+              customer={b.customer_name}
+              service={b.service_title}
+              amount={b.total_amount?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              status={formatUIStatus(b.status)} 
+              avatar={`https://i.pravatar.cc/100?u=${b.customer_name}`} // Dynamic placeholder avatar
+              onPress={() =>
+                router.push({
+                  pathname: "/provider-booking-details",
+                  params: { id: b.id },
+                } as any)
+              }
+            />
           ))}
+          {rows.length === 0 && !isLoading && (
+              <Text style={{ textAlign: 'center', padding: 20, color: '#777' }}>No active bookings.</Text>
+          )}
+        </View>
+
+        {/* Quick Actions (Kept Static as designed) */}
+        <Text style={styles.sectionTitlePadding}>Quick Actions</Text>
+        <View style={styles.actionsGrid}>
+          <QuickAction icon="time-outline" label="Set Availability" color="#00B761" onPress={() => router.push("/provider-availability" as any)} />
+          <QuickAction icon="calendar-outline" label="View Calendar" color="#00B761" onPress={() => router.push("/provider-calendar" as any)} />
+          <QuickAction icon="cash-outline" label="Update Pricing" color="#00B761" onPress={() => router.push("/pricing" as any)} />
+          <QuickAction icon="trending-up-outline" label="View Earnings" color="#00B761" onPress={() => router.push("/provider-earnings" as any)} />
+        </View>
+
+        {/* Dynamic Upcoming Bookings */}
+        <Text style={styles.sectionTitlePadding}>Upcoming Bookings</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
+          {upcomingRows.map((b) => {
+            const schedule = formatScheduleShort(b.scheduled_at);
+            return (
+              <UpcomingBooking
+                key={b.id}
+                id={b.id}
+                date={schedule.date}
+                time={schedule.time}
+                customer={b.customer_name}
+                service={b.service_title}
+                location={b.location || "Location provided in details"} 
+                status={formatUIStatus(b.status)}
+                onPress={() =>
+                  router.push({
+                    pathname: "/provider-booking-details",
+                    params: { id: b.id },
+                  } as any)
+                }
+              />
+            );
+          })}
+          {upcomingRows.length === 0 && !isLoading && (
+              <Text style={{ color: '#777', paddingVertical: 20 }}>No upcoming bookings.</Text>
+          )}
         </ScrollView>
 
-        {/* ── Upcoming bookings ── */}
-        <View style={s.sectionHeader}>
-          <Text style={s.sectionTitle}>Upcoming</Text>
-          {needsAttentionCount > 0 ? (
-            <View style={s.attentionBadge}>
-              <Text style={s.attentionBadgeText}>{needsAttentionCount} needs reply</Text>
-            </View>
-          ) : null}
-        </View>
-
-        {upcomingRows.length === 0 && !isLoading ? (
-          <View style={s.emptyState}>
-            <View style={s.emptyIconWrap}>
-              <Ionicons name="calendar-outline" size={32} color="#CBD5E1" />
-            </View>
-            <Text style={s.emptyTitle}>No upcoming bookings</Text>
-            <Text style={s.emptySub}>New booking requests will appear here</Text>
-          </View>
-        ) : null}
-
-        {upcomingRows.map((b) => {
-          const schedule = formatScheduleShort(b.scheduled_at);
-          const chatSummary = chatSummaryMap.get(String(b.id));
-          const needsReply = Boolean((chatSummary?.unreadCount || 0) > 0);
-          const normalized = normalizeProviderBookingStatus(b.status);
-          const accent = STATUS_ACCENT[normalized] || '#64748B';
-          const statusLabel = normalized === 'in_progress' ? 'In Progress'
-            : normalized.charAt(0).toUpperCase() + normalized.slice(1);
-
-          return (
-            <TouchableOpacity
-              key={b.id}
-              style={s.bookingCard}
-              activeOpacity={0.8}
-              onPress={() =>
-                needsReply
-                  ? router.push({
-                      pathname: '/provider-chat',
-                      params: {
-                        id: b.id,
-                        name: b.customer_name,
-                        serviceName: b.service_title,
-                      },
-                    } as any)
-                  : router.push({ pathname: '/provider-booking-details', params: { id: b.id } } as any)
-              }
-            >
-              {/* Accent left edge */}
-              <View style={[s.bookingAccent, { backgroundColor: accent }]} />
-
-              <View style={s.bookingBody}>
-                {/* Top row: service + status */}
-                <View style={s.bookingTopRow}>
-                  <Text style={s.bookingService} numberOfLines={1}>{b.service_title}</Text>
-                  <View style={[s.statusPill, { backgroundColor: accent + '18' }]}>
-                    <View style={[s.statusDot, { backgroundColor: accent }]} />
-                    <Text style={[s.statusText, { color: accent }]}>{statusLabel}</Text>
-                  </View>
-                </View>
-
-                {/* Customer + schedule */}
-                <View style={s.bookingMidRow}>
-                  <View style={s.customerWrap}>
-                    <View style={s.customerAvatar}>
-                      <Text style={s.customerInitial}>
-                        {(b.customer_name || 'C').charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                    <Text style={s.customerName} numberOfLines={1}>{b.customer_name}</Text>
-                  </View>
-                  <View style={s.scheduleWrap}>
-                    <Text style={s.scheduleDay}>{schedule.day}</Text>
-                    <Text style={s.scheduleDate}>{schedule.date}</Text>
-                    <Text style={s.scheduleTime}>{schedule.time}</Text>
-                  </View>
-                </View>
-
-                {/* Amount */}
-                <View style={s.bookingBottomRow}>
-                  <Text style={s.bookingAmount}>P{b.total_amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-
-                  {needsReply ? (
-                    <View style={s.replyChip}>
-                      <Ionicons name="chatbubble-ellipses" size={12} color="#FFF" />
-                      <Text style={s.replyChipText}>Reply</Text>
-                    </View>
-                  ) : (
-                    <View style={s.viewChip}>
-                      <Text style={s.viewChipText}>View</Text>
-                      <Ionicons name="arrow-forward" size={12} color="#64748B" />
-                    </View>
-                  )}
-                </View>
-
-                {/* Chat preview */}
-                {chatSummary ? (
-                  <View style={s.chatPreview}>
-                    <Ionicons name="chatbubble-outline" size={12} color="#94A3B8" />
-                    <Text style={s.chatPreviewText} numberOfLines={1}>
-                      {chatSummary.lastMessage}
-                    </Text>
-                    {chatSummary.unreadCount > 0 ? (
-                      <View style={s.unreadDot}>
-                        <Text style={s.unreadDotText}>
-                          {chatSummary.unreadCount > 9 ? '9+' : chatSummary.unreadCount}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                ) : null}
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-
-        {upcomingRows.length > 0 ? (
-          <TouchableOpacity
-            style={s.viewAllBtn}
-            activeOpacity={0.7}
-            onPress={() => router.push('/provider-bookings' as any)}
-          >
-            <Text style={s.viewAllText}>View all bookings</Text>
-            <Ionicons name="arrow-forward" size={14} color="#00B761" />
+        {/* Performance Metrics (Static Visual) */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Performance Metrics</Text>
+          <TouchableOpacity onPress={() => router.push("/metrics" as any)}>
+            <Text style={styles.viewAllText}>Analysis</Text>
           </TouchableOpacity>
-        ) : null}
+        </View>
+        <TouchableOpacity style={styles.metricsContainer} activeOpacity={0.7} onPress={() => router.push("/metrics" as any)}>
+          <MetricItem label="Acceptance Rate" value="92%" progress="92%" />
+          <MetricItem label="Completion Rate" value="98%" progress="98%" />
+          <MetricItem label="Response Time" value="< 5 min" progress="85%" />
+        </TouchableOpacity>
 
-        <View style={{ height: 24 }} />
+        <View style={styles.footerSpacer} />
       </ScrollView>
     </View>
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────
-const s = StyleSheet.create({
-  root: {
+// --- YOUR EXACT STYLES - ZERO CHANGES ---
+const styles = StyleSheet.create({
+  container: {
     flex: 1,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: "#F8F9FA",
   },
-
-  // ── Header ──
-  headerBg: {
-    backgroundColor: '#0D1B2A',
-    paddingBottom: 20,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+  header: {
+    backgroundColor: "#00B761",
+    paddingBottom: 80,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
   },
-  headerInner: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'web' ? 16 : 6,
-    paddingBottom: 4,
+  headerContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingTop: 20,
   },
-  headerLeft: {},
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  greeting: {
-    fontSize: 13,
-    color: '#64748B',
-    fontWeight: '500',
-    letterSpacing: 0.3,
+  welcomeText: {
+    fontSize: 16,
+    color: "#E8FBF2",
+    fontFamily: "Outfit-Regular",
   },
   providerName: {
     fontSize: 24,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-    marginTop: 1,
+    fontWeight: "800",
+    color: "#FFF",
+    fontFamily: "Outfit-Bold",
   },
-  notifBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-
-  // ── Earnings hero ──
-  earningsHero: {
-    marginHorizontal: 20,
-    marginTop: 16,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 16,
-    padding: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
-  },
-  earningsMain: {
+  scrollContainer: {
     flex: 1,
+    marginTop: -60,
+  },
+  earningsCard: {
+    backgroundColor: "#FFF",
+    marginHorizontal: 24,
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  earningsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
   },
   earningsLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#64748B',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    fontSize: 14,
+    color: "#777",
+    fontWeight: "600",
+  },
+  walletIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#E8FBF2",
+    justifyContent: "center",
+    alignItems: "center",
   },
   earningsAmount: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: '#00B761',
-    marginTop: 4,
-    letterSpacing: -1,
+    fontSize: 36,
+    fontWeight: "800",
+    color: "#00B761",
+    marginBottom: 8,
+    fontFamily: "Outfit-Bold",
   },
-  earningsCurrency: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#00B761',
+  trendRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
-  earningsDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    marginHorizontal: 18,
+  trendText: {
+    fontSize: 12,
+    color: "#00B761",
+    fontWeight: "700",
+    marginLeft: 6,
   },
-  pendingWrap: {
-    alignItems: 'flex-end',
+  statsRow: {
+    flexDirection: "row",
+    paddingHorizontal: 24,
+    marginTop: 20,
+    gap: 12,
   },
-  pendingLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#64748B',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  pendingAmount: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#F59E0B',
-    marginTop: 4,
-    letterSpacing: -0.5,
-  },
-
-  // ── Scroll ──
-  scrollView: {
+  statCard: {
     flex: 1,
-    marginTop: -8,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
-  },
-
-  // ── Error ──
-  errorCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#FEF2F2',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-  },
-  errorText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#991B1B',
-    fontWeight: '500',
-  },
-
-  // ── Stats strip ──
-  statsStrip: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 4,
-    marginBottom: 20,
-    shadowColor: '#0D1B2A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
+    backgroundColor: "#FFF",
+    borderRadius: 20,
+    padding: 16,
+    justifyContent: "space-between",
+    minHeight: 100,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
     elevation: 2,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: -0.5,
   },
   statLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#94A3B8',
-    marginTop: 2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-
-  // ── Section headers ──
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0F172A',
-    letterSpacing: -0.3,
-  },
-
-  // ── Quick actions (horizontal scroll) ──
-  actionsScroll: {
-    paddingBottom: 20,
-    gap: 10,
-  },
-  actionChip: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    width: (SCREEN_W - 70) / 3,
-    shadowColor: '#0D1B2A',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  actionIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  actionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#334155',
-    letterSpacing: -0.2,
-  },
-
-  // ── Attention badge ──
-  attentionBadge: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  attentionBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#92400E',
-  },
-
-  // ── Empty state ──
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 36,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderStyle: 'dashed',
-  },
-  emptyIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#F1F5F9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#334155',
-  },
-  emptySub: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: "#777",
+    fontWeight: "600",
+    lineHeight: 16,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#0D1B2A",
+  },
+  ratingBox: {
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 4,
   },
-
-  // ── Booking card ──
-  bookingCard: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    marginBottom: 10,
-    overflow: 'hidden',
-    shadowColor: '#0D1B2A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
+  ratingCardFull: {
+    backgroundColor: "#FFF",
+    marginHorizontal: 24,
+    marginTop: 12,
+    borderRadius: 20,
+    padding: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
     elevation: 2,
   },
-  bookingAccent: {
-    width: 4,
+  bookingAlert: {
+    backgroundColor: "#00B761",
+    marginHorizontal: 24,
+    marginTop: 24,
+    borderRadius: 20,
+    padding: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  bookingBody: {
+  alertLeft: {
     flex: 1,
-    padding: 14,
-    paddingLeft: 12,
   },
-  bookingTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  bookingService: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
-    letterSpacing: -0.3,
-    marginRight: 8,
-  },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    gap: 4,
-  },
-  statusDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-
-  // Customer + schedule row
-  bookingMidRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  customerWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 8,
-  },
-  customerAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#E2E8F0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  customerInitial: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  customerName: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#475569',
-  },
-  scheduleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  scheduleDay: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-  },
-  scheduleDate: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  scheduleTime: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#64748B',
-  },
-
-  // Bottom row
-  bookingBottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  bookingAmount: {
+  alertTitle: {
     fontSize: 16,
-    fontWeight: '800',
-    color: '#0F172A',
-    letterSpacing: -0.5,
+    fontWeight: "700",
+    color: "#FFF",
+    marginBottom: 4,
   },
-  replyChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#00B761',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
+  alertSubtitle: {
+    fontSize: 13,
+    color: "#E8FBF2",
   },
-  replyChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#FFF',
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    marginTop: 30,
+    marginBottom: 16,
   },
-  viewChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: '#F1F5F9',
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#0D1B2A",
   },
-  viewChipText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-
-  // Chat preview
-  chatPreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-  },
-  chatPreviewText: {
-    flex: 1,
-    fontSize: 12,
-    color: '#64748B',
-  },
-  unreadDot: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#00B761',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  unreadDotText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#FFF',
-  },
-
-  // ── View all ──
-  viewAllBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 14,
-    marginTop: 4,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,183,97,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(0,183,97,0.12)',
+  sectionTitlePadding: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#0D1B2A",
+    paddingHorizontal: 24,
+    marginTop: 30,
+    marginBottom: 16,
   },
   viewAllText: {
+    fontSize: 14,
+    color: "#00B761",
+    fontWeight: "700",
+  },
+  tableContainer: {
+    backgroundColor: "#FFF",
+    marginHorizontal: 24,
+    borderRadius: 20,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  tableHeader: {
+    flexDirection: "row",
+    backgroundColor: "#E8FBF2",
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+  },
+  headerText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#777",
+    textTransform: "uppercase",
+  },
+  bookingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F8F9FA",
+  },
+  customerCell: {
+    flex: 1.2,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  tinyAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  customerName: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#0D1B2A",
+  },
+  serviceCell: {
+    flex: 1.5,
+    fontSize: 11,
+    color: "#444",
+  },
+  amountCell: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#00B761",
+  },
+  statusPill: {
+    flex: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    alignItems: "center",
+  },
+  statusConfirmed: {
+    backgroundColor: "#E8FBF2",
+  },
+  statusPending: {
+    backgroundColor: "#FFF2E6",
+  },
+  statusInProgress: {
+    backgroundColor: "#E6F0FF",
+  },
+  statusText: {
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  textConfirmed: {
+    color: "#00B761",
+  },
+  textPending: {
+    color: "#FF8800",
+  },
+  textInProgress: {
+    color: "#0066FF",
+  },
+  actionsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 18,
+    gap: 12,
+  },
+  actionCard: {
+    width: (width - 48 - 12) / 2,
+    backgroundColor: "#FFF",
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  actionIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  actionLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#0D1B2A",
+  },
+  horizontalScroll: {
+    paddingLeft: 24,
+    paddingRight: 12,
+    paddingBottom: 20,
+  },
+  upcomingCard: {
+    width: width * 0.75,
+    backgroundColor: "#FFF",
+    borderRadius: 20,
+    padding: 20,
+    marginRight: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  upcomingHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  upcomingDateTime: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#00B761',
+    fontWeight: "700",
+    color: "#00B761",
+  },
+  statusPillSmall: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  statusTextSmall: {
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  upcomingCustomer: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#0D1B2A",
+    marginBottom: 4,
+  },
+  upcomingService: {
+    fontSize: 14,
+    color: "#444",
+    marginBottom: 12,
+  },
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  upcomingLocation: {
+    fontSize: 12,
+    color: "#777",
+    marginLeft: 4,
+  },
+  viewDetailsButton: {
+    backgroundColor: "#F8F9FA",
+    height: 44,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  viewDetailsText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0D1B2A",
+  },
+  metricsContainer: {
+    backgroundColor: "#FFF",
+    marginHorizontal: 24,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+  },
+  metricRow: {
+    marginBottom: 20,
+  },
+  metricLabelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  metricLabel: {
+    fontSize: 14,
+    color: "#444",
+    fontWeight: "600",
+  },
+  metricValue: {
+    fontSize: 14,
+    color: "#00B761",
+    fontWeight: "700",
+  },
+  progressBarBg: {
+    height: 6,
+    backgroundColor: "#F0F0F0",
+    borderRadius: 3,
+  },
+  progressBarFill: {
+    height: "100%",
+    backgroundColor: "#00B761",
+    borderRadius: 3,
+  },
+  footerSpacer: {
+    height: 40,
   },
 });
