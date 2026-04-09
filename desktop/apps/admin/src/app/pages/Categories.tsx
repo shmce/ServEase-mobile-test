@@ -388,7 +388,7 @@ export function Categories() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Category</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{selectedCategory?.name}"? This action cannot be undone
+              Are you sure you want to delete &quot;{selectedCategory?.name}&quot;? This action cannot be undone
               and will affect all associated services.
             </AlertDialogDescription>
           </AlertDialogHeader>

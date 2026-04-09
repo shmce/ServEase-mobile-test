@@ -750,11 +750,11 @@ export function ProviderApplicationReview() {
                       className="mt-1.5 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A]"
                     >
                       <option>PhilSys National ID</option>
-                      <option>Driver's License</option>
+                      <option>Driver&apos;s License</option>
                       <option>Passport</option>
                       <option>PRC ID</option>
                       <option>SSS ID</option>
-                      <option>Voter's ID</option>
+                      <option>Voter&apos;s ID</option>
                     </select>
                   </div>
                   <div>
@@ -1178,7 +1178,7 @@ export function ProviderApplicationReview() {
               <XCircle className="w-5 h-5 text-red-500" />Reject Application
             </DialogTitle>
             <DialogDescription>
-              Rejecting <strong>{application.businessName}</strong>'s application. This action will notify the applicant.
+              Rejecting <strong>{application.businessName}</strong>&apos;s application. This action will notify the applicant.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">

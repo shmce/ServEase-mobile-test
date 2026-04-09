@@ -123,7 +123,7 @@ export function RestaurantSellers() {
                         <p className="font-medium">{restaurant.menuItems}</p>
                       </div>
                       <div>
-                        <p className="text-gray-500">Today's Orders</p>
+                        <p className="text-gray-500">Today&apos;s Orders</p>
                         <p className="font-medium">{restaurant.orders}</p>
                       </div>
                       <div>

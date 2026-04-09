@@ -474,7 +474,7 @@ export function ServiceAreas() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Service Area</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{selectedArea?.name}"? This action cannot be undone
+              Are you sure you want to delete &quot;{selectedArea?.name}&quot;? This action cannot be undone
               and will affect service availability in this area.
             </AlertDialogDescription>
           </AlertDialogHeader>

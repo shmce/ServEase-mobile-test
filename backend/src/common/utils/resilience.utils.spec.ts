@@ -1,4 +1,4 @@
-import { Logger, ServiceUnavailableException } from '@nestjs/common';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { CircuitBreaker, CircuitState, withRetry } from './resilience.utils';
 
 describe('CircuitBreaker', () => {
@@ -9,10 +9,12 @@ describe('CircuitBreaker', () => {
   it('opens after hitting the failure threshold', async () => {
     const breaker = new CircuitBreaker('TEST', 2, 1000);
 
-    await expect(breaker.execute(async () => Promise.reject(new Error('boom'))))
-      .rejects.toThrow('boom');
-    await expect(breaker.execute(async () => Promise.reject(new Error('boom'))))
-      .rejects.toThrow('boom');
+    await expect(
+      breaker.execute(async () => Promise.reject(new Error('boom'))),
+    ).rejects.toThrow('boom');
+    await expect(
+      breaker.execute(async () => Promise.reject(new Error('boom'))),
+    ).rejects.toThrow('boom');
 
     expect(breaker.getState()).toBe(CircuitState.OPEN);
   });
@@ -20,8 +22,9 @@ describe('CircuitBreaker', () => {
   it('throws immediately while open before reset timeout', async () => {
     const breaker = new CircuitBreaker('TEST', 1, 60_000);
 
-    await expect(breaker.execute(async () => Promise.reject(new Error('boom'))))
-      .rejects.toThrow('boom');
+    await expect(
+      breaker.execute(async () => Promise.reject(new Error('boom'))),
+    ).rejects.toThrow('boom');
 
     await expect(breaker.execute(async () => 'ok')).rejects.toThrow(
       ServiceUnavailableException,
@@ -33,8 +36,9 @@ describe('CircuitBreaker', () => {
     const breaker = new CircuitBreaker('TEST', 1, 100);
 
     nowSpy.mockReturnValueOnce(1000);
-    await expect(breaker.execute(async () => Promise.reject(new Error('boom'))))
-      .rejects.toThrow('boom');
+    await expect(
+      breaker.execute(async () => Promise.reject(new Error('boom'))),
+    ).rejects.toThrow('boom');
 
     nowSpy.mockReturnValue(1201);
     await expect(breaker.execute(async () => 'recovered')).resolves.toBe(
@@ -49,8 +53,9 @@ describe('CircuitBreaker', () => {
     const breaker = new CircuitBreaker('TEST', 1, 100);
 
     nowSpy.mockReturnValueOnce(1000);
-    await expect(breaker.execute(async () => Promise.reject(new Error('boom'))))
-      .rejects.toThrow('boom');
+    await expect(
+      breaker.execute(async () => Promise.reject(new Error('boom'))),
+    ).rejects.toThrow('boom');
 
     nowSpy.mockReturnValue(1201);
     await expect(

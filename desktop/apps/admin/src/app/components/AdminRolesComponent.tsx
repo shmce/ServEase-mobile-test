@@ -490,7 +490,7 @@ export function AdminRolesComponent() {
                               <span>Deactivate Admin</span>
                               {!canDeactivate(admin) && (
                                 <span className="text-xs text-gray-500 font-normal mt-0.5">
-                                  Can't deactivate the last Super Admin
+                                  Can&apos;t deactivate the last Super Admin
                                 </span>
                               )}
                             </div>
@@ -559,7 +559,7 @@ export function AdminRolesComponent() {
                             <span>Deactivate Admin</span>
                             {!canDeactivate(admin) && (
                               <span className="text-xs text-gray-500 font-normal mt-0.5">
-                                Can't deactivate the last Super Admin
+                                Can&apos;t deactivate the last Super Admin
                               </span>
                             )}
                           </div>
@@ -1135,7 +1135,7 @@ export function AdminRolesComponent() {
         <div className="mt-4">
           <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
             <p className="text-sm text-yellow-800">
-              <strong>Note:</strong> You can't deactivate the last Super Admin. At least one Super
+              <strong>Note:</strong> You can&apos;t deactivate the last Super Admin. At least one Super
               Admin must remain active.
             </p>
           </div>

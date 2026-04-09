@@ -267,7 +267,7 @@ export function Security() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-gray-500 mb-4">
-            Manage devices where you're currently signed in
+            Manage devices where you&apos;re currently signed in
           </p>
 
           <div className="space-y-3">

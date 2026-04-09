@@ -52,7 +52,7 @@ export function ForgotPassword() {
             </div>
             <h2 className="text-3xl font-bold mb-4">Reset Your Password</h2>
             <p className="text-white/90 text-lg leading-relaxed">
-              Enter your email address and we'll send you a secure link to reset your admin
+              Enter your email address and we&apos;ll send you a secure link to reset your admin
               password.
             </p>
           </div>
@@ -82,7 +82,7 @@ export function ForgotPassword() {
                 <div className="mb-6">
                   <h2 className="text-2xl font-bold text-gray-900">Reset password</h2>
                   <p className="text-gray-600 mt-1">
-                    Enter your email and we'll send you a reset link.
+                    Enter your email and we&apos;ll send you a reset link.
                   </p>
                 </div>
 
@@ -148,7 +148,7 @@ export function ForgotPassword() {
                   </p>
 
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-6 text-left">
-                    <p className="text-sm text-gray-700 font-medium mb-2">What's next?</p>
+                    <p className="text-sm text-gray-700 font-medium mb-2">What&apos;s next?</p>
                     <ul className="text-sm text-gray-600 space-y-1">
                       <li className="flex items-start gap-2">
                         <span className="text-[#00BF63] mt-1">•</span>
@@ -166,7 +166,7 @@ export function ForgotPassword() {
                   </div>
 
                   <p className="text-xs text-gray-500 mb-6">
-                    Didn't receive the email? Check your spam folder or wait a few minutes.
+                    Didn&apos;t receive the email? Check your spam folder or wait a few minutes.
                   </p>
 
                   <Link to="/login">

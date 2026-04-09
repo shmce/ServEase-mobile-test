@@ -573,7 +573,7 @@ export function Promotions() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Promotion</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete promotion code "{selectedPromotion?.code}"? This
+              Are you sure you want to delete promotion code &quot;{selectedPromotion?.code}&quot;? This
               action cannot be undone. Users will no longer be able to use this code.
             </AlertDialogDescription>
           </AlertDialogHeader>

@@ -379,7 +379,7 @@ export function Dashboard() {
             Welcome back, {admin?.name?.split(" ")[0] || "Admin"} 👋
           </h1>
           <p className="text-gray-500 mt-1">
-            Here's what's happening on ServEase today.
+            Here&apos;s what&apos;s happening on ServEase today.
           </p>
         </div>
         <div className="flex items-center gap-3">

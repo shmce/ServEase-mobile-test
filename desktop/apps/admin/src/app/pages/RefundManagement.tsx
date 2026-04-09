@@ -359,7 +359,7 @@ export function RefundManagement() {
           <DialogHeader>
             <DialogTitle>Approve Refund Request</DialogTitle>
             <DialogDescription>
-              Are you sure you want to approve this refund? The amount will be returned to the customer's card.
+              Are you sure you want to approve this refund? The amount will be returned to the customer&apos;s card.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

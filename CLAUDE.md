@@ -10,7 +10,7 @@ Monorepo with three independent subprojects:
 |---|---|---|
 | `backend/` | REST API | NestJS, TypeScript |
 | `mobile/` | Mobile app | Expo + React Native, TypeScript |
-| `desktop/` | Admin/landing web apps | React (Vite) |
+| `desktop/` | Admin/landing web apps | Next.js 15 (admin), Vite/React (landing, provider) |
 
 The `backend/` and `mobile/` connect to the **same** Supabase project (`strtoeeidqnsmbszhjhe`). The `desktop/` apps are UI prototypes from a Figma community file.
 
@@ -24,7 +24,7 @@ The `backend/` and `mobile/` connect to the **same** Supabase project (`strtoeei
 cd backend
 
 npm install
-npm run start:dev    # dev server with watch — port 3001
+npm run start:dev    # dev server with watch — port 4000
 npm run build
 npm run start:prod
 
@@ -42,7 +42,7 @@ Copy `.env.example` and fill in:
 SUPABASE_URL=
 SUPABASE_SECRET_KEY=   # service role key (not anon)
 JWT_SECRET=
-PORT=3001
+PORT=4000
 ALLOWED_ORIGINS=       # comma-separated, optional
 ```
 
@@ -108,10 +108,10 @@ Create `mobile/.env`:
 ```
 EXPO_PUBLIC_SUPABASE_URL=https://strtoeeidqnsmbszhjhe.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=
-EXPO_PUBLIC_API_URL=http://localhost:3001   # or ngrok URL when testing on device
+EXPO_PUBLIC_API_URL=http://localhost:4000   # or ngrok URL when testing on device
 ```
 
-For device testing, run `ngrok http 3001` and set `EXPO_PUBLIC_API_URL` to the forwarding URL.
+For device testing, run `ngrok http 4000` and set `EXPO_PUBLIC_API_URL` to the forwarding URL.
 
 ### Architecture
 
@@ -176,10 +176,37 @@ SQL migration files are in `mobile/supabase/microservices/` (00–03). Tables st
 
 ## Desktop — `desktop/`
 
-Three Vite/React apps under `desktop/apps/`: `admin`, `landing`, `provider`. These are UI prototypes generated from a Figma community file and are not yet integrated with the backend.
+Three apps under `desktop/apps/`: `admin` (Next.js 15), `landing`, `provider` (both Vite/React). The `landing` and `provider` apps are UI prototypes from a Figma community file. The `admin` app is partially integrated with the backend.
+
+### Admin app — `desktop/apps/admin/`
 
 ```bash
-cd desktop
+cd desktop/apps/admin
+
 npm install
-npm run dev
+npm run dev    # Next.js dev server — port 3001
+npm run build
+npm run lint
 ```
+
+Create `desktop/apps/admin/.env.local`:
+```
+NEXT_PUBLIC_API_URL=http://localhost:4000
+```
+
+**Architecture**
+
+Next.js 15 App Router. Route files in `src/app/(dashboard)/` are thin shells — all page logic lives in `src/app/pages/` (React components imported by the route files).
+
+**API layer (`src/lib/adminApi.ts`)** — single module for all backend calls. Import from here; never call `fetch` directly in page components.
+- Real endpoints: `adminLogin()`, `updateDocumentStatus()`
+- Stubs (return `null`, each has a `// TODO:` comment naming the needed endpoint): `getDashboardStats()`, `getProviderApplications()`, `getProviders()`, `getBookings()`, `getTransactions()`
+- When a stub returns `null`, the app shows empty state. To wire a real endpoint: implement the fetch in `adminApi.ts` and remove the stub.
+
+**Auth (`src/app/contexts/AuthContext.tsx`)** — calls `adminApi.adminLogin()`. JWT stored in `localStorage` under key `servease_admin_token`. Admin profile stored under `servease_admin`. Import `useAuth()` to access `{ admin, isAuthenticated, login, logout }`.
+
+**Data (`src/contexts/DataContext.tsx`)** — fetches all data on mount via `adminApi.*` stubs. Exposes `isLoading`, `error`, and all data arrays. Mutation actions (`updateBookingStatus`, `approveRefund`, etc.) are local-state-only with `// TODO:` comments marking where real API calls will go. Import `useData()` in page components.
+
+**Known pre-existing TypeScript errors** (do not fix unless specifically working on these files):
+- `src/app/components/ProtectedRoute.tsx` — 1 syntax error
+- `src/imports/pasted_text/application-helpers.ts` — many parse errors

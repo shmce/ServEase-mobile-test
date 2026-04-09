@@ -355,7 +355,7 @@ export function PayoutRequests() {
             <DialogTitle>Approve Payout Request</DialogTitle>
             <DialogDescription>
               Are you sure you want to approve this payout request? The funds will be processed
-              for transfer to the provider's bank account.
+              for transfer to the provider&apos;s bank account.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

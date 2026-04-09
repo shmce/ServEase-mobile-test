@@ -25,7 +25,7 @@ export function SignOutModal({ isOpen, onClose, onConfirm }: SignOutModalProps) 
           </div>
           <DialogTitle className="text-center">Confirm Sign Out</DialogTitle>
           <DialogDescription className="text-center">
-            Are you sure you want to sign out? You'll need to log in again to access the admin panel.
+            Are you sure you want to sign out? You&apos;ll need to log in again to access the admin panel.
           </DialogDescription>
         </DialogHeader>
 
