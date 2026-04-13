@@ -1,4 +1,13 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import {
+  AdminApiError,
+  clearAdminSession,
+  getCurrentAdmin,
+  getStoredAdminSession,
+  loginAdmin,
+  logoutAdmin,
+  storeAdminSession,
+} from "../../lib/adminApi";
 
 interface Admin {
   id: string;
@@ -9,85 +18,108 @@ interface Admin {
 
 interface AuthContextType {
   admin: Admin | null;
+  accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
   sessionExpired: boolean;
   clearSessionExpired: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Demo credentials for testing
-const DEMO_ADMIN = {
-  email: "juan@servease.ph",
-  password: "admin123",
-  admin: {
-    id: "ADM-001",
-    name: "Juan Dela Cruz",
-    email: "juan@servease.ph",
-    role: "Super Admin",
-  },
-};
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [admin, setAdmin] = useState<Admin | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
 
   // Check for existing session on mount
   useEffect(() => {
-    const storedAdmin = localStorage.getItem("servease_admin");
-    if (storedAdmin) {
-      try {
-        setAdmin(JSON.parse(storedAdmin));
-      } catch (error) {
-        localStorage.removeItem("servease_admin");
+    let isMounted = true;
+
+    const restoreSession = async () => {
+      const storedSession = getStoredAdminSession();
+      if (!storedSession) {
+        clearAdminSession();
+        if (isMounted) {
+          setIsLoading(false);
+        }
+        return;
       }
-    }
-    setIsLoading(false);
+
+      setAdmin(storedSession.admin);
+      setAccessToken(storedSession.accessToken);
+
+      try {
+        const freshAdmin = await getCurrentAdmin(storedSession.accessToken);
+        if (isMounted) {
+          setAdmin(freshAdmin);
+          storeAdminSession({
+            accessToken: storedSession.accessToken,
+            refreshToken: storedSession.refreshToken,
+            admin: freshAdmin,
+          });
+        }
+      } catch {
+        if (isMounted) {
+          clearAdminSession();
+          setAdmin(null);
+          setAccessToken(null);
+          setSessionExpired(true);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void restoreSession();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const login = async (
     email: string,
     password: string
   ): Promise<{ success: boolean; error?: string }> => {
-    // Simulate API call delay
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    // Demo validation
-    if (email === DEMO_ADMIN.email && password === DEMO_ADMIN.password) {
-      setAdmin(DEMO_ADMIN.admin);
-      localStorage.setItem("servease_admin", JSON.stringify(DEMO_ADMIN.admin));
+    try {
+      const session = await loginAdmin(email, password);
+      setAdmin(session.admin);
+      setAccessToken(session.accessToken);
+      storeAdminSession(session);
       setSessionExpired(false);
       return { success: true };
-    }
+    } catch (error) {
+      if (error instanceof AdminApiError) {
+        return { success: false, error: error.message };
+      }
 
-    // Check for other demo scenarios
-    if (email === "inactive@servease.ph") {
       return {
         success: false,
-        error: "This admin account is inactive. Contact a Super Admin.",
+        error: "Unable to sign in right now. Please try again.",
       };
     }
-
-    if (email === "user@servease.ph") {
-      return {
-        success: false,
-        error: "Access restricted. This portal is for authorized admins only.",
-      };
-    }
-
-    return {
-      success: false,
-      error: "Incorrect email or password.",
-    };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const token = accessToken ?? getStoredAdminSession()?.accessToken;
+
+    if (token) {
+      try {
+        await logoutAdmin(token);
+      } catch {
+        // Ignore backend logout failures and clear the local session.
+      }
+    }
+
     setAdmin(null);
-    localStorage.removeItem("servease_admin");
+    setAccessToken(null);
+    clearAdminSession();
   };
 
   const clearSessionExpired = () => {
@@ -98,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         admin,
+        accessToken,
         isAuthenticated: !!admin,
         isLoading,
         login,

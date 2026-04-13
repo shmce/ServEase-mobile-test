@@ -284,17 +284,10 @@ export function Login() {
                 for access.
               </p>
 
-              {/* Demo Credentials Helper */}
               <div className="mt-6 pt-6 border-t">
-                <p className="text-xs text-gray-500 text-center mb-3">Demo Credentials</p>
-                <div className="p-3 bg-gray-50 rounded-lg space-y-1 text-xs font-mono">
-                  <p className="text-gray-700">
-                    <span className="text-gray-500">Email:</span> juan@servease.ph
-                  </p>
-                  <p className="text-gray-700">
-                    <span className="text-gray-500">Password:</span> admin123
-                  </p>
-                </div>
+                <p className="text-xs text-gray-500 text-center">
+                  Use your authorized ServEase admin account to sign in.
+                </p>
               </div>
             </form>
           </div>
