@@ -150,8 +150,9 @@ export default function ProviderEditProfileScreen() {
         ...(uploadedAvatarUrl ? { avatar_url: uploadedAvatarUrl } : {}),
       });
 
+      // MODIFIED: Removed router.back() so user stays on this page
       Alert.alert('Profile Updated', 'Your changes have been saved.', [
-        { text: 'OK', onPress: () => router.back() },
+        { text: 'OK' }, 
       ]);
     } catch (err) {
       Alert.alert('Save Failed', getErrorMessage(err, 'Could not save provider profile.'));

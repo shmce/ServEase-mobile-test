@@ -43,7 +43,6 @@ const formatScheduleShort = (ts?: string) => {
   };
 };
 
-// Formats your backend status string to match your UI exact strings
 const formatUIStatus = (status: string) => {
   const norm = normalizeProviderBookingStatus(status);
   if (norm === 'in_progress') return 'In Progress';
@@ -51,7 +50,7 @@ const formatUIStatus = (status: string) => {
 };
 
 
-// --- Your UI Components (Kept exactly the same visually) ---
+// --- Your UI Components ---
 const ActiveBookingItem = ({ id, customer, service, amount, status, avatar, onPress }: any) => (
   <TouchableOpacity style={styles.bookingRow} onPress={onPress}>
     <View style={styles.customerCell}>
@@ -151,10 +150,12 @@ export default function ProviderDashboard() {
   // -- REAL LOGIC ENGINE --
   const { user } = useAuth();
   const unreadNotifications = useUnreadNotifications();
+  
   const [rows, setRows] = useState<any[]>([]);
   const [paidEarnings, setPaidEarnings] = useState(0);
   const [pendingCollections, setPendingCollections] = useState(0);
   const [chatSummaries, setChatSummaries] = useState<ChatSummary[]>([]);
+  const [averageRating, setAverageRating] = useState("0.0"); // <-- NEW DYNAMIC RATING STATE
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -173,13 +174,25 @@ export default function ProviderDashboard() {
     setIsLoading(true);
     setError("");
     try {
-      const [data, earningsSummary] = await Promise.all([
+      // Added the reviews fetch directly into our Promise.all so it loads instantly!
+      const [data, earningsSummary, reviewsResponse] = await Promise.all([
         getProviderBookings(user.id),
         getProviderEarningsSummary(user.id),
+        supabase.from('reviews').select('rating').eq('provider_id', user.id) // Fetching real ratings!
       ]);
+      
       setRows(data);
       setPaidEarnings(earningsSummary.totalNetEarnings);
       setPendingCollections(earningsSummary.pendingRevenue);
+
+      // --- RATING CALCULATION LOGIC ---
+      if (reviewsResponse.data && reviewsResponse.data.length > 0) {
+        const sum = reviewsResponse.data.reduce((acc, curr) => acc + curr.rating, 0);
+        setAverageRating((sum / reviewsResponse.data.length).toFixed(1));
+      } else {
+        setAverageRating("0.0"); // Sets to 0.0 if there are no reviews yet
+      }
+
     } catch (err) {
       setError(getErrorMessage(err, "Failed to load provider dashboard."));
     } finally {
@@ -238,6 +251,7 @@ export default function ProviderDashboard() {
   // -- CALCULATIONS FOR YOUR UI --
   const stats = useMemo(() => {
     const total = rows.length;
+    // THIS IS REAL DATA! If this shows 4, it means you have 4 active bookings in the DB.
     const upcoming = rows.filter((r) => !String(r.status).toLowerCase().includes("cancel") && !String(r.status).toLowerCase().includes("complete")).length;
     return { total, upcoming };
   }, [rows]);
@@ -282,7 +296,6 @@ export default function ProviderDashboard() {
               <Text style={styles.providerName}>{providerFirstName}</Text> 
             </View>
             
-            {/* Added back the Notification bell mapped to your backend variables */}
             <TouchableOpacity onPress={() => router.push("/notifications" as any)}>
               <Ionicons name="notifications-outline" size={28} color="#FFF" />
               <NotificationBadge count={unreadNotifications} top={0} right={-2} />
@@ -293,7 +306,6 @@ export default function ProviderDashboard() {
 
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         
-        {/* Loading / Error States injected natively */}
         {isLoading && <ActivityIndicator size="large" color="#00B761" style={{ marginTop: 20 }} />}
         {error ? <Text style={{ color: 'red', textAlign: 'center', marginTop: 10 }}>{error}</Text> : null}
 
@@ -309,7 +321,6 @@ export default function ProviderDashboard() {
             ₱{paidEarnings.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </Text>
           <View style={styles.trendRow}>
-            {/* Using pending collections here as an extra stat! */}
             <Ionicons name="time-outline" size={16} color="#F59E0B" />
             <Text style={[styles.trendText, { color: '#F59E0B' }]}>
               ₱{pendingCollections.toLocaleString('en-US')} pending collections
@@ -317,7 +328,7 @@ export default function ProviderDashboard() {
           </View>
         </View>
 
-        {/* Dynamic Today's Jobs */}
+        {/* Dynamic Active Jobs */}
         <View style={styles.statsRow}>
           <TouchableOpacity style={styles.statCard} onPress={() => router.push("/provider-calendar" as any)}>
             <Text style={styles.statLabel}>Active{"\n"}Jobs</Text>
@@ -325,13 +336,13 @@ export default function ProviderDashboard() {
           </TouchableOpacity>
         </View>
 
-        {/* Static Rating Card (Since logic didn't have rating data) */}
+        {/* DYNAMIC RATING CARD */}
         <TouchableOpacity style={styles.ratingCardFull} onPress={() => router.push("/ratings" as any)}>
           <View>
             <Text style={styles.statLabel}>Rating</Text>
             <View style={styles.ratingBox}>
-              <Text style={styles.statValue}>4.9</Text>
-              <Ionicons name="star" size={18} color="#FFD700" style={{ marginLeft: 4 }} />
+              <Text style={styles.statValue}>{averageRating}</Text> 
+              <Ionicons name="star" size={18} color={averageRating === "0.0" ? "#CCC" : "#FFD700"} style={{ marginLeft: 4 }} />
             </View>
           </View>
           <Ionicons name="chevron-forward" size={24} color="#CCC" />
@@ -364,7 +375,6 @@ export default function ProviderDashboard() {
             <Text style={[styles.headerText, { flex: 1 }]}>Status</Text>
           </View>
 
-          {/* Rendering the dynamic array into your Custom UI Table Rows */}
           {rows.slice(0, 4).map((b) => (
             <ActiveBookingItem
               key={b.id}
@@ -373,7 +383,7 @@ export default function ProviderDashboard() {
               service={b.service_title}
               amount={b.total_amount?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               status={formatUIStatus(b.status)} 
-              avatar={`https://i.pravatar.cc/100?u=${b.customer_name}`} // Dynamic placeholder avatar
+              avatar={`https://i.pravatar.cc/100?u=${b.customer_name}`}
               onPress={() =>
                 router.push({
                   pathname: "/provider-booking-details",
@@ -387,7 +397,7 @@ export default function ProviderDashboard() {
           )}
         </View>
 
-        {/* Quick Actions (Kept Static as designed) */}
+        {/* Quick Actions Grid */}
         <Text style={styles.sectionTitlePadding}>Quick Actions</Text>
         <View style={styles.actionsGrid}>
           <QuickAction icon="time-outline" label="Set Availability" color="#00B761" onPress={() => router.push("/provider-availability" as any)} />
@@ -425,7 +435,7 @@ export default function ProviderDashboard() {
           )}
         </ScrollView>
 
-        {/* Performance Metrics (Static Visual) */}
+        {/* Performance Metrics */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Performance Metrics</Text>
           <TouchableOpacity onPress={() => router.push("/metrics" as any)}>
@@ -444,7 +454,7 @@ export default function ProviderDashboard() {
   );
 }
 
-// --- YOUR EXACT STYLES - ZERO CHANGES ---
+// --- EXACT STYLES ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Switch, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Switch, Platform, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
@@ -48,6 +48,9 @@ export default function ProviderNotificationPreferencesScreen() {
   const [promotionalOffers, setPromotionalOffers] = useState(false);
   const [platformUpdates, setPlatformUpdates] = useState(true);
   const [dailySummary, setDailySummary] = useState(true);
+  
+  // DYNAMIC TIME PICKER STATE
+  const [dailySummaryTime, setDailySummaryTime] = useState('08:00 AM');
 
   React.useEffect(() => {
     let active = true;
@@ -56,16 +59,19 @@ export default function ProviderNotificationPreferencesScreen() {
       if (!user?.id) return;
       const preferences = await loadProviderNotificationPreferences(user.id);
       if (!active) return;
-      setNewBooking(preferences.newBooking);
-      setBookingConfirmation(preferences.bookingConfirmation);
-      setBookingCancellation(preferences.bookingCancellation);
-      setBookingModification(preferences.bookingModification);
-      setCustomerMessages(preferences.customerMessages);
-      setPaymentReceived(preferences.paymentReceived);
-      setPayoutProcessed(preferences.payoutProcessed);
-      setPromotionalOffers(preferences.promotionalOffers);
-      setPlatformUpdates(preferences.platformUpdates);
-      setDailySummary(preferences.dailySummary);
+      setNewBooking(preferences.newBooking ?? true);
+      setBookingConfirmation(preferences.bookingConfirmation ?? true);
+      setBookingCancellation(preferences.bookingCancellation ?? true);
+      setBookingModification(preferences.bookingModification ?? true);
+      setCustomerMessages(preferences.customerMessages ?? true);
+      setPaymentReceived(preferences.paymentReceived ?? true);
+      setPayoutProcessed(preferences.payoutProcessed ?? true);
+      setPromotionalOffers(preferences.promotionalOffers ?? false);
+      setPlatformUpdates(preferences.platformUpdates ?? true);
+      setDailySummary(preferences.dailySummary ?? true);
+      
+      // Load the saved time if it exists, otherwise default to 08:00 AM
+      setDailySummaryTime(preferences.dailySummaryTime || '08:00 AM'); 
     }
 
     void loadPreferences();
@@ -86,6 +92,7 @@ export default function ProviderNotificationPreferencesScreen() {
       promotionalOffers: boolean;
       platformUpdates: boolean;
       dailySummary: boolean;
+      dailySummaryTime: string;
     }>) => {
       const nextState = {
         newBooking,
@@ -98,6 +105,7 @@ export default function ProviderNotificationPreferencesScreen() {
         promotionalOffers,
         platformUpdates,
         dailySummary,
+        dailySummaryTime,
         ...next,
       };
 
@@ -111,6 +119,7 @@ export default function ProviderNotificationPreferencesScreen() {
       setPromotionalOffers(nextState.promotionalOffers);
       setPlatformUpdates(nextState.platformUpdates);
       setDailySummary(nextState.dailySummary);
+      setDailySummaryTime(nextState.dailySummaryTime);
 
       if (user?.id) {
         await saveProviderNotificationPreferences(user.id, nextState);
@@ -122,6 +131,7 @@ export default function ProviderNotificationPreferencesScreen() {
       bookingModification,
       customerMessages,
       dailySummary,
+      dailySummaryTime,
       newBooking,
       paymentReceived,
       payoutProcessed,
@@ -130,6 +140,15 @@ export default function ProviderNotificationPreferencesScreen() {
       user?.id,
     ]
   );
+
+  // Dynamic Time Cycler Function
+  const handleTimeChange = () => {
+    const availableTimes = ['07:00 AM', '08:00 AM', '09:00 AM', '05:00 PM', '06:00 PM'];
+    const currentIndex = availableTimes.indexOf(dailySummaryTime);
+    const nextTime = availableTimes[(currentIndex + 1) % availableTimes.length];
+    
+    void updatePreferences({ dailySummaryTime: nextTime });
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -181,8 +200,12 @@ export default function ProviderNotificationPreferencesScreen() {
         <SectionHeader icon="time-outline" title="Notification Timing" />
         <View style={styles.section}>
           <Text style={styles.timingLabel}>Preferred Notification Time (Daily Summary)</Text>
-          <TouchableOpacity style={styles.pickerButton}>
-            <Text style={styles.pickerText}>08:00 AM</Text>
+          <TouchableOpacity 
+            style={[styles.pickerButton, !dailySummary && { opacity: 0.5 }]} 
+            onPress={handleTimeChange}
+            disabled={!dailySummary}
+          >
+            <Text style={styles.pickerText}>{dailySummaryTime}</Text>
             <Ionicons name="chevron-down" size={20} color="#8E8E93" />
           </TouchableOpacity>
         </View>
@@ -191,7 +214,7 @@ export default function ProviderNotificationPreferencesScreen() {
           style={styles.saveButton}
           onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}
         >
-          <Text style={styles.saveButtonText}>Save Preferences</Text>
+          <Text style={styles.saveButtonText}>Return to Settings</Text>
         </TouchableOpacity>
 
         <View style={styles.footerSpacer} />
@@ -294,7 +317,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   saveButton: {
-    backgroundColor: '#2E7D32', // Darker green matching mockup button
+    backgroundColor: '#2E7D32',
     marginHorizontal: 16,
     height: 56,
     borderRadius: 12,
@@ -316,4 +339,3 @@ const styles = StyleSheet.create({
     height: 40,
   },
 });
-

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, StatusBar, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SettingsRow } from '@/components/ui/settings-row';
 import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
@@ -10,8 +10,17 @@ export default function MoreScreen() {
   const unreadNotifications = useUnreadNotifications();
 
   const handleLogout = async () => {
-    await logoutUser();
-    router.replace('/login' as any);
+    Alert.alert('Log Out', 'Are you sure you want to log out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { 
+        text: 'Log Out', 
+        style: 'destructive', 
+        onPress: async () => {
+          await logoutUser();
+          router.replace('/login' as any);
+        } 
+      }
+    ]);
   };
 
   return (
@@ -24,14 +33,17 @@ export default function MoreScreen() {
 
         <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
           <View style={styles.menuList}>
+            
+            {/* FIXED: Navigates to your Profile with NO ID to show your own profile */}
             <SettingsRow 
               icon="person-outline" 
               label="My Profile" 
-              onPress={() => console.log('Profile')}
+              onPress={() => router.push('/provider-profile' as any)}
               backgroundColor="#F8F9FA"
               borderBottomColor="#F8F9FA"
               badgeBorderColor="#F8F9FA"
             />
+
             <SettingsRow 
               icon="settings-outline" 
               label="Settings" 
@@ -40,6 +52,7 @@ export default function MoreScreen() {
               borderBottomColor="#F8F9FA"
               badgeBorderColor="#F8F9FA"
             />
+
             <SettingsRow 
               icon="notifications" 
               label="Notifications" 
@@ -49,22 +62,25 @@ export default function MoreScreen() {
               borderBottomColor="#F8F9FA"
               badgeBorderColor="#F8F9FA"
             />
+
             <SettingsRow
               icon="time-outline"
               label="View Schedule"
-              onPress={() => router.push('/provider-availability' as any)}
-              backgroundColor="#F8F9FA"
-              borderBottomColor="#F8F9FA"
-              badgeBorderColor="#F8F9FA"
-            />
-            <SettingsRow
-              icon="today-outline"
-              label="Calendar Management"
               onPress={() => router.push('/provider-calendar' as any)}
               backgroundColor="#F8F9FA"
               borderBottomColor="#F8F9FA"
               badgeBorderColor="#F8F9FA"
             />
+
+            <SettingsRow
+              icon="today-outline"
+              label="Calendar Management"
+              onPress={() => router.push('/provider-availability' as any)}
+              backgroundColor="#F8F9FA"
+              borderBottomColor="#F8F9FA"
+              badgeBorderColor="#F8F9FA"
+            />
+
             <SettingsRow 
               icon="help-circle-outline" 
               label="Help & Support" 
@@ -73,8 +89,9 @@ export default function MoreScreen() {
               borderBottomColor="#F8F9FA"
               badgeBorderColor="#F8F9FA"
             />
+
             <SettingsRow 
-              icon="time-outline" 
+              icon="receipt-outline" 
               label="Service History" 
               onPress={() => router.push('/provider-history' as any)}
               backgroundColor="#F8F9FA"

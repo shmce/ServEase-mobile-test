@@ -1,19 +1,16 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Image } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, Image, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { NotificationBadge } from '@/components/ui/notification-badge';
 import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 
-const RatingDistribution = () => {
-  const distribution = [
-    { stars: 5, percentage: 85, color: '#00B761' },
-    { stars: 4, percentage: 10, color: '#00B761' },
-    { stars: 3, percentage: 3, color: '#00B761' },
-    { stars: 2, percentage: 1, color: '#00B761' },
-    { stars: 1, percentage: 1, color: '#00B761' },
-  ];
+// --- Backend Hooks ---
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/lib/supabase';
 
+// --- Components ---
+const RatingDistribution = ({ distribution, totalReviews }: { distribution: any[], totalReviews: number }) => {
   return (
     <View style={styles.distributionContainer}>
       {distribution.map((item) => (
@@ -24,15 +21,19 @@ const RatingDistribution = () => {
           </View>
         </View>
       ))}
-      <Text style={styles.verifiedCount}>Based on 148 verified services</Text>
+      <Text style={styles.verifiedCount}>Based on {totalReviews} verified services</Text>
     </View>
   );
 };
 
-const ReviewItem = ({ avatar, name, date, rating, comment, tags }: any) => (
+const ReviewItem = ({ avatar, name, date, rating, content }: any) => (
   <View style={styles.reviewCard}>
     <View style={styles.reviewHeader}>
-      <Image source={{ uri: avatar }} style={styles.reviewerAvatar} />
+      {/* Real Customer Avatar */}
+      <Image 
+        source={{ uri: avatar || `https://ui-avatars.com/api/?name=${name}&background=random` }} 
+        style={styles.reviewerAvatar} 
+      />
       <View style={styles.reviewerInfo}>
         <Text style={styles.reviewerName}>{name}</Text>
         <View style={styles.starRow}>
@@ -49,80 +50,113 @@ const ReviewItem = ({ avatar, name, date, rating, comment, tags }: any) => (
       </View>
       <Text style={styles.reviewDate}>{date}</Text>
     </View>
-    <Text style={styles.reviewComment}>{comment}</Text>
-    <View style={styles.tagRow}>
-      {tags.map((tag: string, index: number) => (
-        <View key={index} style={styles.tagPill}>
-          <Text style={styles.tagText}>{tag.toUpperCase()}</Text>
-        </View>
-      ))}
-    </View>
+    <Text style={styles.reviewComment}>{content}</Text>
   </View>
 );
 
 export default function RatingsScreen() {
   const router = useRouter();
   const unreadNotifications = useUnreadNotifications();
+  const { user } = useAuth(); 
+  
   const [activeTab, setActiveTab] = useState('All Reviews');
+  const [reviewsData, setReviewsData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const reviews = [
-    {
-      avatar: 'https://i.pravatar.cc/150?u=julian',
-      name: 'Julian Thorne',
-      date: 'OCT 24, 2023',
-      rating: 5,
-      comment: 'Exceeded all expectations. The level of detail provided in the final report was exceptional. They clearly understood the nuances of the task and delivered 2 days ahead of schedule. Highly recommended for any high-stakes professional requirements.',
-      tags: ['Premium Consultation'],
-    },
-    {
-      avatar: 'https://i.pravatar.cc/150?u=elena',
-      name: 'Elena Rodriguez',
-      date: 'OCT 18, 2023',
-      rating: 4,
-      comment: 'Very reliable and communicative throughout the process. The service was professional and well-executed. Only reason for 4 stars is a minor clerical error in the initial draft, which was fixed immediately after I flagged it.',
-      tags: ['Standard Audit'],
-    },
-    {
-      avatar: 'https://i.pravatar.cc/150?u=marcus',
-      name: 'Marcus Chen',
-      date: 'OCT 12, 2023',
-      rating: 5,
-      comment: 'Consistently the best provider on this platform. This is my fourth time booking them and they have never missed a beat. If you need absolute precision and professionalism, this is the partner for you.',
-      tags: ['Enterprise Plan', 'Verified Repeat'],
-    },
-  ];
+  // --- Real Fetch Logic with Join ---
+  useEffect(() => {
+    const fetchReviews = async () => {
+      if (!user?.id) return;
+      
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('reviews') 
+          .select(`
+            id,
+            rating,
+            content,
+            created_at,
+            provider_id,
+            customer:user_profiles (
+              full_name,
+              avatar_url
+            )
+          `) // This nested select "Joins" the user_profiles table using customer_id
+          .eq('provider_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        setReviewsData(data || []);
+      } catch (err) {
+        console.error("Failed to fetch reviews:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchReviews();
+  }, [user?.id]);
+
+  
+  const metrics = useMemo(() => {
+    const defaultDist = [5, 4, 3, 2, 1].map(s => ({ stars: s, percentage: 0, color: '#00B761' }));
+    if (reviewsData.length === 0) return { average: "0.0", total: 0, distribution: defaultDist };
+
+    let sum = 0;
+    const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    reviewsData.forEach((r) => {
+      sum += r.rating;
+      if (counts[r.rating] !== undefined) counts[r.rating]++;
+    });
+
+    const total = reviewsData.length;
+    return { 
+      average: (sum / total).toFixed(1), 
+      total, 
+      distribution: [5, 4, 3, 2, 1].map(stars => ({
+        stars,
+        percentage: Math.round((counts[stars] / total) * 100),
+        color: '#00B761'
+      }))
+    };
+  }, [reviewsData]);
+
+  const displayedReviews = useMemo(() => {
+    if (activeTab === 'Recent') return reviewsData.slice(0, 5); 
+    if (activeTab === 'With Photos') return reviewsData.filter(r => r.customer?.avatar_url); 
+    return reviewsData; 
+  }, [reviewsData, activeTab]);
+
+  const formatDate = (dateString: string) => {
+    const d = new Date(dateString);
+    return isNaN(d.getTime()) ? "" : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
       
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
+        <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}>
           <Ionicons name="arrow-back" size={24} color="#00B761" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>The Ledger</Text>
-        <TouchableOpacity style={styles.notificationButton} onPress={() => router.push('/notifications' as any)}>
-          <Ionicons name="notifications" size={24} color="#00B761" />
-          <NotificationBadge count={unreadNotifications} top={-4} right={-4} borderColor="#F8F9FE" />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Reviews</Text>
+        <View style={{ width: 24 }} />
       </View>
 
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        {/* Cumulative Reputation */}
         <View style={styles.reputationSection}>
-          <Text style={styles.sectionLabel}>CUMULATIVE REPUTATION</Text>
+          <Text style={styles.sectionLabel}>OVERALL RATINGS</Text>
           <View style={styles.ratingRow}>
-            <Text style={styles.ratingValue}>4.9</Text>
+            <Text style={styles.ratingValue}>{metrics.average}</Text>
             <Text style={styles.ratingMax}> / 5.0</Text>
           </View>
-
           <View style={styles.distributionCard}>
-            <RatingDistribution />
+            <RatingDistribution distribution={metrics.distribution} totalReviews={metrics.total} />
           </View>
         </View>
 
-        {/* Filter Tabs */}
         <View style={styles.filterTabs}>
           {['All Reviews', 'Recent', 'With Photos'].map((tab) => (
             <TouchableOpacity 
@@ -130,233 +164,65 @@ export default function RatingsScreen() {
               style={[styles.filterTab, activeTab === tab && styles.filterTabActive]}
               onPress={() => setActiveTab(tab)}
             >
-              <Text style={[styles.filterTabText, activeTab === tab && styles.filterTabTextActive]}>
-                {tab}
-              </Text>
+              <Text style={[styles.filterTabText, activeTab === tab && styles.filterTabTextActive]}>{tab}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Reviews List */}
         <View style={styles.reviewsList}>
-          {reviews.map((review, index) => (
-            <ReviewItem key={index} {...review} />
-          ))}
+          {isLoading ? (
+            <ActivityIndicator size="large" color="#00B761" style={{ marginVertical: 40 }} />
+          ) : displayedReviews.length === 0 ? (
+            <Text style={styles.emptyText}>No reviews found.</Text>
+          ) : (
+            displayedReviews.map((review) => (
+              <ReviewItem 
+                key={review.id} 
+                // Using nested data from the Join
+                avatar={review.customer?.avatar_url}
+                name={review.customer?.full_name || 'Verified Customer'}
+                date={formatDate(review.created_at)}
+                rating={review.rating}
+                content={review.content} 
+              />
+            ))
+          )}
         </View>
-
-        <TouchableOpacity style={styles.showMoreButton}>
-          <Text style={styles.showMoreText}>Show more reviews</Text>
-        </TouchableOpacity>
-
-        <View style={styles.footerSpacer} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8F9FE',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#F8F9FE',
-  },
-  backButton: {
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-    fontFamily: 'Outfit-Bold',
-  },
-  notificationButton: {
-    padding: 4,
-  },
-  scrollContainer: {
-    flex: 1,
-  },
-  reputationSection: {
-    paddingHorizontal: 24,
-    paddingTop: 10,
-    marginBottom: 24,
-  },
-  sectionLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#9CA3AF',
-    letterSpacing: 0.5,
-    marginBottom: 12,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 24,
-  },
-  ratingValue: {
-    fontSize: 64,
-    fontWeight: '800',
-    color: '#1F2937',
-    fontFamily: 'Outfit-Bold',
-  },
-  ratingMax: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#9CA3AF',
-    fontFamily: 'Outfit-Bold',
-  },
-  distributionCard: {
-    backgroundColor: '#F3F4F640',
-    borderRadius: 24,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-  },
-  distributionContainer: {
-    width: '100%',
-  },
-  distributionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  starLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-    width: 20,
-  },
-  barTrack: {
-    flex: 1,
-    height: 6,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 3,
-    marginLeft: 10,
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  verifiedCount: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    marginTop: 16,
-    fontWeight: '500',
-  },
-  filterTabs: {
-    flexDirection: 'row',
-    paddingHorizontal: 24,
-    marginBottom: 24,
-  },
-  filterTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    marginRight: 10,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  filterTabActive: {
-    backgroundColor: '#00B761',
-  },
-  filterTabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  filterTabTextActive: {
-    color: '#FFF',
-  },
-  reviewsList: {
-    paddingHorizontal: 24,
-  },
-  reviewCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 24,
-    padding: 24,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  reviewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  reviewerAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
-  reviewerInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  reviewerName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  starRow: {
-    flexDirection: 'row',
-  },
-  reviewDate: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    fontWeight: '600',
-  },
-  reviewComment: {
-    fontSize: 14,
-    color: '#4B5563',
-    lineHeight: 22,
-    marginBottom: 16,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  tagPill: {
-    backgroundColor: '#00B76115',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    marginRight: 8,
-    marginBottom: 4,
-  },
-  tagText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#00B761',
-    letterSpacing: 0.5,
-  },
-  showMoreButton: {
-    backgroundColor: '#F3F4F6',
-    marginHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: 20,
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 40,
-  },
-  showMoreText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#00B761',
-  },
-  footerSpacer: {
-    height: 40,
-  },
+  container: { flex: 1, backgroundColor: '#F8F9FE' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#1F2937' },
+  scrollContainer: { flex: 1 },
+  reputationSection: { paddingHorizontal: 24, marginBottom: 24 },
+  sectionLabel: { fontSize: 14, fontWeight: '700', color: '#9CA3AF', marginBottom: 12 },
+  ratingRow: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 24 },
+  ratingValue: { fontSize: 64, fontWeight: '800', color: '#1F2937' },
+  ratingMax: { fontSize: 24, fontWeight: '700', color: '#9CA3AF' },
+  distributionCard: { backgroundColor: '#F3F4F640', borderRadius: 24, padding: 24, borderWidth: 1, borderColor: '#F3F4F6' },
+  distributionContainer: { width: '100%' },
+  distributionRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  starLabel: { fontSize: 12, fontWeight: '600', color: '#6B7280', width: 20 },
+  barTrack: { flex: 1, height: 6, backgroundColor: '#E5E7EB', borderRadius: 3, marginLeft: 10 },
+  barFill: { height: '100%', borderRadius: 3 },
+  verifiedCount: { fontSize: 12, color: '#9CA3AF', textAlign: 'center', marginTop: 16 },
+  filterTabs: { flexDirection: 'row', paddingHorizontal: 24, marginBottom: 24 },
+  filterTab: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: '#F3F4F6', marginRight: 10 },
+  filterTabActive: { backgroundColor: '#00B761' },
+  filterTabText: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
+  filterTabTextActive: { color: '#FFF' },
+  reviewsList: { paddingHorizontal: 24 },
+  reviewCard: { backgroundColor: '#FFF', borderRadius: 24, padding: 24, marginBottom: 16, elevation: 2 },
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  reviewerAvatar: { width: 48, height: 48, borderRadius: 24 },
+  reviewerInfo: { flex: 1, marginLeft: 12 },
+  reviewerName: { fontSize: 16, fontWeight: '700', color: '#1F2937', marginBottom: 4 },
+  starRow: { flexDirection: 'row' },
+  reviewDate: { fontSize: 12, color: '#9CA3AF', fontWeight: '600' },
+  reviewComment: { fontSize: 14, color: '#4B5563', lineHeight: 22 },
+  emptyText: { textAlign: 'center', color: '#9CA3AF', marginVertical: 40 },
 });
-

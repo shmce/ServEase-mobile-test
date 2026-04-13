@@ -1,35 +1,40 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useAuth } from '@/hooks/useAuth';
 import { getErrorMessage } from '@/lib/error-handling';
 import { getProviderProfileData } from '@/services/marketplaceService';
 import { formatVerificationStatusLabel } from '@/services/providerVerificationService';
+import { getAvatarUrl } from '@/lib/avatar';
 
 const TABS = ['About', 'Services', 'Reviews'];
 
-const formatMemberSince = (value?: string | null) => {
-  if (!value) return 'Recently joined';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return 'Recently joined';
-  return parsed.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+// Helper to handle badge colors based on REAL status
+const getStatusTheme = (status: string) => {
+  const s = status?.toLowerCase();
+  if (s === 'approved' || s === 'verified') {
+    return { bg: '#E8FBF2', text: '#00B761', dot: '#00B761' }; // Green
+  }
+  if (s === 'pending' || s === 'under_review') {
+    return { bg: '#FFF7E6', text: '#F59E0B', dot: '#F59E0B' }; // Orange/Yellow
+  }
+  return { bg: '#F2F4F7', text: '#667085', dot: '#667085' }; // Gray (Not Started / Unverified)
 };
-
-const getServiceLocationLabel = (locationType?: string | null) =>
-  locationType === 'in_shop' ? 'In-Shop' : 'Mobile';
-
-const hasInShopService = (services: any[]) =>
-  services.some((service) => service?.service_location_type === 'in_shop');
 
 export default function ProviderProfileScreen() {
   const router = useRouter();
-  const { providerId = '', serviceId = '', serviceName = '', providerName } = useLocalSearchParams<{
-    providerId: string;
-    serviceId?: string;
-    serviceName?: string;
+  const { user } = useAuth();
+  
+  const { providerId: paramProviderId, providerName } = useLocalSearchParams<{
+    providerId?: string;
     providerName?: string;
   }>();
+
+  const effectiveProviderId = paramProviderId || user?.id;
+  const isOwnProfile = useMemo(() => user?.id === effectiveProviderId, [user?.id, effectiveProviderId]);
+
   const [activeTab, setActiveTab] = useState('About');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -38,364 +43,206 @@ export default function ProviderProfileScreen() {
   useEffect(() => {
     let mounted = true;
     async function load() {
-      if (!providerId) {
-        setError('Provider not found.');
+      if (!effectiveProviderId) {
+        setError('Provider ID is missing.');
         setIsLoading(false);
         return;
       }
       setIsLoading(true);
-      setError('');
       try {
-        const data = await getProviderProfileData(providerId);
+        const data = await getProviderProfileData(effectiveProviderId);
         if (mounted) setPayload(data);
       } catch (err) {
-        if (mounted) setError(getErrorMessage(err, 'Failed to load provider profile.'));
+        if (mounted) setError(getErrorMessage(err, 'Failed to load profile.'));
       } finally {
         if (mounted) setIsLoading(false);
       }
     }
     load();
-    return () => {
-      mounted = false;
-    };
-  }, [providerId]);
+    return () => { mounted = false; };
+  }, [effectiveProviderId]);
 
-  const providerDisplayName = useMemo(() => payload?.user?.full_name || providerName || 'Service Provider', [payload, providerName]);
-  const serviceCount = Array.isArray(payload?.services) ? payload.services.length : 0;
-  const providerServices = Array.isArray(payload?.services) ? payload.services : [];
-  const reviewCount = Number(payload?.profile?.total_reviews || payload?.reviews?.length || 0);
-  const averageRating = Number(payload?.profile?.average_rating || 0).toFixed(1);
-  const serviceAreas = Array.isArray(payload?.profile?.service_areas) ? payload.profile.service_areas : [];
-  const languages = Array.isArray(payload?.profile?.languages) ? payload.profile.languages : [];
-  const socialLinks = [
-    payload?.profile?.website_url
-      ? { label: 'Website', value: String(payload.profile.website_url) }
-      : null,
-    payload?.profile?.facebook_url
-      ? { label: 'Facebook', value: String(payload.profile.facebook_url) }
-      : null,
-    payload?.profile?.instagram_handle
-      ? { label: 'Instagram', value: String(payload.profile.instagram_handle) }
-      : null,
-  ].filter(Boolean) as { label: string; value: string }[];
+  const providerDisplayName = useMemo(() => payload?.user?.full_name || providerName || 'Provider', [payload, providerName]);
+  const avatarUri = useMemo(() => effectiveProviderId ? `${getAvatarUrl(effectiveProviderId)}?t=${Date.now()}` : null, [effectiveProviderId]);
+
+  // CRITICAL FIX: Pulling actual verification status from payload
+  const currentStatus = payload?.profile?.verification_status || 'not_started';
+  const statusTheme = getStatusTheme(currentStatus);
 
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))}>
+          <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/' as any))}>
             <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
           </TouchableOpacity>
-          <Text style={styles.title}>{providerDisplayName}</Text>
+          <Text style={styles.headerTitle}>{isOwnProfile ? 'My Public Profile' : 'Provider Profile'}</Text>
           <View style={{ width: 24 }} />
         </View>
       </SafeAreaView>
 
-      {isLoading ? <ActivityIndicator size="large" color="#00B761" style={{ marginTop: 40 }} /> : null}
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#00B761" />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          
+          {/* HEADER SECTION: Centered UI */}
+          <View style={styles.profileHeaderSection}>
+            <View style={styles.avatarWrapper}>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.profileAvatar} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text style={styles.avatarInitial}>{providerDisplayName.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+            </View>
+            
+            <Text style={styles.businessNameDisplay}>
+              {payload?.profile?.business_name || providerDisplayName}
+            </Text>
 
-      {!isLoading && !error && payload ? (
-        <>
-          <View style={styles.tabsContainer}>
+            {/* DYNAMIC BADGE: No longer hardcoded to "Approved" */}
+            <View style={[styles.statusBadge, { backgroundColor: statusTheme.bg }]}>
+              <View style={[styles.statusDot, { backgroundColor: statusTheme.dot }]} />
+              <Text style={[styles.statusText, { color: statusTheme.text }]}>
+                {formatVerificationStatusLabel(currentStatus)}
+              </Text>
+            </View>
+
+            {/* EDIT BUTTON: Visible only to you */}
+            {isOwnProfile && (
+              <TouchableOpacity 
+                style={styles.editButton} 
+                onPress={() => router.push('/provider-edit-profile' as any)}
+              >
+                <Ionicons name="create-outline" size={18} color="#00B761" />
+                <Text style={styles.editButtonText}>Edit My Profile</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* METRICS SECTION */}
+          <View style={styles.metricsRow}>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricValue}>{Number(payload?.profile?.average_rating || 0).toFixed(1)}</Text>
+              <Text style={styles.metricLabel}>RATING</Text>
+            </View>
+            <View style={[styles.metricItem, styles.metricBorder]}>
+              <Text style={styles.metricValue}>{payload?.profile?.total_reviews || 0}</Text>
+              <Text style={styles.metricLabel}>REVIEWS</Text>
+            </View>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricValue}>{payload?.services?.length || 0}</Text>
+              <Text style={styles.metricLabel}>SERVICES</Text>
+            </View>
+          </View>
+
+          {/* TABS */}
+          <View style={styles.tabsRow}>
             {TABS.map((tab) => (
-              <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={[styles.tab, activeTab === tab && styles.activeTab]}>
-                <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
+              <TouchableOpacity 
+                key={tab} 
+                onPress={() => setActiveTab(tab)} 
+                style={[styles.tabItem, activeTab === tab && styles.activeTabItem]}
+              >
+                <Text style={[styles.tabItemText, activeTab === tab && styles.activeTabItemText]}>{tab}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <ScrollView contentContainerStyle={styles.content}>
-            {activeTab === 'About' ? (
-              <>
-                <View style={styles.heroCard}>
-                  <Text style={styles.businessName}>
-                    {payload.profile?.business_name || providerDisplayName}
-                  </Text>
-                  <Text style={styles.heroSubtitle}>
-                    {formatVerificationStatusLabel(String(payload.profile?.verification_status || 'not_started'))}
-                  </Text>
-                  <View style={styles.metricsRow}>
-                    <View style={styles.metricCard}>
-                      <Text style={styles.metricValue}>{averageRating}</Text>
-                      <Text style={styles.metricLabel}>Rating</Text>
-                    </View>
-                    <View style={styles.metricCard}>
-                      <Text style={styles.metricValue}>{reviewCount}</Text>
-                      <Text style={styles.metricLabel}>Reviews</Text>
-                    </View>
-                    <View style={styles.metricCard}>
-                      <Text style={styles.metricValue}>{serviceCount}</Text>
-                      <Text style={styles.metricLabel}>Services</Text>
-                    </View>
-                  </View>
-                </View>
-
-                <View style={styles.card}>
-                  <Text style={styles.sectionHeading}>About This Provider</Text>
-                  <Text style={styles.cardText}>
-                    {payload.profile?.bio
-                      ? String(payload.profile.bio)
-                      : 'This provider has not added a full bio yet, but you can still review their listed services and customer feedback below.'}
-                  </Text>
-                </View>
-
-                <View style={styles.card}>
-                  <Text style={styles.sectionHeading}>Professional Snapshot</Text>
-                  <View style={styles.infoRow}>
-                    <Ionicons name="briefcase-outline" size={18} color="#00B761" />
-                    <View style={styles.infoTextWrap}>
-                      <Text style={styles.infoLabel}>Business Name</Text>
-                      <Text style={styles.infoValue}>
-                        {payload.profile?.business_name || providerDisplayName}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.infoRow}>
-                    <Ionicons name="shield-checkmark-outline" size={18} color="#00B761" />
-                    <View style={styles.infoTextWrap}>
-                      <Text style={styles.infoLabel}>Verification Status</Text>
-                      <Text style={styles.infoValue}>
-                        {formatVerificationStatusLabel(String(payload.profile?.verification_status || 'not_started'))}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.infoRow}>
-                    <Ionicons name="calendar-outline" size={18} color="#00B761" />
-                    <View style={styles.infoTextWrap}>
-                      <Text style={styles.infoLabel}>Member Since</Text>
-                      <Text style={styles.infoValue}>
-                        {formatMemberSince(payload.user?.created_at)}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.infoRow}>
-                    <Ionicons name="time-outline" size={18} color="#00B761" />
-                    <View style={styles.infoTextWrap}>
-                      <Text style={styles.infoLabel}>Experience</Text>
-                      <Text style={styles.infoValue}>
-                        {payload.profile?.years_experience
-                          ? String(payload.profile.years_experience)
-                          : 'Not specified yet'}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                <View style={styles.card}>
-                  <Text style={styles.sectionHeading}>Coverage & Communication</Text>
-                  <Text style={styles.cardTitle}>Service Areas</Text>
-                  <Text style={styles.cardText}>
-                    {serviceAreas.length > 0 ? serviceAreas.join(', ') : 'Not specified yet'}
-                  </Text>
-                  <Text style={styles.cardTitle}>Languages</Text>
-                  <Text style={styles.cardText}>
-                    {languages.length > 0 ? languages.join(', ') : 'Not specified yet'}
-                  </Text>
-                </View>
-
-                {hasInShopService(providerServices) ? (
-                  <View style={styles.card}>
-                    <Text style={styles.sectionHeading}>Visit Information</Text>
-                    <Text style={styles.cardText}>
-                      Some services are performed at the provider&apos;s location. Review the service details below before booking so you know whether to travel to the shop or wait for mobile service.
-                    </Text>
-                  </View>
-                ) : null}
-
-                {(payload.user?.email || payload.user?.contact_number || socialLinks.length > 0) ? (
-                  <View style={styles.card}>
-                    <Text style={styles.sectionHeading}>Contact & Links</Text>
-                    {payload.user?.contact_number ? (
-                      <View style={styles.infoRow}>
-                        <Ionicons name="call-outline" size={18} color="#00B761" />
-                        <View style={styles.infoTextWrap}>
-                          <Text style={styles.infoLabel}>Phone</Text>
-                          <Text style={styles.infoValue}>{String(payload.user.contact_number)}</Text>
-                        </View>
-                      </View>
-                    ) : null}
-                    {payload.user?.email ? (
-                      <View style={styles.infoRow}>
-                        <Ionicons name="mail-outline" size={18} color="#00B761" />
-                        <View style={styles.infoTextWrap}>
-                          <Text style={styles.infoLabel}>Email</Text>
-                          <Text style={styles.infoValue}>{String(payload.user.email)}</Text>
-                        </View>
-                      </View>
-                    ) : null}
-                    {socialLinks.map((item) => (
-                      <View key={item.label} style={styles.infoRow}>
-                        <Ionicons name="link-outline" size={18} color="#00B761" />
-                        <View style={styles.infoTextWrap}>
-                          <Text style={styles.infoLabel}>{item.label}</Text>
-                          <Text style={styles.infoValue}>{item.value}</Text>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-              </>
-            ) : null}
-
-            {activeTab === 'Services' ? (
-              <View style={styles.card}>
-                {providerServices.map((svc: any) => (
-                  <View key={svc.id} style={styles.rowItem}>
-                    <Text style={styles.rowTitle}>{svc.title}</Text>
-                    <Text style={styles.rowSub}>{svc.description || 'No description'}</Text>
-                    <Text style={styles.rowPrice}>P{Number(svc.price || 0).toFixed(2)}</Text>
-                    <View style={styles.serviceLocationRow}>
-                      <Ionicons
-                        name={svc.service_location_type === 'in_shop' ? 'location' : 'car-outline'}
-                        size={16}
-                        color="#00B761"
-                      />
-                      <Text style={styles.serviceLocationLabel}>
-                        {getServiceLocationLabel(svc.service_location_type)}
-                      </Text>
-                    </View>
-                    {svc.service_location_type === 'in_shop' ? (
-                      <Text style={styles.serviceLocationAddress}>
-                        {svc.service_location_address || 'Provider address will be confirmed before booking.'}
-                      </Text>
-                    ) : (
-                      <Text style={styles.serviceLocationAddress}>
-                        The provider travels to your selected address for this service.
-                      </Text>
-                    )}
-                  </View>
-                ))}
-                {providerServices.length === 0 ? <Text style={styles.emptyText}>No services listed yet.</Text> : null}
+          {/* TAB CONTENT */}
+          <View style={styles.tabContent}>
+            {activeTab === 'About' && (
+              <View style={styles.infoCard}>
+                <Text style={styles.cardHeading}>About This Provider</Text>
+                <Text style={styles.cardBody}>
+                  {payload?.profile?.bio || 'This provider hasn’t added a bio yet.'}
+                </Text>
               </View>
-            ) : null}
+            )}
 
-            {activeTab === 'Reviews' ? (
-              <View style={styles.card}>
-                {(payload.reviews || []).map((rv: any) => (
-                  <View key={rv.id} style={styles.rowItem}>
-                    <Text style={styles.rowTitle}>{rv.reviewer_name}</Text>
-                    <Text style={styles.rowSub}>Rating: {rv.rating}</Text>
-                    <Text style={styles.rowSub}>{rv.review_text || 'No comment'}</Text>
+            {activeTab === 'Services' && (
+              <View style={styles.infoCard}>
+                {payload?.services?.length > 0 ? payload.services.map((svc: any) => (
+                  <View key={svc.id} style={styles.serviceRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.serviceName}>{svc.title}</Text>
+                      <Text style={styles.serviceDesc}>{svc.description || 'No description provided'}</Text>
+                    </View>
+                    <Text style={styles.servicePrice}>P{Number(svc.price).toFixed(2)}</Text>
                   </View>
-                ))}
-                {(!payload.reviews || payload.reviews.length === 0) ? <Text style={styles.emptyText}>No reviews yet.</Text> : null}
+                )) : <Text style={styles.emptyText}>No services listed.</Text>}
               </View>
-            ) : null}
-          </ScrollView>
-
-          <View style={styles.footer}>
-            <View style={styles.footerActions}>
-              <TouchableOpacity
-                style={styles.reportBtn}
-                onPress={() =>
-                  router.push({
-                    pathname: '/customer-report-profile',
-                    params: { providerId, providerName: providerDisplayName },
-                  })
-                }
-              >
-                <Ionicons name="flag-outline" size={18} color="#B42318" />
-                <Text style={styles.reportBtnText}>Report</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.bookBtn}
-                onPress={() =>
-                  router.push({
-                    pathname: '/customer-booking-form',
-                    params: {
-                      providerId,
-                      providerName: providerDisplayName,
-                      serviceId,
-                      serviceName,
-                      avatarUrl: payload?.profile?.avatar_url ?? '',
-                    },
-                  })
-                }
-              >
-                <Text style={styles.bookBtnText}>Book Now</Text>
-              </TouchableOpacity>
-            </View>
+            )}
           </View>
-        </>
-      ) : null}
+          
+          <View style={{ height: 100 }} />
+        </ScrollView>
+      )}
+
+      {/* FOOTER: Hidden if it's your own profile */}
+      {!isOwnProfile && payload && (
+        <View style={styles.footer}>
+          <TouchableOpacity style={styles.bookNowBtn}>
+            <Text style={styles.bookNowText}>Book Now</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  safe: { backgroundColor: '#fff' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  title: { fontSize: 16, fontWeight: '700', color: '#0D1B2A' },
-  tabsContainer: { flexDirection: 'row', paddingHorizontal: 12, paddingTop: 8, gap: 8 },
-  tab: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: '#F0F2F5' },
-  activeTab: { backgroundColor: '#00B761' },
-  tabText: { color: '#0D1B2A', fontWeight: '600' },
-  activeTabText: { color: '#fff' },
-  content: { padding: 12, paddingBottom: 100 },
-  heroCard: {
-    backgroundColor: '#F4FBF7',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#D8F1E1',
-  },
-  businessName: { fontSize: 22, fontWeight: '800', color: '#0D1B2A' },
-  heroSubtitle: { fontSize: 13, fontWeight: '700', color: '#00B761', marginTop: 4 },
-  metricsRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
-  metricCard: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E4E7EC',
-  },
-  metricValue: { fontSize: 18, fontWeight: '800', color: '#0D1B2A' },
-  metricLabel: { fontSize: 11, fontWeight: '700', color: '#667085', marginTop: 4, textTransform: 'uppercase' },
-  card: { backgroundColor: '#F8F9FA', borderRadius: 12, padding: 12, marginBottom: 12 },
-  sectionHeading: { fontSize: 15, fontWeight: '800', color: '#0D1B2A', marginBottom: 6 },
-  cardTitle: { fontSize: 13, fontWeight: '700', color: '#0D1B2A', marginTop: 8 },
-  cardText: { fontSize: 14, color: '#444', marginTop: 4, lineHeight: 21 },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#EAECEF',
-  },
-  infoTextWrap: { flex: 1 },
-  infoLabel: { fontSize: 12, fontWeight: '700', color: '#667085', marginBottom: 2 },
-  infoValue: { fontSize: 14, color: '#0D1B2A', lineHeight: 20 },
-  rowItem: { borderBottomWidth: 1, borderBottomColor: '#EAECEF', paddingVertical: 10 },
-  rowTitle: { fontSize: 14, fontWeight: '700', color: '#0D1B2A' },
-  rowSub: { fontSize: 13, color: '#666', marginTop: 4 },
-  rowPrice: { fontSize: 13, color: '#00B761', fontWeight: '700', marginTop: 4 },
-  serviceLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
-  serviceLocationLabel: { fontSize: 12, fontWeight: '700', color: '#157347', textTransform: 'uppercase' },
-  serviceLocationAddress: { fontSize: 13, color: '#444', marginTop: 6, lineHeight: 19 },
-  emptyText: { textAlign: 'center', color: '#777', paddingVertical: 16 },
-  errorText: { textAlign: 'center', color: '#C62828', marginTop: 20, paddingHorizontal: 20 },
-  footer: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fff', padding: 12, borderTopWidth: 1, borderTopColor: '#eee' },
-  footerActions: { flexDirection: 'row', gap: 10 },
-  reportBtn: {
-    width: 110,
-    borderRadius: 12,
-    height: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    backgroundColor: '#FFF1F0',
-    borderWidth: 1,
-    borderColor: '#FECACA',
-  },
-  reportBtnText: { color: '#B42318', fontWeight: '700', fontSize: 15 },
-  bookBtn: { flex: 1, backgroundColor: '#00B761', borderRadius: 12, height: 48, justifyContent: 'center', alignItems: 'center' },
-  bookBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-});
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  safe: { backgroundColor: '#FFFFFF' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#0D1B2A' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  scrollContent: { paddingTop: 20 },
+  
+  profileHeaderSection: { alignItems: 'center', marginBottom: 24 },
+  avatarWrapper: { width: 120, height: 120, borderRadius: 60, borderWidth: 4, borderColor: '#F2F2F2', overflow: 'hidden', marginBottom: 16 },
+  profileAvatar: { width: '100%', height: '100%' },
+  avatarPlaceholder: { width: '100%', height: '100%', backgroundColor: '#00B761', justifyContent: 'center', alignItems: 'center' },
+  avatarInitial: { color: '#FFF', fontSize: 44, fontWeight: '800' },
+  businessNameDisplay: { fontSize: 24, fontWeight: '800', color: '#0D1B2A', marginBottom: 8 },
+  
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
+  statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
+  statusText: { fontSize: 14, fontWeight: '700' },
 
+  editButton: { flexDirection: 'row', alignItems: 'center', marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#00B761' },
+  editButtonText: { marginLeft: 8, color: '#00B761', fontWeight: '700', fontSize: 15 },
+
+  metricsRow: { flexDirection: 'row', marginHorizontal: 20, paddingVertical: 20, backgroundColor: '#F8F9FA', borderRadius: 24, marginBottom: 24 },
+  metricItem: { flex: 1, alignItems: 'center' },
+  metricBorder: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#E9ECEF' },
+  metricValue: { fontSize: 22, fontWeight: '800', color: '#0D1B2A' },
+  metricLabel: { fontSize: 10, color: '#6C757D', fontWeight: '700', marginTop: 4, letterSpacing: 0.5 },
+
+  tabsRow: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 16, gap: 10 },
+  tabItem: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: 14, backgroundColor: '#F2F4F7' },
+  activeTabItem: { backgroundColor: '#00B761' },
+  tabItemText: { fontWeight: '700', color: '#4B5563' },
+  activeTabItemText: { color: '#FFF' },
+
+  tabContent: { paddingHorizontal: 20 },
+  infoCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#F2F4F7' },
+  cardHeading: { fontSize: 16, fontWeight: '800', color: '#0D1B2A', marginBottom: 12 },
+  cardBody: { fontSize: 14, color: '#4B5563', lineHeight: 22 },
+
+  serviceRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F2F4F7' },
+  serviceName: { fontSize: 16, fontWeight: '700', color: '#0D1B2A' },
+  serviceDesc: { fontSize: 13, color: '#6C757D', marginTop: 3 },
+  servicePrice: { fontSize: 16, fontWeight: '800', color: '#00B761', marginLeft: 12 },
+
+  footer: { position: 'absolute', bottom: 0, width: '100%', padding: 20, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#F2F4F7' },
+  bookNowBtn: { backgroundColor: '#00B761', height: 58, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+  bookNowText: { color: '#FFF', fontSize: 17, fontWeight: '700' },
+  emptyText: { textAlign: 'center', color: '#9CA3AF', paddingVertical: 20 },
+  errorText: { textAlign: 'center', color: '#EF4444', marginTop: 20 }
+});
