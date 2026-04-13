@@ -243,6 +243,9 @@ All endpoints require auth (`Bearer <token>`). Endpoints marked **(async)** use 
 |--------|------|------|-------------|
 | GET | `/api/admin/v1/account/profile` | Yes | Get admin's own profile |
 | PATCH | `/api/admin/v1/account/profile` | Yes | Update admin's own profile **(async)** |
+| GET | `/api/admin/v1/account/settings` | Yes | Get admin preferences (language, timezone, theme, notification toggles) **(stub)** |
+| PATCH | `/api/admin/v1/account/settings` | Yes | Update admin preferences **(async, stub)** |
+| GET | `/api/admin/v1/account/activity-log?page=&limit=&from=&to=` | Yes | Paginated list of actions performed by the current admin **(stub)** |
 
 ### Operations
 
@@ -280,6 +283,10 @@ All endpoints require auth (`Bearer <token>`). Endpoints marked **(async)** use 
 | PATCH | `/api/admin/v1/marketplace/service-areas/:id` | Yes | Update a service area **(async)** |
 | DELETE | `/api/admin/v1/marketplace/service-areas/:id` | Yes | Delete a service area **(async)** |
 | POST | `/api/admin/v1/marketplace/broadcasts` | Yes | Send notification broadcast to users **(async)** |
+| GET | `/api/admin/v1/marketplace/promotions?page=&limit=&status=&type=&search=` | Yes | Paginated list of promotions with filters **(stub)** |
+| POST | `/api/admin/v1/marketplace/promotions` | Yes | Create a promotion **(stub)** |
+| PATCH | `/api/admin/v1/marketplace/promotions/:id` | Yes | Update a promotion **(async, stub)** |
+| DELETE | `/api/admin/v1/marketplace/promotions/:id` | Yes | Remove a promotion **(async, stub)** |
 
 **Broadcast request body:**
 ```json
@@ -290,6 +297,45 @@ All endpoints require auth (`Bearer <token>`). Endpoints marked **(async)** use 
   "role": "customer|provider (send to all users of this role)",
   "user_ids": ["optional array of specific user IDs"]
 }
+```
+
+### Platform Settings
+
+> All settings endpoints below are **stubs** — the backing tables (`admin_settings`, `audit_log`, `admin_roles`, `notification_config`, `integrations_config`, `platform_config`) have not yet been created in Supabase.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/admin/v1/settings/commission` | Yes | Read platform commission config **(stub)** |
+| PATCH | `/api/admin/v1/settings/commission` | Yes | Update commission config **(async, stub)** |
+| GET | `/api/admin/v1/settings/roles?page=&limit=` | Yes | List admin roles and permissions **(stub)** |
+| POST | `/api/admin/v1/settings/roles` | Yes | Create a role **(stub)** |
+| PATCH | `/api/admin/v1/settings/roles/:id` | Yes | Update a role **(async, stub)** |
+| DELETE | `/api/admin/v1/settings/roles/:id` | Yes | Delete a role **(async, stub)** |
+| POST | `/api/admin/v1/settings/roles/assign` | Yes | Assign a role to an admin user **(async, stub)** |
+| GET | `/api/admin/v1/settings/security` | Yes | Load platform security policy **(stub)** |
+| PATCH | `/api/admin/v1/settings/security` | Yes | Update platform security policy **(async, stub)** |
+| GET | `/api/admin/v1/settings/notifications?page=&limit=` | Yes | List system notification rules/templates **(stub)** |
+| PATCH | `/api/admin/v1/settings/notifications/:id` | Yes | Update a notification rule/template **(async, stub)** |
+| GET | `/api/admin/v1/settings/logs?page=&limit=&from=&to=&user_id=&action=` | Yes | System-wide audit trail **(stub)** |
+| GET | `/api/admin/v1/settings/integrations` | Yes | List integration configs and health state **(stub)** |
+| PATCH | `/api/admin/v1/settings/integrations/:id` | Yes | Update an integration config **(async, stub)** |
+
+**Commission PATCH request body:**
+```json
+{
+  "default_commission_rate": 0.18,
+  "category_overrides": [{ "category_id": "CAT-001", "commission_rate": 0.2 }]
+}
+```
+
+**Role assign POST request body:**
+```json
+{ "user_id": "admin-user-id", "role_id": "role-id" }
+```
+
+**Security PATCH request body:**
+```json
+{ "require_2fa": true, "session_timeout_minutes": 30, "ip_whitelist_enabled": false, "ip_whitelist": [] }
 ```
 
 ### Reports & Analytics
