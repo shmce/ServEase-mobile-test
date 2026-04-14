@@ -1,0 +1,412 @@
+import {
+  Injectable,
+  Inject,
+  InternalServerErrorException,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
+import { SupabaseClient } from '@supabase/supabase-js';
+import {
+  PAYMENT_CLIENT,
+  BOOKING_CLIENT,
+  IDENTITY_CLIENT,
+  CATALOG_CLIENT,
+} from '../../database/supabase.module';
+import { CreatePaymentDto } from './dto/create-payment.dto';
+import { getResult, getMaybeSingle } from '../../common/utils/database.utils';
+import {
+  Payment,
+  Booking,
+  User,
+  ProviderService as IProviderService,
+} from '../../common/interfaces/database.interfaces';
+
+type PaymentWriteResult = Pick<
+  Payment,
+  'id' | 'amount' | 'status' | 'transaction_reference'
+>;
+
+const createRef = (prefix: string) =>
+  `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+const PLATFORM_FEE_RATE = 0.1; // 10% platform fee
+const DEFAULT_PAYMENT_METHOD = 'cash_on_service';
+
+const normalizePaymentMethod = (paymentMethod?: string | null) => {
+  const normalized = String(paymentMethod || '')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'cash') {
+    return DEFAULT_PAYMENT_METHOD;
+  }
+
+  return normalized || DEFAULT_PAYMENT_METHOD;
+};
+
+@Injectable()
+export class PaymentsService {
+  constructor(
+    @Inject(PAYMENT_CLIENT) private readonly paymentDb: SupabaseClient,
+    @Inject(BOOKING_CLIENT) private readonly bookingDb: SupabaseClient,
+    @Inject(IDENTITY_CLIENT) private readonly identityDb: SupabaseClient,
+    @Inject(CATALOG_CLIENT) private readonly catalogDb: SupabaseClient,
+  ) {}
+
+  async createPayment(dto: CreatePaymentDto) {
+    const data = await getResult<PaymentWriteResult>(
+      this.paymentDb
+        .from('payments')
+        .insert([
+          {
+            booking_id: dto.booking_id,
+            customer_id: dto.customer_id,
+            provider_id: dto.provider_id,
+            amount: dto.amount,
+            method: normalizePaymentMethod(dto.method),
+            status: dto.status || 'pending',
+            paid_at:
+              dto.status === 'completed' ? new Date().toISOString() : null,
+            transaction_reference: dto.transaction_reference || null,
+          },
+        ])
+        .select('id, amount, status, transaction_reference')
+        .single(),
+      'PaymentCreate',
+    );
+
+    return { status: 'success', message: 'Payment processed.', data };
+  }
+
+  async getPaymentByBookingId(bookingId: string) {
+    const data = await getMaybeSingle<Payment | null>(
+      this.paymentDb
+        .from('payments')
+        .select(
+          'id,booking_id,customer_id,provider_id,amount,method,status,transaction_reference,paid_at,created_at',
+        )
+        .eq('booking_id', bookingId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      'PaymentFetchByBooking',
+    );
+
+    return { payment: data || null };
+  }
+
+  async getProviderPaymentHistory(providerId: string) {
+    const rows = await getResult<Payment[]>(
+      this.paymentDb
+        .from('payments')
+        .select(
+          'id,booking_id,customer_id,provider_id,amount,method,status,transaction_reference,paid_at,created_at',
+        )
+        .eq('provider_id', providerId)
+        .order('paid_at', { ascending: false, nullsFirst: false }),
+      'PaymentHistoryFetch',
+      { allowEmpty: true },
+    );
+
+    if (!rows.length) return { payments: [] };
+
+    const bookingIds = [
+      ...new Set(rows.map((p) => p.booking_id).filter(Boolean)),
+    ];
+    const customerIds = [
+      ...new Set(rows.map((p) => p.customer_id).filter(Boolean)),
+    ];
+
+    const [bookings, customers] = await Promise.all([
+      bookingIds.length
+        ? getResult<Partial<Booking>[]>(
+            this.bookingDb
+              .from('bookings')
+              .select('id,booking_reference,service_id,scheduled_at')
+              .in('id', bookingIds),
+            'PaymentHistoryBookings',
+            { allowEmpty: true },
+          )
+        : Promise.resolve([]),
+      customerIds.length
+        ? getResult<Partial<User>[]>(
+            this.identityDb
+              .from('users')
+              .select('id,full_name')
+              .in('id', customerIds),
+            'PaymentHistoryCustomers',
+            { allowEmpty: true },
+          )
+        : Promise.resolve([]),
+    ]);
+
+    const serviceIds = [
+      ...new Set(
+        (bookings || [])
+          .map((b: Partial<Booking>) => b.service_id)
+          .filter(Boolean),
+      ),
+    ];
+    const services = serviceIds.length
+      ? await getResult<Partial<IProviderService>[]>(
+          this.catalogDb
+            .from('provider_services')
+            .select('id,title')
+            .in('id', serviceIds),
+          'PaymentHistoryServices',
+          { allowEmpty: true },
+        )
+      : [];
+
+    const bookingMap = new Map(
+      (bookings || []).map((b: Partial<Booking>) => [String(b.id), b]),
+    );
+    const customerMap = new Map(
+      (customers || []).map((c: Partial<User>) => [
+        String(c.id),
+        c.full_name || 'Customer',
+      ]),
+    );
+    const serviceMap = new Map(
+      (services || []).map((s: Partial<IProviderService>) => [
+        String(s.id),
+        s.title || 'Service',
+      ]),
+    );
+
+    const history = rows.map((p) => {
+      const booking = bookingMap.get(String(p.booking_id));
+      const platformFee = Number(p.amount || 0) * PLATFORM_FEE_RATE;
+      return {
+        ...p,
+        booking_reference: String(
+          booking?.booking_reference || p.booking_id || p.id,
+        ),
+        customer_name: customerMap.get(String(p.customer_id)) || 'Customer',
+        service_title:
+          serviceMap.get(String(booking?.service_id || '')) || 'Service',
+        scheduled_at: booking?.scheduled_at || null,
+        platform_fee: platformFee,
+        net_earnings: Number(p.amount || 0) - platformFee,
+      };
+    });
+
+    return { payments: history };
+  }
+
+  async getProviderEarningsSummary(providerId: string) {
+    const { payments } = await this.getProviderPaymentHistory(providerId);
+    const paidPayments = payments.filter(
+      (p) => String(p.status).toLowerCase() === 'completed',
+    );
+    const pendingPayments = payments.filter((p) =>
+      ['pending', 'authorized'].includes(String(p.status).toLowerCase()),
+    );
+
+    const totalRevenue = paidPayments.reduce(
+      (sum, p) => sum + Number(p.amount || 0),
+      0,
+    );
+    const totalNetEarnings = paidPayments.reduce(
+      (sum, p) => sum + p.net_earnings,
+      0,
+    );
+    const pendingRevenue = pendingPayments.reduce(
+      (sum, p) => sum + Number(p.amount || 0),
+      0,
+    );
+    const cashOnHand = paidPayments
+      .filter((p) =>
+        ['cash', 'cash_on_service'].includes(String(p.method).toLowerCase()),
+      )
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const averagePerService = paidPayments.length
+      ? totalNetEarnings / paidPayments.length
+      : 0;
+
+    return {
+      payments,
+      paidPayments,
+      totalRevenue,
+      totalNetEarnings,
+      pendingRevenue,
+      cashOnHand,
+      averagePerService,
+      paidCount: paidPayments.length,
+      pendingCount: pendingPayments.length,
+    };
+  }
+
+  async getEarnings(providerId: string) {
+    if (!providerId) throw new BadRequestException('Provider ID is required');
+
+    const data = await getResult<{ amount: number }[]>(
+      this.paymentDb
+        .from('payments')
+        .select('amount')
+        .eq('provider_id', providerId)
+        .eq('status', 'completed'),
+      'EarningsFetch',
+      { allowEmpty: true },
+    );
+
+    const totalEarnings = (data || []).reduce(
+      (acc: number, curr: { amount: number }) => acc + Number(curr.amount),
+      0,
+    );
+
+    return {
+      status: 'success',
+      data: { provider_id: providerId, total_earnings: totalEarnings },
+    };
+  }
+
+  async ensureBookingPayment(input: {
+    bookingId: string;
+    customerId: string;
+    providerId: string;
+    amount: number;
+    method?: string;
+  }) {
+    const existing = await getMaybeSingle<Partial<Payment>>(
+      this.paymentDb
+        .from('payments')
+        .select('id, status, amount')
+        .eq('booking_id', input.bookingId)
+        .maybeSingle(),
+      'PaymentCheckExisting',
+    );
+    if (existing) return { payment: existing };
+
+    const data = await getMaybeSingle<Partial<Payment>>(
+      this.paymentDb
+        .from('payments')
+        .insert([
+          {
+            booking_id: input.bookingId,
+            customer_id: input.customerId,
+            provider_id: input.providerId,
+            amount: Number(input.amount || 0),
+            method: normalizePaymentMethod(input.method),
+            status: 'pending',
+            transaction_reference: createRef('PAY'),
+          },
+        ])
+        .select('id, status, amount, transaction_reference')
+        .maybeSingle(),
+      'PaymentEnsure',
+    );
+
+    return { payment: data };
+  }
+
+  async markBookingPaymentPaid(input: {
+    bookingId: string;
+    amount?: number;
+    customerId?: string;
+    providerId?: string;
+    method?: string;
+  }) {
+    const now = new Date().toISOString();
+    const existing = await getMaybeSingle<Partial<Payment>>(
+      this.paymentDb
+        .from('payments')
+        .select('id, method, transaction_reference')
+        .eq('booking_id', input.bookingId)
+        .maybeSingle(),
+      'PaymentCheckMarkPaid',
+    );
+
+    if (!existing) {
+      const created = await this.ensureBookingPayment({
+        bookingId: input.bookingId,
+        customerId: input.customerId || '',
+        providerId: input.providerId || '',
+        amount: input.amount || 0,
+        method: normalizePaymentMethod(input.method),
+      });
+      if (!created.payment)
+        throw new InternalServerErrorException(
+          'Failed to ensure payment creation',
+        );
+      const data = await getMaybeSingle<Partial<Payment>>(
+        this.paymentDb
+          .from('payments')
+          .update({
+            status: 'completed',
+            paid_at: now,
+            transaction_reference: createRef('PAID'),
+          })
+          .eq('id', created.payment.id)
+          .select('id, status, paid_at')
+          .maybeSingle(),
+        'PaymentMarkPaidNew',
+      );
+      return { payment: data };
+    }
+
+    const data = await getMaybeSingle<Partial<Payment>>(
+      this.paymentDb
+        .from('payments')
+        .update({
+          status: 'completed',
+          paid_at: now,
+          method: normalizePaymentMethod(input.method || existing.method),
+          transaction_reference:
+            existing.transaction_reference || createRef('PAID'),
+        })
+        .eq('id', existing.id)
+        .select('id, status, paid_at')
+        .maybeSingle(),
+      'PaymentMarkPaidExisting',
+    );
+
+    return { payment: data };
+  }
+
+  async cancelBookingPayment(bookingId: string) {
+    const existing = await getMaybeSingle<{ id: string }>(
+      this.paymentDb
+        .from('payments')
+        .select('id')
+        .eq('booking_id', bookingId)
+        .maybeSingle(),
+      'PaymentCancelCheck',
+    );
+    if (!existing) return { payment: null };
+
+    const data = await getMaybeSingle<Partial<Payment>>(
+      this.paymentDb
+        .from('payments')
+        .update({ status: 'cancelled' })
+        .eq('id', existing.id)
+        .select('id, status')
+        .maybeSingle(),
+      'PaymentCancel',
+    );
+    return { payment: data };
+  }
+
+  async updateBookingPaymentAmount(bookingId: string, amount: number) {
+    const existing = await getMaybeSingle<{ id: string }>(
+      this.paymentDb
+        .from('payments')
+        .select('id')
+        .eq('booking_id', bookingId)
+        .maybeSingle(),
+      'PaymentAmountUpdateCheck',
+    );
+    if (!existing)
+      throw new NotFoundException('Payment not found for this booking.');
+
+    const data = await getMaybeSingle<Partial<Payment>>(
+      this.paymentDb
+        .from('payments')
+        .update({ amount: Number(amount || 0) })
+        .eq('id', existing.id)
+        .select('id, amount')
+        .maybeSingle(),
+      'PaymentAmountUpdate',
+    );
+    return { payment: data };
+  }
+}

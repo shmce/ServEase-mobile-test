@@ -1,0 +1,70 @@
+<h2>Refactoring Categories</h2>
+<p class="subtitle">From flat list to 7 main entry points</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Current: Flat List</div>
+    <div class="mockup-body">
+      <div class="section">
+        <p class="label">Simple scrolling list of every category</p>
+        <div class="mock-nav" style="background:#FFF; padding:10px; border-radius:8px; border:1px solid #EEE;" data-choice="current" onclick="toggleSelect(this)">
+          <div>Pet Grooming</div>
+          <hr style="margin:8px 0; border:0; border-top:1px solid #F0F0F0;">
+          <div>House Cleaning</div>
+          <hr style="margin:8px 0; border:0; border-top:1px solid #F0F0F0;">
+          <div>Carpentry</div>
+          <hr style="margin:8px 0; border:0; border-top:1px solid #F0F0F0;">
+          <div>Makeup Artist</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">Proposed: 7 Main Entry Points</div>
+    <div class="mockup-body">
+      <div class="section">
+        <p class="label">Clean grid or list with sub-navigation</p>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;" data-choice="proposed" onclick="toggleSelect(this)">
+          <div style="background:#E8F5E9; padding:12px; border-radius:12px; text-align:center;">
+            <div style="font-size:24px; margin-bottom:4px;">🏠</div>
+            <div style="font-size:11px; font-weight:700;">Home Maintenance</div>
+          </div>
+          <div style="background:#F3E5F5; padding:12px; border-radius:12px; text-align:center;">
+            <div style="font-size:24px; margin-bottom:4px;">✨</div>
+            <div style="font-size:11px; font-weight:700;">Beauty & Wellness</div>
+          </div>
+          <div style="background:#FFF3E0; padding:12px; border-radius:12px; text-align:center;">
+            <div style="font-size:24px; margin-bottom:4px;">🧹</div>
+            <div style="font-size:11px; font-weight:700;">Cleaning Services</div>
+          </div>
+          <div style="background:#E3F2FD; padding:12px; border-radius:12px; text-align:center;">
+            <div style="font-size:24px; margin-bottom:4px;">🐾</div>
+            <div style="font-size:11px; font-weight:700;">Pet Services</div>
+          </div>
+        </div>
+        <p style="font-size:10px; color:#666; margin-top:8px; text-align:center;">+ 3 more categories...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Technical Approach</h3>
+  <div class="options">
+    <div class="option" data-choice="parent_id" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>Self-Referencing parent_id</h3>
+        <p>Add <code>parent_id</code> to <code>service_categories</code>. Flexible, allows for deeply nested levels if needed.</p>
+      </div>
+    </div>
+    <div class="option" data-choice="separate_tables" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>Separate Multi-Tier Tables</h3>
+        <p>Keep <code>service_groups</code> and <code>service_categories</code> separate. Enforces a strict two-tier hierarchy.</p>
+      </div>
+    </div>
+  </div>
+</div>
