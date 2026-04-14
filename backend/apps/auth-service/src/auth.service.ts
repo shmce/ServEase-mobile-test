@@ -62,9 +62,18 @@ export class AuthService {
       const { data, error } = await this.supabase.auth.signInWithPassword({ email: loginEmail, password });
       if (error) throw new UnauthorizedException('Invalid Credentials');
 
+      // Sign out locally to restore service-role auth header on the shared singleton client.
+      // signInWithPassword replaces the Authorization header with the user JWT, which
+      // subjects subsequent DB queries to RLS. Local sign-out clears the session without
+      // invalidating the tokens we already captured above.
+      await this.supabase.auth.signOut({ scope: 'local' });
+
       const userId = data.user?.id;
       const { data: userData, error: userError } = await this.supabase.schema('identity_and_user').from('users').select('role, status, full_name').eq('id', userId).single();
-      if (userError || !userData) throw new InternalServerErrorException('Error fetching user profile');
+      if (userError || !userData) {
+        console.error('Fetch user profile error:', userError?.message, userError?.code, userError?.details, '| userId:', userId);
+        throw new InternalServerErrorException('Error fetching user profile');
+      }
 
       if (userData.status === 'pending' || userData.status === 'rejected') {
         await this.supabase.auth.signOut();
@@ -121,6 +130,8 @@ export class AuthService {
   async refreshSession(refreshToken: string) {
     const { data, error } = await this.supabase.auth.refreshSession({ refresh_token: refreshToken });
     if (error) throw new UnauthorizedException('Failed to refresh session: ' + error.message);
+    // Restore service-role auth header before DB queries (same reason as login).
+    await this.supabase.auth.signOut({ scope: 'local' });
     const userId = data.user?.id;
     let userData: any = null;
     if (userId) {
