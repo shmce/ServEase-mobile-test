@@ -1,41 +1,32 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, StatusBar, TextInput, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  SafeAreaView, 
+  ScrollView, 
+  StatusBar, 
+  TextInput, 
+  KeyboardAvoidingView, 
+  Platform,
+  ActivityIndicator
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 
-const MESSAGES_DATA = [
-  {
-    id: '1',
-    text: 'Hi! I have some questions about the plumbing repair.',
-    time: '10:30 AM',
-    sender: 'customer',
-  },
-  {
-    id: '2',
-    text: 'Hello! Sure, I\'d be happy to help. What would you like to know?',
-    time: '10:32 AM',
-    sender: 'provider',
-  },
-  {
-    id: '3',
-    text: 'Will you need to shut off the water main?',
-    time: '10:35 AM',
-    sender: 'customer',
-  },
-  {
-    id: '4',
-    text: 'Yes, I\'ll need to shut it off temporarily while I work on the pipe. It should only be for about 30 minutes.',
-    time: '10:37 AM',
-    sender: 'provider',
-  },
-  {
-    id: '5',
-    text: 'Okay, that sounds good. See you tomorrow!',
-    time: '10:40 AM',
-    sender: 'customer',
-  },
-];
+// --- Backend Hooks & Services ---
+import { useAuth } from '@/hooks/useAuth';
+import { getErrorMessage } from '@/lib/error-handling';
+import {
+  getChatThread,
+  markChatThreadRead,
+  sendChatMessage,
+  subscribeToChatThread,
+  type ChatMessage,
+} from '@/services/chatService';
 
+// --- UI Components ---
 const MessageBubble = ({ text, time, sender }: { text: string, time: string, sender: string }) => (
   <View style={[
     styles.messageContainer, 
@@ -57,22 +48,113 @@ const MessageBubble = ({ text, time, sender }: { text: string, time: string, sen
   </View>
 );
 
+// --- Main Screen ---
 export default function ProviderMessagingScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  
+  // Dynamically grab the booking details passed from the previous screen
+  const { id, customerName, serviceTitle } = useLocalSearchParams<{
+    id?: string;
+    customerName?: string;
+    serviceTitle?: string;
+  }>();
+
   const [inputText, setInputText] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState('');
+  const scrollViewRef = useRef<ScrollView>(null);
+  const lastMarkedIncomingId = useRef('');
+
+  // --- 1. Load the Chat History ---
+  const loadMessages = React.useCallback(async (silent = false) => {
+    if (!id) {
+      setError('Booking ID is missing.');
+      setIsLoading(false);
+      return;
+    }
+    if (!silent) setIsLoading(true);
+    
+    try {
+      const thread = await getChatThread({
+        bookingId: String(id),
+        role: 'provider',
+        otherPartyName: String(customerName || 'Customer'),
+        otherPartyPhone: '',
+        serviceName: String(serviceTitle || 'Service Booking'),
+      });
+      setMessages(thread.messages);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not load messages.'));
+    } finally {
+      if (!silent) setIsLoading(false);
+    }
+  }, [id, customerName, serviceTitle]);
+
+  useEffect(() => {
+    void loadMessages();
+  }, [loadMessages]);
+
+  // --- 2. Live WebSockets (Listen for new messages) ---
+  useEffect(() => {
+    if (!id) return;
+    return subscribeToChatThread({
+      bookingId: String(id),
+      onChange: () => {
+        void loadMessages(true); // Silently reload when a new message arrives
+      },
+    });
+  }, [id, loadMessages]);
+
+  // --- 3. Mark messages as read automatically ---
+  useEffect(() => {
+    if (!id || !messages.length) return;
+    const lastIncomingMessage = [...messages].reverse().find((m) => m.sender === 'customer');
+    if (!lastIncomingMessage || lastMarkedIncomingId.current === lastIncomingMessage.id) return;
+    
+    lastMarkedIncomingId.current = lastIncomingMessage.id;
+    void markChatThreadRead({ bookingId: String(id), role: 'provider' });
+  }, [id, messages]);
+
+  // --- 4. Send a New Message ---
+  const handleSend = async () => {
+    if (!user?.id || !id || !inputText.trim()) return;
+
+    setIsSending(true);
+    try {
+      const nextMessage = await sendChatMessage({
+        bookingId: String(id),
+        senderId: user.id,
+        senderRole: 'provider',
+        text: inputText.trim(),
+      });
+      
+      setMessages((prev) => [...prev, nextMessage]);
+      setInputText(''); // Clear the input box
+      
+      // Scroll to bottom immediately after sending
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to send message.'));
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
       
-      {/* Header */}
+      {/* Dynamic Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => (router.canGoBack?.() ? router.back() : router.replace('/' as any))} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
         <View style={styles.headerInfo}>
-          <Text style={styles.headerTitle}>Messages</Text>
-          <Text style={styles.headerSubtitle}>Booking #1</Text>
+          <Text style={styles.headerTitle}>{customerName || 'Customer Chat'}</Text>
+          <Text style={styles.headerSubtitle}>{serviceTitle || `Booking #${id?.slice(0, 6)}`}</Text>
         </View>
       </View>
 
@@ -82,21 +164,33 @@ export default function ProviderMessagingScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <ScrollView 
+          ref={scrollViewRef}
           style={styles.chatArea} 
           contentContainerStyle={styles.chatContent}
           showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
         >
-          {MESSAGES_DATA.map((msg) => (
+          {isLoading ? <ActivityIndicator size="small" color="#00B761" style={{ marginTop: 20 }} /> : null}
+          {error ? <Text style={{ color: 'red', textAlign: 'center', marginTop: 10 }}>{error}</Text> : null}
+          
+          {!isLoading && messages.length === 0 ? (
+            <Text style={{ textAlign: 'center', color: '#AAA', marginTop: 40 }}>
+              No messages yet. Send a message to start the conversation!
+            </Text>
+          ) : null}
+
+          {/* Dynamic Message Mapping */}
+          {messages.map((msg) => (
             <MessageBubble 
               key={msg.id} 
               text={msg.text} 
-              time={msg.time} 
+              time={msg.timeLabel || ''} 
               sender={msg.sender} 
             />
           ))}
         </ScrollView>
 
-        {/* Input Bar */}
+        {/* Live Input Bar */}
         <View style={styles.inputBar}>
           <View style={styles.inputContainer}>
             <TextInput
@@ -108,8 +202,16 @@ export default function ProviderMessagingScreen() {
               multiline
             />
           </View>
-          <TouchableOpacity style={styles.sendButton}>
-            <Ionicons name="paper-plane" size={24} color="#FFF" />
+          <TouchableOpacity 
+            style={[styles.sendButton, { opacity: !inputText.trim() || isSending ? 0.5 : 1 }]} 
+            onPress={handleSend}
+            disabled={!inputText.trim() || isSending}
+          >
+            {isSending ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Ionicons name="paper-plane" size={24} color="#FFF" />
+            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -117,6 +219,7 @@ export default function ProviderMessagingScreen() {
   );
 }
 
+// --- EXACT STYLES - ZERO CHANGES ---
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -239,4 +342,3 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 });
-
