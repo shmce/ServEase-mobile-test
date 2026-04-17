@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TOKENS } from '@/constants/tokens';
+import { ASSETS } from '@/constants/defaults';
+import { formatCurrency } from '@/lib/formatters';
 import { supabase, identityDb, providerCatalogDb, bookingDb } from '@/lib/db';
 
 import { getErrorMessage } from '@/lib/error-handling';
@@ -561,7 +563,10 @@ export function CustomerBookingDetailsScreen() {
         <View style={styles.providerCard}>
           <View style={styles.providerHeader}>
             <View>
-              <Image source={{ uri: provider.avatar || 'https://i.pravatar.cc/150?u=provider' }} style={styles.providerAvatar} />
+              <Image
+                source={{ uri: provider.avatar || ASSETS.IMAGES.AVATAR_FALLBACK(provider.name || 'default') }}
+                style={styles.providerAvatar}
+              />
               {provider.isVerified ? (
                 <View style={styles.verifiedBadge}>
                   <Ionicons name="checkmark-sharp" size={10} color="#fff" />
@@ -665,7 +670,7 @@ export function CustomerBookingDetailsScreen() {
           
           <View style={styles.priceContainer}>
             <Text style={styles.totalLabel}>Total Amount ({getPaymentMethodLabel(payment?.method || 'cash')})</Text>
-            <Text style={styles.totalValue}>P{safeBooking.totalAmount}</Text>
+            <Text style={styles.totalValue}>{formatCurrency(safeBooking.totalAmount)}</Text>
           </View>
         </View>
 
@@ -749,7 +754,7 @@ export function CustomerBookingDetailsScreen() {
                 <View style={styles.requestContent}>
                   <Text style={styles.requestTitle}>Provider requested extra charges</Text>
                   <Text style={styles.requestSubtitle}>
-                    +P{pendingAdditionalChargeTotal.toFixed(2)} across {pendingAdditionalCharges.length}{' '}
+                    {formatCurrency(pendingAdditionalChargeTotal)} across {pendingAdditionalCharges.length}{' '}
                     {pendingAdditionalCharges.length === 1 ? 'item' : 'items'}
                   </Text>
                 </View>
@@ -762,7 +767,7 @@ export function CustomerBookingDetailsScreen() {
                       <Text style={styles.chargeItemBody}>{charge.justification}</Text>
                     ) : null}
                   </View>
-                  <Text style={styles.chargeAmount}>P{Number(charge.amount || 0).toFixed(2)}</Text>
+                  <Text style={styles.chargeAmount}>{formatCurrency(charge.amount || 0)}</Text>
                 </View>
               ))}
               <View style={styles.requestActions}>
@@ -809,7 +814,7 @@ export function CustomerBookingDetailsScreen() {
               }
             >
               <View style={styles.contactIconWrap}>
-                <Ionicons name="chatbubble-ellipses-outline" size={18} color="#00C853" />
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color={TOKENS.colors.primary} />
               </View>
               <View style={styles.contactContent}>
                 <View style={styles.contactTitleRow}>
@@ -853,8 +858,8 @@ export function CustomerBookingDetailsScreen() {
                   }
                 })}
               >
-                <Ionicons name="star" size={20} color="#00C853" />
-                <Text style={[styles.cancelBookingText, { color: '#00C853' }]}>Leave a Review</Text>
+                <Ionicons name="star" size={20} color={TOKENS.colors.primary} />
+                <Text style={[styles.cancelBookingText, { color: TOKENS.colors.primary }]}>Leave a Review</Text>
               </Pressable>
               <Pressable 
                 style={({ pressed }) => [styles.rebookButton, pressed && { opacity: 0.9, backgroundColor: TOKENS.colors.primary + 'E6' }]}
@@ -1080,7 +1085,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   countdownSection: {
-    backgroundColor: TOKENS.colors.text.primary,
+    backgroundColor: TOKENS.colors.primary,
     padding: 24,
     borderRadius: 24,
     marginBottom: 32,
@@ -1092,7 +1097,7 @@ const styles = StyleSheet.create({
   countdownLabel: {
     fontSize: 11,
     fontWeight: '900',
-    color: 'rgba(255,255,255,0.6)',
+    color: 'rgba(255,255,255,0.9)',
     textAlign: 'center',
     letterSpacing: 2,
     marginBottom: 20,
@@ -1109,12 +1114,12 @@ const styles = StyleSheet.create({
   timerBox: {
     width: 54,
     height: 54,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.25)',
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   timerNumber: {
     fontSize: 22,
@@ -1125,13 +1130,13 @@ const styles = StyleSheet.create({
   timerLabel: {
     fontSize: 10,
     fontWeight: '800',
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(255,255,255,0.85)',
     marginTop: 8,
   },
   timerSeparator: {
     fontSize: 24,
     fontWeight: '900',
-    color: 'rgba(255,255,255,0.2)',
+    color: 'rgba(255,255,255,0.6)',
     marginTop: -20,
   },
   sectionHeader: {
@@ -1452,7 +1457,7 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.white,
     borderRadius: 20,
     borderWidth: 1.5,
-    borderColor: '#F1F5F9',
+    borderColor: TOKENS.colors.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

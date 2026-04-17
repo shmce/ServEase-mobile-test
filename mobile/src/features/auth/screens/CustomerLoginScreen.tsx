@@ -16,6 +16,7 @@ import { TOKENS } from '@/constants/tokens';
 import { AppButton } from '@/src/components/common/AppButton';
 import { AppTextInput } from '@/src/components/common/AppTextInput';
 import { AppPressable } from '@/src/components/common/AppPressable';
+import { PLACEHOLDERS } from '@/constants/defaults';
 
 export function CustomerLoginScreen() {
   const router = useRouter();
@@ -61,7 +62,7 @@ export function CustomerLoginScreen() {
           <View style={styles.form}>
             <AppTextInput
               label="Email Address"
-              placeholder="your.email@example.com"
+              placeholder={PLACEHOLDERS.EMAIL}
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -71,7 +72,7 @@ export function CustomerLoginScreen() {
 
             <AppTextInput
               label="Password"
-              placeholder="Enter your password"
+              placeholder={PLACEHOLDERS.PASSWORD}
               value={password}
               onChangeText={setPassword}
               isPassword

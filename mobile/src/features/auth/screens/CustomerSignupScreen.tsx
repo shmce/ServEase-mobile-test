@@ -16,6 +16,7 @@ import { TOKENS } from '@/constants/tokens';
 import { AppButton } from '@/src/components/common/AppButton';
 import { AppTextInput } from '@/src/components/common/AppTextInput';
 import { AppPressable } from '@/src/components/common/AppPressable';
+import { PLACEHOLDERS } from '@/constants/defaults';
 
 const CheckItem = ({ label, met }: { label: string; met: boolean }) => (
   <View style={styles.criteriaItem}>
@@ -126,7 +127,7 @@ export function CustomerSignupScreen() {
         <View style={styles.form}>
           <AppTextInput
             label="Full Name"
-            placeholder="Enter your full name"
+            placeholder={PLACEHOLDERS.NAME}
             value={formData.fullName}
             onChangeText={(text: string) => setFormData({...formData, fullName: text})}
             leftIcon="person-outline"
@@ -137,7 +138,7 @@ export function CustomerSignupScreen() {
           <AppTextInput
             ref={emailRef}
             label="Email Address"
-            placeholder="Enter your email address"
+            placeholder={PLACEHOLDERS.EMAIL}
             value={formData.email}
             onChangeText={(text: string) => setFormData({...formData, email: text})}
             keyboardType="email-address"
@@ -150,7 +151,7 @@ export function CustomerSignupScreen() {
           <AppTextInput
             ref={phoneRef}
             label="Contact Number"
-            placeholder="9XX XXX XXXX"
+            placeholder={PLACEHOLDERS.PHONE}
             value={formData.phone}
             onChangeText={(text: string) => setFormData({...formData, phone: text.replace(/\D/g, '').slice(0, 10)})}
             keyboardType="phone-pad"
@@ -163,7 +164,7 @@ export function CustomerSignupScreen() {
           <AppTextInput
             ref={referralRef}
             label="Referral Code (Optional)"
-            placeholder="Enter referral code"
+            placeholder={PLACEHOLDERS.REFERRAL}
             value={formData.referralCode}
             onChangeText={(text: string) => setFormData({...formData, referralCode: text})}
             autoCapitalize="characters"
@@ -175,7 +176,7 @@ export function CustomerSignupScreen() {
           <AppTextInput
             ref={passwordRef}
             label="Password"
-            placeholder="Create a password"
+            placeholder={PLACEHOLDERS.PASSWORD}
             value={formData.password}
             onChangeText={(text: string) => setFormData({...formData, password: text})}
             isPassword

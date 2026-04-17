@@ -5,7 +5,6 @@ import {
   Image,
   StyleSheet,
   Dimensions,
-  SafeAreaView,
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -234,17 +233,17 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '-8deg' }],
   },
   broom: {
-    bottom: -60,
-    left: -85,
-    width: 248,
-    height: 248,
+    bottom: 24,
+    left: -72,
+    width: 220,
+    height: 220,
     transform: [{ rotate: '180deg' }],
   },
   plumbing: {
-    bottom: -40,
-    right: -80,
-    width: 250,
-    height: 200,
+    bottom: 18,
+    right: -72,
+    width: 220,
+    height: 176,
     transform: [{ rotate: '-3deg' }],
   },
 });

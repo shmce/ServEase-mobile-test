@@ -231,7 +231,7 @@ export default function HomeScreen() {
       <StatusBar style="light" />
       
       <LinearGradient
-        colors={['#004D40', '#00C853']}
+        colors={['#00BF63', '#00BF63']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.headerGradient}
@@ -320,7 +320,7 @@ export default function HomeScreen() {
               activeOpacity={0.9}
             >
               <LinearGradient
-                colors={['#0D1B2A', '#1B263B']}
+                colors={['#00BF63', '#00BF63']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.ctaGradient}
@@ -331,7 +331,7 @@ export default function HomeScreen() {
                     <Text style={styles.ctaSub}>Become a verified provider and start earning today.</Text>
                   </View>
                   <View style={styles.ctaIconBox}>
-                    <Ionicons name="rocket-outline" size={32} color="#00C853" />
+                    <Ionicons name="rocket-outline" size={32} color="#FFFFFF" />
                   </View>
                 </View>
               </LinearGradient>
@@ -353,7 +353,7 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
-    shadowColor: '#004D40',
+    shadowColor: '#00BF63',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.15,
     shadowRadius: 20,
@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   greetingText: { 
-    color: '#B2DFDB', 
+    color: 'rgba(255,255,255,0.78)', 
     fontSize: 14,
     fontWeight: '500',
   },
@@ -411,7 +411,7 @@ const styles = StyleSheet.create({
   searchBadge: {
     width: 32,
     height: 32,
-    backgroundColor: '#F0FDF4',
+    backgroundColor: 'rgba(0, 191, 99, 0.12)',
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
   },
   seeAllText: {
     fontSize: 14,
-    color: '#00C853',
+    color: '#00BF63',
     fontWeight: '600',
   },
   emptyContainer: {
@@ -465,7 +465,7 @@ const styles = StyleSheet.create({
     marginTop: 32, 
     borderRadius: 24, 
     overflow: 'hidden',
-    shadowColor: '#0D1B2A',
+    shadowColor: '#00BF63',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
     shadowRadius: 16,
@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   ctaSub: { 
-    color: '#94A3B8', 
+    color: 'rgba(255,255,255,0.82)', 
     fontSize: 13,
     lineHeight: 18,
   },
@@ -498,11 +498,11 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(255,255,255,0.14)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   footerSpacer: {
     height: 40,

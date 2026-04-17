@@ -6,18 +6,20 @@ import {
   TouchableOpacity,
   Dimensions,
   Animated,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
+import { TOKENS } from '@/constants/tokens';
+import { ASSETS, UI_LABELS } from '@/constants/defaults';
 
 const { width } = Dimensions.get('window');
-// Recalculated to fit perfectly in HomeScreen (20px padding) + Grid (4px padding) + 16px gap
-const COLUMN_WIDTH = (width - 64) / 2; 
+const COLUMN_WIDTH = (width - 56) / 2; // (width - 40 parent padding - 16 gap) / 2
 
 interface CategoryItem {
   id: string;
   name: string;
   icon_name?: string;
+  image_url?: string;
 }
 
 interface CategoryGridProps {
@@ -33,7 +35,6 @@ const CategoryGridCard = memo(({
   onPress: (name: string) => void 
 }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const iconName = (category.icon_name || 'apps-outline') as any;
 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
@@ -62,22 +63,19 @@ const CategoryGridCard = memo(({
         onPressOut={handlePressOut}
         activeOpacity={1}
       >
+        <Image 
+          source={{ uri: category.image_url || ASSETS.IMAGES.CATEGORY_FALLBACK }} 
+          style={styles.cardImage} 
+        />
         <View style={styles.content}>
-          <View style={styles.headerRow}>
-            <View style={styles.iconWrapper}>
-              <View style={styles.iconBg} />
-              <Ionicons name={iconName} size={24} color="#00C853" />
-            </View>
+          <Text style={styles.title} numberOfLines={2}>
+            {category.name}
+          </Text>
+          <View style={styles.footerRow}>
+            <Text style={styles.tagline}>{UI_LABELS.EXPLORE_SERVICES}</Text>
             <View style={styles.chevron}>
-              <Ionicons name="arrow-forward" size={14} color="#CBD5E1" />
+              <Ionicons name="arrow-forward" size={12} color={TOKENS.colors.primary} />
             </View>
-          </View>
-          
-          <View style={styles.textWrapper}>
-            <Text style={styles.title} numberOfLines={2}>
-              {category.name}
-            </Text>
-            <Text style={styles.tagline}>View All</Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -106,7 +104,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    paddingHorizontal: 2,
     paddingTop: 4,
   },
   cardContainer: {
@@ -114,66 +111,51 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   card: {
-    height: 140, // Consistent height for grid alignment
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    padding: 16,
-    // Multi-layered shadow for premium depth
-    shadowColor: '#004D40',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
+    height: 180,
+    backgroundColor: TOKENS.colors.surface,
+    borderRadius: TOKENS.borderRadius.lg,
+    shadowColor: TOKENS.colors.text.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
     borderWidth: 1,
-    borderColor: 'rgba(241, 245, 249, 0.8)',
+    borderColor: TOKENS.colors.border,
     overflow: 'hidden',
+  },
+  cardImage: {
+    width: '100%',
+    height: 100,
+    backgroundColor: TOKENS.colors.background,
   },
   content: {
     flex: 1,
+    padding: TOKENS.spacing.md,
     justifyContent: 'space-between',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  iconWrapper: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  iconBg: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#F0FDF4',
-    borderRadius: 14,
-    transform: [{ rotate: '45deg' }], // Diamond shape background
-  },
-  chevron: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#F8FAFC',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  textWrapper: {
-    marginTop: 8,
   },
   title: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '800',
-    color: '#0F172A',
-    lineHeight: 20,
-    letterSpacing: -0.4,
+    color: TOKENS.colors.text.primary,
+    lineHeight: 18,
+    letterSpacing: -0.3,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   tagline: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#94A3B8',
-    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    color: TOKENS.colors.primary,
+  },
+  chevron: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: TOKENS.colors.primarySoft,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

@@ -171,17 +171,17 @@ export default function ProviderJoinScreen() {
           <Text style={styles.communityLabel}>JOIN A GROWING COMMUNITY</Text>
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Ionicons name="people-outline" size={20} color="#00C853" />
+              <Ionicons name="people-outline" size={20} color="#FFFFFF" />
               <Text style={styles.statVal}>5,200+</Text>
               <Text style={styles.statLab}>Active Providers</Text>
             </View>
             <View style={styles.statItem}>
-              <Ionicons name="star-outline" size={20} color="#00C853" />
+              <Ionicons name="star-outline" size={20} color="#FFFFFF" />
               <Text style={styles.statVal}>4.8★</Text>
               <Text style={styles.statLab}>Average Rating</Text>
             </View>
             <View style={styles.statItem}>
-              <Ionicons name="calendar-outline" size={20} color="#00C853" />
+              <Ionicons name="calendar-outline" size={20} color="#FFFFFF" />
               <Text style={styles.statVal}>28K+</Text>
               <Text style={styles.statLab}>Monthly Bookings</Text>
             </View>
@@ -452,7 +452,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   communityCard: {
-    backgroundColor: '#161B22',
+    backgroundColor: '#00BF63',
     padding: 25,
     borderRadius: 25,
     marginTop: 30,
@@ -461,7 +461,7 @@ const styles = StyleSheet.create({
   communityLabel: {
     fontSize: 11,
     fontWeight: 'bold',
-    color: '#999',
+    color: 'rgba(255,255,255,0.78)',
     letterSpacing: 1,
     textAlign: 'center',
     marginBottom: 20,
@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
   },
   statLab: {
     fontSize: 10,
-    color: '#666',
+    color: 'rgba(255,255,255,0.82)',
     marginTop: 4,
   },
   legalItem: {
@@ -591,4 +591,3 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
 });
-

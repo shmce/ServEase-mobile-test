@@ -35,21 +35,24 @@ import {
   validateProviderAvailability,
 } from '@/services/providerAvailabilityService';
 import { api } from '@/lib/apiClient';
+import { TOKENS } from '@/constants/tokens';
+import { ASSETS, PLACEHOLDERS, BUSINESS_CONFIG } from '@/constants/defaults';
+import { formatCurrency } from '@/lib/formatters';
 
 // Styles moved to top for hoisting/accessibility
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: TOKENS.colors.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#FFF',
+    backgroundColor: TOKENS.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: TOKENS.colors.border,
   },
   backButton: {
     padding: 8,
@@ -57,7 +60,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
     marginLeft: 8,
   },
   scrollContainer: {
@@ -69,9 +72,9 @@ const styles = StyleSheet.create({
   providerBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E8FBF2',
+    backgroundColor: TOKENS.colors.primarySoft,
     borderWidth: 1,
-    borderColor: '#B8EACD',
+    borderColor: TOKENS.colors.success.border,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -80,7 +83,7 @@ const styles = StyleSheet.create({
   providerBannerText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
     marginLeft: 8,
   },
   providerBannerAvatar: {
@@ -111,7 +114,7 @@ const styles = StyleSheet.create({
   calendarMonth: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
   },
   calendarCaption: {
     fontSize: 13,
@@ -163,7 +166,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   calendarDateButtonSelected: {
-    backgroundColor: '#00B761',
+    backgroundColor: TOKENS.colors.primary,
   },
   calendarDateButtonDisabled: {
     backgroundColor: '#F3F4F6',
@@ -171,7 +174,7 @@ const styles = StyleSheet.create({
   calendarDateText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
   },
   calendarDateTextSelected: {
     color: '#FFF',
@@ -186,7 +189,7 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
     marginBottom: 8,
   },
   requiredAsterisk: {
@@ -205,7 +208,7 @@ const styles = StyleSheet.create({
   },
   dropdownText: {
     fontSize: 15,
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
   },
   placeholderText: {
     color: '#8E8E93',
@@ -248,7 +251,7 @@ const styles = StyleSheet.create({
   addressType: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
     marginBottom: 4,
   },
   addressDetail: {
@@ -270,12 +273,12 @@ const styles = StyleSheet.create({
   locationInfoTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
     marginLeft: 10,
   },
   locationInfoAddress: {
     fontSize: 14,
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
     lineHeight: 20,
   },
   locationInfoNote: {
@@ -294,7 +297,7 @@ const styles = StyleSheet.create({
   textArea: {
     height: 100,
     fontSize: 15,
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
   },
   paymentMethodsContainer: {
     gap: 12,
@@ -311,7 +314,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   paymentMethodCardSelected: {
-    borderColor: '#00B761',
+    borderColor: TOKENS.colors.primary,
     backgroundColor: '#F3FDF7',
   },
   paymentMethodCopy: {
@@ -321,10 +324,10 @@ const styles = StyleSheet.create({
   paymentMethodLabel: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
   },
   paymentMethodLabelSelected: {
-    color: '#00B761',
+    color: TOKENS.colors.primary,
   },
   paymentMethodHint: {
     fontSize: 12,
@@ -359,7 +362,7 @@ const styles = StyleSheet.create({
   attachmentLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
   },
   attachmentUri: {
     marginTop: 3,
@@ -379,7 +382,7 @@ const styles = StyleSheet.create({
   uploadText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#00B761',
+    color: TOKENS.colors.primary,
     marginTop: 12,
     marginBottom: 4,
   },
@@ -419,10 +422,10 @@ const styles = StyleSheet.create({
   priceValue: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#00B761',
+    color: TOKENS.colors.primary,
   },
   confirmButton: {
-    backgroundColor: '#00B761',
+    backgroundColor: TOKENS.colors.primary,
     borderRadius: 12,
     height: 52,
     paddingHorizontal: 24,
@@ -464,7 +467,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
   },
   modalCloseButton: {
     padding: 4,
@@ -484,11 +487,11 @@ const styles = StyleSheet.create({
   },
   modalOptionText: {
     fontSize: 16,
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
   },
   modalOptionTextSelected: {
     fontWeight: '700',
-    color: '#00B761',
+    color: TOKENS.colors.primary,
   },
   modalAddressOption: {
     flexDirection: 'row',
@@ -532,13 +535,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   pricingModeOptionSelected: {
-    borderColor: '#00B761',
-    backgroundColor: '#00B761',
+    borderColor: TOKENS.colors.primary,
+    backgroundColor: TOKENS.colors.primary,
   },
   pricingModeText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#0D1B2A',
+    color: TOKENS.colors.text.primary,
   },
   pricingModeTextSelected: {
     color: '#FFFFFF',
@@ -682,7 +685,7 @@ function buildReservedSlotDate(value: string) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-const BOOKABLE_DAYS = 21;
+const BOOKABLE_DAYS = BUSINESS_CONFIG.BOOKABLE_DAYS_COUNT;
 
 function formatDateValue(date: Date) {
   return date.toLocaleDateString('en-US', {
@@ -1608,7 +1611,7 @@ export default function CustomerBookingFormScreen() {
       <View style={styles.bottomContainer}>
         <View style={styles.priceContainer}>
           <Text style={styles.priceLabel}>{getPaymentMethodLabel(paymentMethod)}</Text>
-          <Text style={styles.priceValue}>P{totalAmount.toFixed(2)}</Text>
+          <Text style={styles.priceValue}>{formatCurrency(pricingSnapshot.totalAmount)}</Text>
         </View>
         <TouchableOpacity
           style={[styles.confirmButton, isSubmitting && { opacity: 0.7 }]}
