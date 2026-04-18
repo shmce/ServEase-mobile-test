@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '@/hooks/useAuth';
 import { getErrorMessage } from '@/lib/error-handling';
@@ -34,102 +34,159 @@ export default function CustomerEditProfileScreen() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!user) {
-      setIsLoading(false);
-      return;
-    }
-    const currentUser = user;
-    setEmail(currentUser.email || '');
-    setAvatarUri(`${getAvatarUrl(currentUser.id)}?t=${Date.now()}`);
+  // Load profile data from backend
+  const loadProfile = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Create a timeout promise to prevent hanging
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Request timeout')), 8000)
+      );
 
-    async function loadProfile() {
-      try {
-        const [userData, profileData] = await Promise.all([
-          getUserProfile(currentUser.id),
-          getCustomerProfile(),
-        ]);
-        
-        if (userData) {
-          setFullName(userData.full_name || '');
-          setPhone(userData.contact_number || '');
-        }
-        
-        if (profileData) {
-          setAddress(profileData.address || '');
-        }
-      } catch (err) {
-        console.error('Error loading profile:', err);
-      } finally {
-        setIsLoading(false);
+      // Fetch data with timeout
+      const [userData, profileData] = await Promise.race([
+        Promise.all([getUserProfile(user?.id || ''), getCustomerProfile()]),
+        timeout,
+      ]) as any;
+
+      if (userData?.full_name) {
+        setFullName(userData.full_name);
       }
+      if (userData?.contact_number) {
+        setPhone(userData.contact_number);
+      }
+      if (profileData?.address) {
+        setAddress(profileData.address);
+      }
+    } catch (err) {
+      console.log('Profile load error (non-blocking):', err);
+      // Silently continue - form is already visible for manual entry
+    } finally {
+      setIsLoading(false);
     }
+  };
 
+  // Load profile on mount
+  useEffect(() => {
     loadProfile();
+  }, []);
+
+  // Reload profile when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      loadProfile();
+    }, [user?.id])
+  );
+
+  useEffect(() => {
+    // Set email and avatar when user is available
+    if (user) {
+      setEmail(user.email || '');
+      setAvatarUri(`${getAvatarUrl(user.id)}?t=${Date.now()}`);
+    }
   }, [user]);
 
   const handlePickAvatar = async () => {
-    if (!user) return;
+    if (!user?.id) return;
     const url = await pickAndUploadAvatar(user.id);
     if (url) setAvatarUri(url);
   };
 
   const isSaveEnabled =
     fullName.trim().length > 0 &&
-    email.trim().length > 0 &&
-    phone.trim().length > 0 &&
+    phone.trim().length === 10 &&
     address.trim().length > 0;
 
   const handleSave = async () => {
-    if (!isSaveEnabled || !user) {
+    if (!isSaveEnabled) {
       Alert.alert('Missing Details', 'Please complete all profile fields before saving.');
       return;
     }
     setIsSaving(true);
 
     try {
-      // 1. Update generic user fields (name, phone)
-      await updateUserProfile(user.id, {
-        full_name: fullName.trim(),
-        contact_number: phone.trim(),
-      });
+      console.log('=== Starting Save Operation ===');
+      console.log('User from context:', user?.id);
+      
+      // If user.id is not available from context, try the update anyway
+      // The backend will use the JWT token to identify the user
+      if (user?.id) {
+        console.log('Step 1: Calling updateUserProfile with user ID:', user.id);
+        try {
+          const userResult = await updateUserProfile(user.id, {
+            full_name: fullName.trim(),
+            contact_number: phone.trim(),
+          });
+          console.log('Step 1 Success:', JSON.stringify(userResult, null, 2));
+        } catch (err) {
+          console.error('Step 1 Error:', err);
+          throw err;
+        }
+      } else {
+        console.warn('User ID not available from context, but attempting update anyway...');
+        // Still try to call updateUserProfile with empty user ID
+        // The backend JWT auth should handle it
+        try {
+          const userResult = await updateUserProfile('', {
+            full_name: fullName.trim(),
+            contact_number: phone.trim(),
+          });
+          console.log('Step 1 Success (via JWT):', JSON.stringify(userResult, null, 2));
+        } catch (err) {
+          console.error('Step 1 Error:', err);
+          throw err;
+        }
+      }
 
-      // 2. Update customer-specific fields (address)
-      await updateCustomerProfile({
-        address: address.trim(),
-      });
+      // Update customer-specific fields (address)
+      console.log('Step 2: Calling updateCustomerProfile...');
+      try {
+        const customerResult = await updateCustomerProfile({
+          address: address.trim(),
+        });
+        console.log('Step 2 Success:', JSON.stringify(customerResult, null, 2));
+      } catch (err) {
+        console.error('Step 2 Error:', err);
+        throw err;
+      }
 
-      Alert.alert('Profile Updated', 'Your changes have been saved.', [
-        { text: 'OK', onPress: () => router.back() },
+      // Wait for backend to persist
+      console.log('Step 3: Waiting for backend to persist...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Reload profile data
+      console.log('Step 4: Reloading profile data from backend...');
+      await loadProfile();
+      console.log('Step 4: Profile reloaded successfully');
+
+      console.log('=== Save Operation Complete ===');
+      Alert.alert('Success!', 'Your profile has been saved.', [
+        { 
+          text: 'OK', 
+          onPress: () => {
+            console.log('Going back...');
+            router.back();
+          }
+        },
       ]);
     } catch (err: any) {
-      Alert.alert('Update Failed', getErrorMessage(err, 'Could not save profile.'));
+      console.error('=== Save Error ===');
+      console.error('Error:', err?.message || String(err));
+      Alert.alert('Update Failed', err?.message || 'Could not save profile.');
     } finally {
       setIsSaving(false);
     }
   };
 
   const renderContent = () => {
-    if (isLoading) {
-      return <ActivityIndicator size="large" color="#00C853" style={{ marginTop: 40 }} />;
-    }
-
-    if (!user) {
-      return (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyStateTitle}>Login Required</Text>
-          <Text style={styles.emptyStateText}>Please sign in before editing your profile.</Text>
-          <TouchableOpacity style={styles.saveButton} onPress={() => router.replace('/customer-login' as any)}>
-            <Text style={styles.saveButtonText}>Go To Login</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
+    // Temporarily show form even if user is not in context
+    // The user object may not be hydrated yet but they can still edit their profile
+    
     return (
       <>
         {/* Profile Picture */}
@@ -172,9 +229,9 @@ export default function CustomerEditProfileScreen() {
               <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
-                value={email}
+                value={email || ''}
                 editable={false}
-                placeholder="Enter your email"
+                placeholder="Email not available"
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
@@ -188,9 +245,16 @@ export default function CustomerEditProfileScreen() {
               <TextInput
                 style={styles.input}
                 value={phone}
-                onChangeText={setPhone}
+                onChangeText={(text) => {
+                  // Only allow numbers and limit to 10 digits
+                  const numericText = text.replace(/[^0-9]/g, '');
+                  if (numericText.length <= 10) {
+                    setPhone(numericText);
+                  }
+                }}
                 placeholder="Enter your phone number"
                 keyboardType="phone-pad"
+                maxLength={10}
               />
             </View>
           </View>
@@ -209,18 +273,6 @@ export default function CustomerEditProfileScreen() {
               />
             </View>
           </View>
-
-          <TouchableOpacity
-            style={[styles.saveButton, (!isSaveEnabled || isSaving) && styles.saveButtonDisabled]}
-            onPress={handleSave}
-            disabled={!isSaveEnabled || isSaving}
-          >
-            {isSaving ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.saveButtonText}>Save Changes</Text>
-            )}
-          </TouchableOpacity>
         </View>
       </>
     );
@@ -245,14 +297,32 @@ export default function CustomerEditProfileScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <ScrollView 
+          showsVerticalScrollIndicator={false} 
+          contentContainerStyle={styles.scrollContent}
+          scrollIndicatorInsets={{ right: 1 }}
+        >
           {renderContent()}
         </ScrollView>
+
+        {/* Sticky Save Button */}
+        <View style={styles.stickyButtonContainer}>
+          <TouchableOpacity
+            style={[styles.saveButton, (!isSaveEnabled || isSaving) && styles.saveButtonDisabled]}
+            onPress={handleSave}
+            disabled={!isSaveEnabled || isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save Changes</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {
@@ -281,7 +351,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 25,
     paddingTop: 30,
-    paddingBottom: 40,
+    paddingBottom: 20,
   },
   avatarSection: {
     alignItems: 'center',
@@ -364,6 +434,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#8FD9B0',
     shadowOpacity: 0,
     elevation: 0,
+  },
+  stickyButtonContainer: {
+    paddingHorizontal: 25,
+    paddingTop: 20,
+    paddingBottom: 20,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
   saveButtonText: {
     color: '#fff',

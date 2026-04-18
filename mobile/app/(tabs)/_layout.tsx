@@ -25,9 +25,9 @@ export default function TabLayout() {
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarStyle: {
-          height: 60,
-          paddingBottom: 10,
-          paddingTop: 5,
+          height: 80,
+          paddingBottom: 16,
+          paddingTop: 12,
         },
       }}>
       <Tabs.Screen
@@ -49,18 +49,6 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="more"
-        options={{
-          title: 'More',
-          tabBarIcon: ({ color }: TabBarIconProps) => (
-            <View>
-              <IconSymbol size={24} name="ellipsis" color={color} />
-              <NotificationBadge count={unreadNotifications} top={-5} right={-12} borderColor="#FFF" />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="messages"
         options={{
           title: 'Messages',
@@ -68,6 +56,18 @@ export default function TabLayout() {
             <View>
               <IconSymbol size={24} name="bubble.left.fill" color={color} />
               <NotificationBadge count={unreadMessages} top={-5} right={-12} borderColor="#FFF" />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="more"
+        options={{
+          title: 'More',
+          tabBarIcon: ({ color }: TabBarIconProps) => (
+            <View>
+              <IconSymbol size={24} name="ellipsis" color={color} />
+              <NotificationBadge count={unreadNotifications} top={-5} right={-12} borderColor="#FFF" />
             </View>
           ),
         }}

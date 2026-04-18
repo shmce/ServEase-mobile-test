@@ -26,6 +26,10 @@ export class UsersService {
   }
 
   async updateProfile(userId: string, updates: Partial<UserProfileDto>) {
+    console.log('=== UserService.updateProfile Called ===');
+    console.log('User ID:', userId);
+    console.log('Raw updates:', JSON.stringify(updates));
+    
     const allowed = new Set<keyof UserProfileDto>([
       'full_name',
       'contact_number',
@@ -36,14 +40,26 @@ export class UsersService {
       ),
     );
 
-    if (!Object.keys(payload).length)
-      throw new BadRequestException('No valid fields to update.');
+    console.log('Filtered payload:', JSON.stringify(payload));
 
+    if (!Object.keys(payload).length) {
+      console.log('Error: No valid fields to update');
+      throw new BadRequestException('No valid fields to update.');
+    }
+
+    console.log('Calling userRepository.update with:', JSON.stringify(payload));
     const updated = await this.userRepository.update<UserProfileDto>(
       userId,
       payload,
     );
-    if (!updated) throw new BadRequestException('Update failed.');
+    
+    console.log('Repository returned:', JSON.stringify(updated));
+    if (!updated) {
+      console.log('Error: Update returned null/undefined');
+      throw new BadRequestException('Update failed.');
+    }
+    
+    console.log('=== UserService.updateProfile Complete ===');
     return updated;
   }
 
