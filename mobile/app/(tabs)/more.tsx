@@ -41,7 +41,7 @@ export default function MoreScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>ACCOUNT</Text>
-          <SettingsRow icon="person-outline" label="Edit Profile" onPress={() => router.push('/customer-edit-profile' as any)} />
+          <SettingsRow icon="person-outline" label="My Profile" onPress={() => router.push('/customer-profile' as any)} />
           <SettingsRow icon="location-outline" label="Manage Addresses" onPress={() => router.push('/manage-addresses' as any)} />
           <SettingsRow
             icon="notifications"
