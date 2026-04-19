@@ -37,6 +37,13 @@ export default function CustomerEditProfileScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  
+  // Track original values to detect changes
+  const [originalFullName, setOriginalFullName] = useState('');
+  const [originalPhone, setOriginalPhone] = useState('');
+  const [originalAddress, setOriginalAddress] = useState('');
+  const [originalAvatarUri, setOriginalAvatarUri] = useState<string | null>(null);
+  const [originalEmail, setOriginalEmail] = useState('');
 
   // Load profile data from backend
   const loadProfile = async () => {
@@ -54,15 +61,18 @@ export default function CustomerEditProfileScreen() {
         timeout,
       ]) as any;
 
-      if (userData?.full_name) {
-        setFullName(userData.full_name);
-      }
-      if (userData?.contact_number) {
-        setPhone(userData.contact_number);
-      }
-      if (profileData?.address) {
-        setAddress(profileData.address);
-      }
+      const name = userData?.full_name || '';
+      const phone_num = userData?.contact_number || '';
+      const addr = profileData?.address || '';
+
+      setFullName(name);
+      setOriginalFullName(name);
+      
+      setPhone(phone_num);
+      setOriginalPhone(phone_num);
+      
+      setAddress(addr);
+      setOriginalAddress(addr);
     } catch (err) {
       console.log('Profile load error (non-blocking):', err);
       // Silently continue - form is already visible for manual entry
@@ -86,8 +96,12 @@ export default function CustomerEditProfileScreen() {
   useEffect(() => {
     // Set email and avatar when user is available
     if (user) {
-      setEmail(user.email || '');
-      setAvatarUri(`${getAvatarUrl(user.id)}?t=${Date.now()}`);
+      const userEmail = user.email || '';
+      setEmail(userEmail);
+      setOriginalEmail(userEmail);
+      const avatarUrl = `${getAvatarUrl(user.id)}?t=${Date.now()}`;
+      setAvatarUri(avatarUrl);
+      setOriginalAvatarUri(avatarUrl);
     }
   }, [user]);
 
@@ -100,7 +114,11 @@ export default function CustomerEditProfileScreen() {
   const isSaveEnabled =
     fullName.trim().length > 0 &&
     phone.trim().length === 10 &&
-    address.trim().length > 0;
+    address.trim().length > 0 &&
+    (fullName !== originalFullName || 
+     phone !== originalPhone || 
+     address !== originalAddress ||
+     avatarUri !== originalAvatarUri);
 
   const handleSave = async () => {
     if (!isSaveEnabled) {
@@ -423,7 +441,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 20,
+    marginTop: 0,
     shadowColor: '#00C853',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
@@ -438,15 +456,15 @@ const styles = StyleSheet.create({
   stickyButtonContainer: {
     paddingHorizontal: 25,
     paddingTop: 20,
-    paddingBottom: 20,
+    paddingBottom: 0,
     backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    borderTopWidth: 0,
+    borderBottomWidth: 0,
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   saveButtonText: {
     color: '#fff',

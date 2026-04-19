@@ -6,6 +6,7 @@ import {
   ScrollView,
   SafeAreaView,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { logoutCustomer } from '@/lib/customer-session';
@@ -15,6 +16,20 @@ import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 export default function MoreScreen() {
   const router = useRouter();
   const unreadNotifications = useUnreadNotifications();
+
+  const handleLogout = async () => {
+    Alert.alert('Log Out', 'Are you sure you want to log out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { 
+        text: 'Log Out', 
+        style: 'destructive', 
+        onPress: async () => {
+          await logoutCustomer();
+          router.replace('/login' as any);
+        } 
+      }
+    ]);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -64,10 +79,7 @@ export default function MoreScreen() {
           <SettingsRow 
             icon="log-out-outline" 
             label="Log Out" 
-            onPress={() => {
-              logoutCustomer();
-              router.replace('/login' as any);
-            }}
+            onPress={handleLogout}
             isDestructive
           />
         </View>
